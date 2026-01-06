@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --sidebar-bg: #ffffff;
+  --chat-bg: #f0f2f5;
+  --message-sent: #dcf8c6;
+  --message-received: #ffffff;
+  --text-primary: #111b21;
+  --text-secondary: #667781;
+  --border-color: #e9edef;
+  --green-primary: #25d366;
+  --green-dark: #128c7e;
+}
+
+.dark {
+  --background: #0b141a;
+  --foreground: #e9edef;
+  --sidebar-bg: #111b21;
+  --chat-bg: #0b141a;
+  --message-sent: #005c4b;
+  --message-received: #202c33;
+  --text-primary: #e9edef;
+  --text-secondary: #8696a0;
+  --border-color: #2a3942;
+  --green-primary: #25d366;
+  --green-dark: #128c7e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* WhatsApp-like scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
