@@ -28,7 +28,6 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const [web, setWeb] = useState<WebResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
@@ -120,7 +119,6 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const handleReverseSearchWithFile = async (file: File) => {
     setUploading(true);
     setError('');
-    setInfo('');
     setUploadedImageUrl(null);
     setGoogleByImageUrl(null);
     setImages([]);
@@ -136,18 +134,12 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
         throw new Error(data?.error || 'Reverse image search failed');
       }
 
-      // Handle info message (not an error, just informational)
-      if (typeof data?.info === 'string') {
-        setInfo(data.info);
-      }
-
       if (typeof data?.uploadedImageUrl === 'string') setUploadedImageUrl(data.uploadedImageUrl);
       if (typeof data?.googleByImageUrl === 'string') setGoogleByImageUrl(data.googleByImageUrl);
       if (Array.isArray(data?.images)) setImages(data.images);
     } catch (err: any) {
       console.error('Reverse search error:', err);
       setError(err?.message || 'Reverse image search failed');
-      setInfo('');
       setImages([]);
     } finally {
       setUploading(false);
@@ -170,7 +162,6 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
     setUploadPreview(null);
     setUploadedImageUrl(null);
     setGoogleByImageUrl(null);
-    setInfo('');
     setError('');
     setImages([]);
     setWeb([]);
@@ -278,36 +269,19 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
               </div>
             </div>
 
-            {/* Info text - Show info message if available */}
-            {info && (
-              <div className="mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                <div className="mb-2">{info}</div>
-                {googleByImageUrl && (
-                  <a
-                    href={googleByImageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    Open Google "search by image"
-                  </a>
-                )}
-              </div>
-            )}
-
-            {/* Show Google link even if no info message */}
-            {uploadPreview && googleByImageUrl && !info && (
-              <div className="mt-3 text-xs text-center">
+            {/* Show Google link if available (subtle, not an error) */}
+            {uploadPreview && googleByImageUrl && images.length === 0 && (
+              <div className="mt-3 text-xs text-center text-gray-500">
                 <a
                   href={googleByImageUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-blue-600 hover:underline inline-flex items-center gap-1"
                 >
-                  Open Google "search by image"
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Try Google "search by image"
                 </a>
               </div>
             )}
@@ -410,23 +384,20 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
         </div>
       )}
 
-      {/* Info Message (not an error) */}
-      {info && !isGoogle && (
-        <div className="p-3 mx-4 mt-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded text-sm">
-          <div className="mb-2">{info}</div>
-          {googleByImageUrl && (
-            <a
-              href={googleByImageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              Open Google "search by image"
-            </a>
-          )}
+      {/* Show Google link if no results (subtle, not an error) */}
+      {uploadPreview && googleByImageUrl && images.length === 0 && !isGoogle && !loading && !uploading && (
+        <div className="p-2 mx-4 mt-2 text-xs text-center text-gray-500 dark:text-gray-400">
+          <a
+            href={googleByImageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Try Google "search by image"
+          </a>
         </div>
       )}
 

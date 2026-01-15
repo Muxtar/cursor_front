@@ -77,10 +77,9 @@ export async function POST(req: Request) {
     const googleByImageUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(imageUrl)}`;
 
     if (!serpApiKey) {
-      // No key: return helpful link instead of throwing an error
+      // No key: return Google link (no error, just provide alternative)
       return NextResponse.json({
         images: [],
-        info: 'For better in-app results, set SERP_API_KEY in Railway Variables. You can also use the Google link below.',
         googleByImageUrl,
         uploadedImageUrl: imageUrl,
       });
