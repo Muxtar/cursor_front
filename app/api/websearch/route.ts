@@ -16,8 +16,56 @@ function withTimeout(ms: number) {
   return { signal: controller.signal, done: () => clearTimeout(timer) };
 }
 
+// Check if URL is a social media platform
+function isSocialMediaUrl(url: string): boolean {
+  const socialDomains = [
+    'instagram.com',
+    'twitter.com',
+    'x.com',
+    'facebook.com',
+    'tiktok.com',
+    'youtube.com',
+    'linkedin.com',
+    'pinterest.com',
+    'snapchat.com',
+    'reddit.com',
+    'github.com',
+    'vk.com',
+    'telegram.org',
+  ];
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    return socialDomains.some((domain) => hostname.includes(domain));
+  } catch {
+    return false;
+  }
+}
+
+// Get platform name from URL
+function getPlatformName(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+    if (hostname.includes('instagram')) return 'Instagram';
+    if (hostname.includes('twitter') || hostname.includes('x.com')) return 'Twitter/X';
+    if (hostname.includes('facebook')) return 'Facebook';
+    if (hostname.includes('tiktok')) return 'TikTok';
+    if (hostname.includes('youtube')) return 'YouTube';
+    if (hostname.includes('linkedin')) return 'LinkedIn';
+    if (hostname.includes('pinterest')) return 'Pinterest';
+    if (hostname.includes('snapchat')) return 'Snapchat';
+    if (hostname.includes('reddit')) return 'Reddit';
+    if (hostname.includes('github')) return 'GitHub';
+    if (hostname.includes('vk.com')) return 'VKontakte';
+    if (hostname.includes('telegram')) return 'Telegram';
+    return 'Social Media';
+  } catch {
+    return 'Social Media';
+  }
+}
+
 async function fetchDuckDuckGo(q: string): Promise<WebItem[]> {
-  // DuckDuckGo Instant Answer API (no key). Some topics might be nested.
   const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_redirect=1&no_html=1&t=websearch`;
   const t = withTimeout(8000);
   const res = await fetch(url, { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal });
@@ -55,14 +103,12 @@ async function fetchDuckDuckGo(q: string): Promise<WebItem[]> {
 }
 
 async function fetchWikipedia(q: string): Promise<WebItem[]> {
-  // Wikipedia OpenSearch (no key, CORS-friendly server-side)
   const url = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=10&namespace=0&format=json`;
   const t = withTimeout(8000);
   const res = await fetch(url, { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal });
   t.done();
   if (!res.ok) return [];
   const data: any = await res.json();
-  // [query, titles[], descriptions[], urls[]]
   const titles: string[] = Array.isArray(data?.[1]) ? data[1] : [];
   const desc: string[] = Array.isArray(data?.[2]) ? data[2] : [];
   const urls: string[] = Array.isArray(data?.[3]) ? data[3] : [];
@@ -78,8 +124,225 @@ async function fetchWikipedia(q: string): Promise<WebItem[]> {
   return items;
 }
 
+// Search for social media profiles by name using SerpAPI
+async function searchSocialMediaSerpAPI(q: string, apiKey: string): Promise<WebItem[]> {
+  try {
+    const t = withTimeout(10000);
+    const res = await fetch(
+      `https://serpapi.com/search.json?q=${encodeURIComponent(q)}&api_key=${encodeURIComponent(apiKey)}`,
+      { signal: t.signal }
+    );
+    t.done();
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    const results: WebItem[] = [];
+    
+    // Check organic results for social media links
+    if (Array.isArray(data?.organic_results)) {
+      for (const item of data.organic_results) {
+        const link = safeString(item?.link);
+        if (link && isSocialMediaUrl(link)) {
+          results.push({
+            title: safeString(item?.title) || link,
+            url: link,
+            snippet: safeString(item?.snippet) || '',
+            source: getPlatformName(link),
+          });
+        }
+      }
+    }
+    
+    // Check people_also_ask for social links
+    if (Array.isArray(data?.people_also_ask)) {
+      for (const item of data.people_also_ask) {
+        const link = safeString(item?.link);
+        if (link && isSocialMediaUrl(link)) {
+          results.push({
+            title: safeString(item?.title) || link,
+            url: link,
+            snippet: safeString(item?.snippet) || '',
+            source: getPlatformName(link),
+          });
+        }
+      }
+    }
+    
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+// Search for social media profiles using Google Custom Search
+async function searchSocialMediaGoogle(q: string, apiKey: string, engineId: string): Promise<WebItem[]> {
+  try {
+    const t = withTimeout(10000);
+    const res = await fetch(
+      `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(apiKey)}&cx=${encodeURIComponent(engineId)}&q=${encodeURIComponent(q)}`,
+      { signal: t.signal }
+    );
+    t.done();
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    const results: WebItem[] = [];
+    
+    if (Array.isArray(data?.items)) {
+      for (const item of data.items) {
+        const link = safeString(item?.link);
+        if (link && isSocialMediaUrl(link)) {
+          results.push({
+            title: safeString(item?.title) || link,
+            url: link,
+            snippet: safeString(item?.snippet) || '',
+            source: getPlatformName(link),
+          });
+        }
+      }
+    }
+    
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+// Search for social media profiles using DuckDuckGo (filter results)
+async function searchSocialMediaDuckDuckGo(q: string): Promise<WebItem[]> {
+  const allResults = await fetchDuckDuckGo(q);
+  return allResults.filter((item) => isSocialMediaUrl(item.url));
+}
+
+// Apify Instagram profile search
+async function searchInstagramApify(username: string, token: string): Promise<WebItem | null> {
+  try {
+    // Extract username from query (remove @ if present)
+    const cleanUsername = username.replace(/^@/, '').trim();
+    if (!cleanUsername) return null;
+    
+    const t = withTimeout(30000);
+    const runRes = await fetch(
+      `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          startUrls: [{ url: `https://www.instagram.com/${cleanUsername}/` }],
+        }),
+        signal: t.signal,
+      }
+    );
+    t.done();
+    if (!runRes.ok) return null;
+    
+    const runData: any = await runRes.json();
+    const runId = runData?.data?.id;
+    if (!runId) return null;
+    
+    // Wait for completion (max 30 seconds)
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!statusRes.ok) break;
+      const statusData: any = await statusRes.json();
+      if (statusData?.data?.status === 'SUCCEEDED') {
+        const datasetId = runData?.data?.defaultDatasetId;
+        if (datasetId) {
+          const dataRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (dataRes.ok) {
+            const profileData: any = await dataRes.json();
+            if (Array.isArray(profileData) && profileData.length > 0) {
+              const profile = profileData[0];
+              return {
+                title: safeString(profile?.fullName) || cleanUsername,
+                url: `https://www.instagram.com/${cleanUsername}/`,
+                snippet: safeString(profile?.biography) || '',
+                source: 'Instagram',
+              };
+            }
+          }
+        }
+        break;
+      } else if (statusData?.data?.status === 'FAILED' || statusData?.data?.status === 'ABORTED') {
+        break;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Apify TikTok profile search
+async function searchTikTokApify(username: string, token: string): Promise<WebItem | null> {
+  try {
+    const cleanUsername = username.replace(/^@/, '').trim();
+    if (!cleanUsername) return null;
+    
+    const t = withTimeout(30000);
+    const runRes = await fetch(
+      `https://api.apify.com/v2/acts/apify~tiktok-user-scraper/runs`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ usernames: [cleanUsername] }),
+        signal: t.signal,
+      }
+    );
+    t.done();
+    if (!runRes.ok) return null;
+    
+    const runData: any = await runRes.json();
+    const runId = runData?.data?.id;
+    if (!runId) return null;
+    
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!statusRes.ok) break;
+      const statusData: any = await statusRes.json();
+      if (statusData?.data?.status === 'SUCCEEDED') {
+        const datasetId = runData?.data?.defaultDatasetId;
+        if (datasetId) {
+          const dataRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (dataRes.ok) {
+            const userData: any = await dataRes.json();
+            if (Array.isArray(userData) && userData.length > 0) {
+              const user = userData[0];
+              return {
+                title: safeString(user?.nickname) || cleanUsername,
+                url: `https://www.tiktok.com/@${cleanUsername}`,
+                snippet: safeString(user?.bio) || '',
+                source: 'TikTok',
+              };
+            }
+          }
+        }
+        break;
+      } else if (statusData?.data?.status === 'FAILED' || statusData?.data?.status === 'ABORTED') {
+        break;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchOpenverseImages(q: string): Promise<ImageItem[]> {
-  // Openverse images (no key)
   const url = `https://api.openverse.engineering/v1/images?q=${encodeURIComponent(q)}&page_size=24`;
   const t = withTimeout(8000);
   const res = await fetch(url, { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal });
@@ -145,7 +408,7 @@ async function fetchApifyGoogleImages(q: string, token: string): Promise<ImageIt
       title: safeString(item?.title) || q,
       width: typeof item?.width === 'number' ? item.width : undefined,
       height: typeof item?.height === 'number' ? item.height : undefined,
-      source: 'Google Images',
+      source: 'Google Images (Apify)',
     }))
     .filter((x: ImageItem) => Boolean(x.url))
     .slice(0, 24);
@@ -154,59 +417,103 @@ async function fetchApifyGoogleImages(q: string, token: string): Promise<ImageIt
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = (searchParams.get('q') || '').trim();
-  const type = (searchParams.get('type') || 'all').toLowerCase(); // all | web | images | social
+  const type = (searchParams.get('type') || 'all').toLowerCase();
 
   if (!q) {
     return NextResponse.json({ query: q, web: [], images: [] });
   }
 
+  const serpApiKey = process.env.SERP_API_KEY || '';
+  const googleApiKey = process.env.GOOGLE_API_KEY || '';
+  const googleEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID || '';
   const apifyToken = process.env.APIFY_TOKEN || '';
   const unsplashKey = process.env.UNSPLASH_ACCESS_KEY || '';
 
   try {
-    if (type === 'social') {
-      // Provide platform search links without needing any API key
-      const social: WebItem[] = [
-        {
-          title: `Search "${q}" on X (Twitter)`,
-          url: `https://x.com/search?q=${encodeURIComponent(q)}&src=typed_query`,
-          snippet: 'People / posts search',
-          source: 'X',
-        },
-        {
-          title: `Search "${q}" on TikTok`,
-          url: `https://www.tiktok.com/search?q=${encodeURIComponent(q)}`,
-          snippet: 'Accounts / videos search',
-          source: 'TikTok',
-        },
-        {
-          title: `Search "${q}" on YouTube`,
-          url: `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
-          snippet: 'Channels / videos search',
-          source: 'YouTube',
-        },
-        {
-          title: `Search "${q}" on LinkedIn`,
-          url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`,
-          snippet: 'People search (login may be required)',
-          source: 'LinkedIn',
-        },
-        {
-          title: `Search "${q}" on Facebook`,
-          url: `https://www.facebook.com/search/top/?q=${encodeURIComponent(q)}`,
-          snippet: 'People/pages search (login may be required)',
-          source: 'Facebook',
-        },
-        {
-          title: `Search "${q}" on Instagram (web)`,
-          url: `https://www.instagram.com/`,
-          snippet: 'Use Instagram search in-app or web (login may be required)',
-          source: 'Instagram',
-        },
-      ];
-      return NextResponse.json({ query: q, web: social, images: [] });
+    // Social media profile search
+    if (type === 'social' || (type === 'all' && q.length > 0)) {
+      const socialResults: WebItem[] = [];
+      
+      // Priority 1: SerpAPI (if available)
+      if (serpApiKey) {
+        const serpResults = await searchSocialMediaSerpAPI(q, serpApiKey);
+        socialResults.push(...serpResults);
+      }
+      
+      // Priority 2: Google Custom Search (if available)
+      if (googleApiKey && googleEngineId && socialResults.length < 5) {
+        const googleResults = await searchSocialMediaGoogle(q, googleApiKey, googleEngineId);
+        socialResults.push(...googleResults);
+      }
+      
+      // Priority 3: DuckDuckGo (free, filter for social media)
+      if (socialResults.length < 5) {
+        const ddgResults = await searchSocialMediaDuckDuckGo(q);
+        socialResults.push(...ddgResults);
+      }
+      
+      // Priority 4: Apify for Instagram/TikTok (if username-like query)
+      const usernameMatch = q.match(/@?([a-zA-Z0-9._]+)/);
+      if (apifyToken && usernameMatch && socialResults.length < 5) {
+        const username = usernameMatch[1];
+        const [instagram, tiktok] = await Promise.all([
+          searchInstagramApify(username, apifyToken),
+          searchTikTokApify(username, apifyToken),
+        ]);
+        if (instagram) socialResults.push(instagram);
+        if (tiktok) socialResults.push(tiktok);
+      }
+      
+      // Dedupe by URL
+      const seen = new Set<string>();
+      const uniqueSocial: WebItem[] = [];
+      for (const item of socialResults) {
+        if (!seen.has(item.url)) {
+          seen.add(item.url);
+          uniqueSocial.push(item);
+        }
+      }
+      
+      if (type === 'social') {
+        return NextResponse.json({ query: q, web: uniqueSocial.slice(0, 20), images: [] });
+      }
+      
+      // If type is 'all', include social results in web results
+      if (type === 'all' && uniqueSocial.length > 0) {
+        // Continue to get regular web results and merge
+        const [webDDG, webWiki, images] = await Promise.all([
+          fetchDuckDuckGo(q),
+          fetchWikipedia(q),
+          (async () => {
+            // Image search: try free APIs first, then Apify
+            if (apifyToken) {
+              const apify = await fetchApifyGoogleImages(q, apifyToken);
+              if (apify.length) return apify;
+            }
+            if (unsplashKey) {
+              const unsplash = await fetchUnsplashImages(q, unsplashKey);
+              if (unsplash.length) return unsplash;
+            }
+            return fetchOpenverseImages(q);
+          })(),
+        ]);
+        
+        // Merge web results with social results
+        const webAll = [...uniqueSocial, ...webDDG, ...webWiki];
+        const seenWeb = new Set<string>();
+        const web: WebItem[] = [];
+        for (const item of webAll) {
+          if (!item.url || seenWeb.has(item.url)) continue;
+          seenWeb.add(item.url);
+          web.push(item);
+          if (web.length >= 20) break;
+        }
+        
+        return NextResponse.json({ query: q, web, images });
+      }
     }
 
+    // Regular web + image search
     const wantsWeb = type === 'all' || type === 'web';
     const wantsImages = type === 'all' || type === 'images';
 
@@ -215,6 +522,7 @@ export async function GET(req: Request) {
       wantsWeb ? fetchWikipedia(q) : Promise.resolve([]),
       wantsImages
         ? (async () => {
+            // Priority: Free APIs first, then Apify
             if (apifyToken) {
               const apify = await fetchApifyGoogleImages(q, apifyToken);
               if (apify.length) return apify;
@@ -228,7 +536,7 @@ export async function GET(req: Request) {
         : Promise.resolve([]),
     ]);
 
-    // merge web results (dedupe by url)
+    // Merge web results
     const webAll = [...webDDG, ...webWiki];
     const seen = new Set<string>();
     const web: WebItem[] = [];
@@ -247,4 +555,3 @@ export async function GET(req: Request) {
     );
   }
 }
-

@@ -5,10 +5,82 @@ export const revalidate = 0;
 
 type ImageItem = { url: string; title?: string; source: string };
 
+// Free: Google Images reverse search (via scraping simulation - returns Google link)
+async function searchGoogleImagesFree(imageUrl: string): Promise<ImageItem[]> {
+  // Google Images reverse search doesn't have a free API
+  // We return empty and provide the Google link instead
+  return [];
+}
+
+// Free: Yandex Images reverse search
+async function searchYandexImages(imageUrl: string): Promise<ImageItem[]> {
+  try {
+    // Yandex Images reverse search endpoint
+    // Note: Yandex may require API key for some endpoints, but we try the public one first
+    const t = withTimeout(10000);
+    const res = await fetch(
+      `https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(imageUrl)}`,
+      {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: t.signal,
+      }
+    );
+    t.done();
+    
+    // Yandex doesn't provide a direct API, so we parse HTML or use alternative
+    // For now, return empty and let Apify handle it
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+// Paid: Apify Google Images reverse search (last resort)
+async function searchApifyReverseImage(imageUrl: string, token: string): Promise<ImageItem[]> {
+  try {
+    const t = withTimeout(20000);
+    const res = await fetch(
+      'https://api.apify.com/v2/acts/apify~google-image-scraper/run-sync-get-dataset-items',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ imageUrl, maxResults: 30 }),
+        signal: t.signal,
+      }
+    );
+    t.done();
+    if (!res.ok) return [];
+    const data: any = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((item: any) => ({
+        url: safeString(item?.url) || '',
+        title: safeString(item?.title) || '',
+        source: 'Apify Google Images',
+      }))
+      .filter((x: ImageItem) => Boolean(x.url))
+      .slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
+function safeString(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+function withTimeout(ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return { signal: controller.signal, done: () => clearTimeout(timer) };
+}
+
 export async function POST(req: Request) {
-  // Reverse image search via SerpAPI (recommended, matches the previous websearch project style)
-  // Requires SERP_API_KEY. If missing, we still return a helpful message instead of hard-failing.
   const serpApiKey = process.env.SERP_API_KEY || '';
+  const apifyToken = process.env.APIFY_TOKEN || '';
   const imgbbKey = process.env.IMGBB_API_KEY || '';
 
   const contentType = req.headers.get('content-type') || '';
@@ -26,8 +98,7 @@ export async function POST(req: Request) {
     const buf = Buffer.from(await file.arrayBuffer());
     const base64 = buf.toString('base64');
 
-    // Upload image to Imgur (public URL) with a public client-id (same style as the original project).
-    // If Imgur fails, fallback to ImgBB (requires IMGBB_API_KEY).
+    // Upload image to Imgur (public URL)
     const uploadToImgur = async (): Promise<string | null> => {
       try {
         const res = await fetch('https://api.imgur.com/3/image', {
@@ -75,43 +146,58 @@ export async function POST(req: Request) {
     }
 
     const googleByImageUrl = `https://www.google.com/searchbyimage?image_url=${encodeURIComponent(imageUrl)}`;
+    const yandexByImageUrl = `https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(imageUrl)}`;
 
-    if (!serpApiKey) {
-      // No key: return Google link (no error, just provide alternative)
-      return NextResponse.json({
-        images: [],
-        googleByImageUrl,
-        uploadedImageUrl: imageUrl,
-      });
+    let results: ImageItem[] = [];
+
+    // Priority 1: SerpAPI (if key available)
+    if (serpApiKey) {
+      try {
+        const serpRes = await fetch(
+          `https://serpapi.com/search.json?engine=google_images&image_url=${encodeURIComponent(imageUrl)}&api_key=${encodeURIComponent(serpApiKey)}`,
+          { signal: withTimeout(15000).signal }
+        );
+        if (serpRes.ok) {
+          const serpData: any = await serpRes.json().catch(() => ({}));
+          const imagesResults = Array.isArray(serpData?.images_results) ? serpData.images_results : [];
+          results = imagesResults
+            .map((r: any) => ({
+              url: safeString(r?.thumbnail) || safeString(r?.original) || safeString(r?.link) || '',
+              title: safeString(r?.title) || '',
+              source: 'SerpAPI Google Images',
+            }))
+            .filter((x: ImageItem) => Boolean(x.url))
+            .slice(0, 30);
+        }
+      } catch (e) {
+        console.error('SerpAPI error:', e);
+      }
     }
 
-    // SerpAPI reverse image search (google_images engine)
-    const serpRes = await fetch(
-      `https://serpapi.com/search.json?engine=google_images&image_url=${encodeURIComponent(imageUrl)}&api_key=${encodeURIComponent(
-        serpApiKey
-      )}`
-    );
-    const serpData: any = await serpRes.json().catch(() => ({}));
-    if (!serpRes.ok) {
-      return NextResponse.json(
-        { images: [], error: serpData?.error || 'SerpAPI reverse search failed', googleByImageUrl, uploadedImageUrl: imageUrl },
-        { status: 502 }
-      );
+    // Priority 2: Try Yandex (free, but limited)
+    if (results.length === 0) {
+      const yandexResults = await searchYandexImages(imageUrl);
+      if (yandexResults.length > 0) {
+        results = yandexResults;
+      }
     }
 
-    const imagesResults = Array.isArray(serpData?.images_results) ? serpData.images_results : [];
-    const results: ImageItem[] = imagesResults
-      .map((r: any) => ({
-        url: typeof r?.thumbnail === 'string' ? r.thumbnail : typeof r?.original === 'string' ? r.original : typeof r?.link === 'string' ? r.link : '',
-        title: typeof r?.title === 'string' ? r.title : undefined,
-        source: 'SerpAPI Google Images',
-      }))
-      .filter((x: ImageItem) => Boolean(x.url))
-      .slice(0, 30);
+    // Priority 3: Apify (last resort, requires key)
+    if (results.length === 0 && apifyToken) {
+      const apifyResults = await searchApifyReverseImage(imageUrl, apifyToken);
+      if (apifyResults.length > 0) {
+        results = apifyResults;
+      }
+    }
 
-    return NextResponse.json({ images: results, googleByImageUrl, uploadedImageUrl: imageUrl });
+    // Return results with alternative links
+    return NextResponse.json({
+      images: results,
+      googleByImageUrl,
+      yandexByImageUrl,
+      uploadedImageUrl: imageUrl,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Reverse image search failed' }, { status: 500 });
   }
 }
-
