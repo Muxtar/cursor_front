@@ -15,6 +15,9 @@ interface WebResult {
   url: string;
   snippet?: string;
   source?: string;
+  // Optional helper fields for reverse-image flow
+  googleByImageUrl?: string;
+  uploadedImageUrl?: string;
 }
 
 interface ImageSearchProps {
@@ -30,6 +33,10 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
+  const [googleByImageUrl, setGoogleByImageUrl] = useState<string | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
   const runSearch = async (query: string, searchType: 'all' | 'web' | 'images') => {
     if (!query.trim()) return;
@@ -95,12 +102,25 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const handleUpload = async (file: File) => {
     setUploading(true);
     setError('');
+    setUploadInfo(null);
+    setGoogleByImageUrl(null);
+    setUploadedImageUrl(null);
     try {
+      // Preview
+      const reader = new FileReader();
+      reader.onload = (e) => setUploadPreview(typeof e.target?.result === 'string' ? e.target.result : null);
+      reader.readAsDataURL(file);
+
       const fd = new FormData();
       fd.append('image', file);
       const res = await fetch('/api/websearch/reverse-image', { method: 'POST', body: fd });
       const data: any = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Reverse image search failed');
+
+      if (typeof data?.info === 'string') setUploadInfo(data.info);
+      if (typeof data?.googleByImageUrl === 'string') setGoogleByImageUrl(data.googleByImageUrl);
+      if (typeof data?.uploadedImageUrl === 'string') setUploadedImageUrl(data.uploadedImageUrl);
+
       setImages(Array.isArray(data?.images) ? data.images : []);
       setWeb([]);
     } catch (err: any) {
@@ -222,23 +242,90 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
           </div>
         ) : tab === 'upload' ? (
           <div className="w-full flex flex-col items-center justify-center py-10">
-            <div className="text-sm text-gray-700 mb-3">Upload an image to find similar images.</div>
-            <label className="cursor-pointer px-4 py-2 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700">
-              {uploading ? 'Uploading…' : 'Choose image'}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                disabled={uploading}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUpload(f);
-                }}
-              />
-            </label>
-            <div className="mt-3 text-xs text-gray-500">
-              For reverse image search you may need a provider key (Bing Visual Search).
+            <div className="w-full max-w-3xl">
+              <div className="text-sm font-semibold text-gray-900 mb-3">Reverse image search</div>
+
+              {/* Upload area */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="w-full sm:w-56">
+                    <div className="text-xs text-gray-600 mb-2">Preview</div>
+                    <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
+                      {uploadPreview ? (
+                        <img src={uploadPreview} alt="Upload preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="text-xs text-gray-500 text-center px-3">
+                          No image selected
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 w-full">
+                    <div className="text-xs text-gray-600 mb-2">Choose an image</div>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="cursor-pointer px-4 py-2 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50">
+                        {uploading ? 'Uploading…' : 'Select image'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploading}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleUpload(f);
+                          }}
+                        />
+                      </label>
+                      {uploadPreview && (
+                        <button
+                          type="button"
+                          className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm"
+                          onClick={() => {
+                            setUploadPreview(null);
+                            setImages([]);
+                            setUploadInfo(null);
+                            setGoogleByImageUrl(null);
+                            setUploadedImageUrl(null);
+                          }}
+                          disabled={uploading}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Info + links */}
+                    {(uploadInfo || googleByImageUrl || uploadedImageUrl) && (
+                      <div className="mt-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
+                        {uploadInfo && <div className="mb-2">{uploadInfo}</div>}
+                        {uploadedImageUrl && (
+                          <div className="text-xs text-yellow-800 break-all">
+                            Uploaded: <a className="underline" href={uploadedImageUrl} target="_blank" rel="noopener noreferrer">{uploadedImageUrl}</a>
+                          </div>
+                        )}
+                        {googleByImageUrl && (
+                          <div className="mt-1">
+                            <a
+                              href={googleByImageUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 text-blue-700 underline"
+                            >
+                              Open Google “search by image”
+                            </a>
+                          </div>
+                        )}
+                        <div className="mt-2 text-xs text-yellow-800">
+                          Better in-app results: set <b>SERP_API_KEY</b> in Railway Variables (SerpAPI reverse image).
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
+
             {images.length > 0 && (
               <div className="mt-6 w-full">
                 <div className="text-sm font-semibold text-gray-900 mb-3">Similar images</div>
