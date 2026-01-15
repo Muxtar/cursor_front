@@ -16,7 +16,7 @@ function withTimeout(ms: number) {
   return { signal: controller.signal, done: () => clearTimeout(timer) };
 }
 
-// Check if URL is a social media platform
+// Check if URL is a social media profile (NOT a search page)
 function isSocialMediaUrl(url: string): boolean {
   const socialDomains = [
     'instagram.com',
@@ -33,10 +33,28 @@ function isSocialMediaUrl(url: string): boolean {
     'vk.com',
     'telegram.org',
   ];
+  
+  // Exclude general search pages
+  const excludePaths = ['/search', '/results', '/top/', '/people/', '/pages/'];
+  
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.toLowerCase();
-    return socialDomains.some((domain) => hostname.includes(domain));
+    const pathname = urlObj.pathname.toLowerCase();
+    
+    // Check if it's a social media domain
+    const isSocialDomain = socialDomains.some((domain) => hostname.includes(domain));
+    if (!isSocialDomain) return false;
+    
+    // Exclude search pages
+    const isSearchPage = excludePaths.some((path) => pathname.includes(path));
+    if (isSearchPage) return false;
+    
+    // Exclude root pages (facebook.com, linkedin.com without username)
+    if (pathname === '/' || pathname === '') return false;
+    
+    // Must have a username/path (e.g., /username, /@username, /in/username)
+    return pathname.length > 1;
   } catch {
     return false;
   }
@@ -430,99 +448,17 @@ export async function GET(req: Request) {
   const unsplashKey = process.env.UNSPLASH_ACCESS_KEY || '';
 
   try {
-    // Social media profile search
-    if (type === 'social' || (type === 'all' && q.length > 0)) {
-      const socialResults: WebItem[] = [];
-      
-      // Priority 1: SerpAPI (if available)
-      if (serpApiKey) {
-        const serpResults = await searchSocialMediaSerpAPI(q, serpApiKey);
-        socialResults.push(...serpResults);
-      }
-      
-      // Priority 2: Google Custom Search (if available)
-      if (googleApiKey && googleEngineId && socialResults.length < 5) {
-        const googleResults = await searchSocialMediaGoogle(q, googleApiKey, googleEngineId);
-        socialResults.push(...googleResults);
-      }
-      
-      // Priority 3: DuckDuckGo (free, filter for social media)
-      if (socialResults.length < 5) {
-        const ddgResults = await searchSocialMediaDuckDuckGo(q);
-        socialResults.push(...ddgResults);
-      }
-      
-      // Priority 4: Apify for Instagram/TikTok (if username-like query)
-      const usernameMatch = q.match(/@?([a-zA-Z0-9._]+)/);
-      if (apifyToken && usernameMatch && socialResults.length < 5) {
-        const username = usernameMatch[1];
-        const [instagram, tiktok] = await Promise.all([
-          searchInstagramApify(username, apifyToken),
-          searchTikTokApify(username, apifyToken),
-        ]);
-        if (instagram) socialResults.push(instagram);
-        if (tiktok) socialResults.push(tiktok);
-      }
-      
-      // Dedupe by URL
-      const seen = new Set<string>();
-      const uniqueSocial: WebItem[] = [];
-      for (const item of socialResults) {
-        if (!seen.has(item.url)) {
-          seen.add(item.url);
-          uniqueSocial.push(item);
-        }
-      }
-      
-      if (type === 'social') {
-        return NextResponse.json({ query: q, web: uniqueSocial.slice(0, 20), images: [] });
-      }
-      
-      // If type is 'all', include social results in web results
-      if (type === 'all' && uniqueSocial.length > 0) {
-        // Continue to get regular web results and merge
-        const [webDDG, webWiki, images] = await Promise.all([
-          fetchDuckDuckGo(q),
-          fetchWikipedia(q),
-          (async () => {
-            // Image search: try free APIs first, then Apify
-            if (apifyToken) {
-              const apify = await fetchApifyGoogleImages(q, apifyToken);
-              if (apify.length) return apify;
-            }
-            if (unsplashKey) {
-              const unsplash = await fetchUnsplashImages(q, unsplashKey);
-              if (unsplash.length) return unsplash;
-            }
-            return fetchOpenverseImages(q);
-          })(),
-        ]);
-        
-        // Merge web results with social results
-        const webAll = [...uniqueSocial, ...webDDG, ...webWiki];
-        const seenWeb = new Set<string>();
-        const web: WebItem[] = [];
-        for (const item of webAll) {
-          if (!item.url || seenWeb.has(item.url)) continue;
-          seenWeb.add(item.url);
-          web.push(item);
-          if (web.length >= 20) break;
-        }
-        
-        return NextResponse.json({ query: q, web, images });
-      }
-    }
-
-    // Regular web + image search
+    // Always do regular web + image search first
     const wantsWeb = type === 'all' || type === 'web';
     const wantsImages = type === 'all' || type === 'images';
 
+    // Get regular web and image results
     const [webDDG, webWiki, images] = await Promise.all([
       wantsWeb ? fetchDuckDuckGo(q) : Promise.resolve([]),
       wantsWeb ? fetchWikipedia(q) : Promise.resolve([]),
       wantsImages
         ? (async () => {
-            // Priority: Free APIs first, then Apify
+            // Image search: try free APIs first, then Apify
             if (apifyToken) {
               const apify = await fetchApifyGoogleImages(q, apifyToken);
               if (apify.length) return apify;
@@ -536,7 +472,7 @@ export async function GET(req: Request) {
         : Promise.resolve([]),
     ]);
 
-    // Merge web results
+    // Merge regular web results
     const webAll = [...webDDG, ...webWiki];
     const seen = new Set<string>();
     const web: WebItem[] = [];
@@ -547,6 +483,71 @@ export async function GET(req: Request) {
       if (web.length >= 12) break;
     }
 
+    // If type is 'social' or if query looks like a name/username, also search for social media profiles
+    if (type === 'social' || (type === 'all' && q.length > 0)) {
+      const socialResults: WebItem[] = [];
+      
+      // Priority 1: Apify for Instagram/TikTok (if username-like query) - like websearch folder
+      const usernameMatch = q.match(/@?([a-zA-Z0-9._]+)/);
+      if (apifyToken && usernameMatch) {
+        const username = usernameMatch[1];
+        const [instagram, tiktok] = await Promise.all([
+          searchInstagramApify(username, apifyToken),
+          searchTikTokApify(username, apifyToken),
+        ]);
+        if (instagram) socialResults.push(instagram);
+        if (tiktok) socialResults.push(tiktok);
+      }
+      
+      // Priority 2: SerpAPI (if available) - filter for real profiles
+      if (serpApiKey && socialResults.length < 5) {
+        const serpResults = await searchSocialMediaSerpAPI(q, serpApiKey);
+        socialResults.push(...serpResults);
+      }
+      
+      // Priority 3: Google Custom Search (if available) - filter for real profiles
+      if (googleApiKey && googleEngineId && socialResults.length < 5) {
+        const googleResults = await searchSocialMediaGoogle(q, googleApiKey, googleEngineId);
+        socialResults.push(...googleResults);
+      }
+      
+      // Priority 4: DuckDuckGo (free, filter for social media profiles)
+      if (socialResults.length < 5) {
+        const ddgResults = await searchSocialMediaDuckDuckGo(q);
+        socialResults.push(...ddgResults);
+      }
+      
+      // Dedupe by URL
+      const seenSocial = new Set<string>();
+      const uniqueSocial: WebItem[] = [];
+      for (const item of socialResults) {
+        if (!seenSocial.has(item.url)) {
+          seenSocial.add(item.url);
+          uniqueSocial.push(item);
+        }
+      }
+      
+      if (type === 'social') {
+        return NextResponse.json({ query: q, web: uniqueSocial.slice(0, 20), images: [] });
+      }
+      
+      // If type is 'all', merge social results with regular web results
+      if (type === 'all' && uniqueSocial.length > 0) {
+        // Add social results to the beginning of web results
+        const mergedWeb = [...uniqueSocial, ...web];
+        const seenMerged = new Set<string>();
+        const finalWeb: WebItem[] = [];
+        for (const item of mergedWeb) {
+          if (!item.url || seenMerged.has(item.url)) continue;
+          seenMerged.add(item.url);
+          finalWeb.push(item);
+          if (finalWeb.length >= 20) break;
+        }
+        return NextResponse.json({ query: q, web: finalWeb, images });
+      }
+    }
+
+    // If we reach here, it's a regular web/image search (not 'social' type)
     return NextResponse.json({ query: q, web, images });
   } catch (e: any) {
     return NextResponse.json(
