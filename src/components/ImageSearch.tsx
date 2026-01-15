@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, KeyboardEvent } from 'react';
 
 interface ImageResult {
   url: string;
   title: string;
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   source?: string;
 }
 
@@ -15,9 +15,6 @@ interface WebResult {
   url: string;
   snippet?: string;
   source?: string;
-  // Optional helper fields for reverse-image flow
-  googleByImageUrl?: string;
-  uploadedImageUrl?: string;
 }
 
 interface ImageSearchProps {
@@ -29,27 +26,57 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const [searchQuery, setSearchQuery] = useState('');
   const [images, setImages] = useState<ImageResult[]>([]);
   const [web, setWeb] = useState<WebResult[]>([]);
-  const [tab, setTab] = useState<'all' | 'web' | 'images' | 'social' | 'upload'>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
-  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
-  const [googleByImageUrl, setGoogleByImageUrl] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [googleByImageUrl, setGoogleByImageUrl] = useState<string | null>(null);
+  
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const runSearch = async (query: string, searchType: 'all' | 'web' | 'images') => {
-    if (!query.trim()) return;
+  const isGoogle = variant === 'google';
+
+  // Auto-resize textarea
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setSearchQuery(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  };
+
+  // Handle Enter key (submit) or Shift+Enter (new line)
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSearch();
+    }
+  };
+
+  // Text search
+  const handleSearch = async () => {
+    if (!searchQuery.trim() && !uploadPreview) return;
+
+    // If there's an uploaded image, do reverse search
+    if (uploadPreview) {
+      await handleReverseSearch();
+      return;
+    }
+
+    // Otherwise do text search
+    if (!searchQuery.trim()) return;
 
     setLoading(true);
     setError('');
+    setImages([]);
+    setWeb([]);
 
     try {
-      const res = await fetch(
-        `/api/websearch?q=${encodeURIComponent(query)}&type=${encodeURIComponent(searchType)}`,
-        { method: 'GET' }
-      );
+      const res = await fetch(`/api/websearch?q=${encodeURIComponent(searchQuery)}&type=all`);
       const data: any = await res.json();
+      
       if (!res.ok) {
         throw new Error(data?.error || 'Search failed');
       }
@@ -57,7 +84,7 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
       if (Array.isArray(data?.web)) setWeb(data.web);
       if (Array.isArray(data?.images)) setImages(data.images);
     } catch (err: any) {
-      console.error('Image search error:', err);
+      console.error('Search error:', err);
       setError(err?.message || 'Search failed. Please try again.');
       setImages([]);
       setWeb([]);
@@ -66,64 +93,52 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (tab === 'social') {
-      // social uses the same endpoint but different type
-      setLoading(true);
-      setError('');
-      fetch(`/api/websearch?q=${encodeURIComponent(searchQuery)}&type=social`)
-        .then(async (r) => {
-          const data: any = await r.json();
-          if (!r.ok) throw new Error(data?.error || 'Search failed');
-          setWeb(Array.isArray(data?.web) ? data.web : []);
-          setImages([]);
-        })
-        .catch((err: any) => {
-          setError(err?.message || 'Search failed');
-          setWeb([]);
-          setImages([]);
-        })
-        .finally(() => setLoading(false));
-      return;
-    }
-    if (tab === 'upload') return; // handled by upload UI
-    runSearch(searchQuery, tab === 'all' || tab === 'web' || tab === 'images' ? tab : 'all');
-  };
+  // Image upload handler
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-  const handleImageClick = (imageUrl: string) => {
-    if (onImageSelect) {
-      onImageSelect(imageUrl);
+    const file = files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setUploadPreview(event.target.result as string);
+        // Auto-trigger reverse search
+        handleReverseSearchWithFile(file);
+      }
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
-  const isGoogle = variant === 'google';
-
-  const handleUpload = async (file: File) => {
+  // Reverse image search with file
+  const handleReverseSearchWithFile = async (file: File) => {
     setUploading(true);
     setError('');
-    setUploadInfo(null);
-    setGoogleByImageUrl(null);
     setUploadedImageUrl(null);
-    try {
-      // Preview
-      const reader = new FileReader();
-      reader.onload = (e) => setUploadPreview(typeof e.target?.result === 'string' ? e.target.result : null);
-      reader.readAsDataURL(file);
+    setGoogleByImageUrl(null);
+    setImages([]);
+    setWeb([]);
 
+    try {
       const fd = new FormData();
       fd.append('image', file);
       const res = await fetch('/api/websearch/reverse-image', { method: 'POST', body: fd });
       const data: any = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Reverse image search failed');
+      
+      if (!res.ok) {
+        throw new Error(data?.error || 'Reverse image search failed');
+      }
 
-      if (typeof data?.info === 'string') setUploadInfo(data.info);
-      if (typeof data?.googleByImageUrl === 'string') setGoogleByImageUrl(data.googleByImageUrl);
       if (typeof data?.uploadedImageUrl === 'string') setUploadedImageUrl(data.uploadedImageUrl);
-
-      setImages(Array.isArray(data?.images) ? data.images : []);
-      setWeb([]);
+      if (typeof data?.googleByImageUrl === 'string') setGoogleByImageUrl(data.googleByImageUrl);
+      if (Array.isArray(data?.images)) setImages(data.images);
     } catch (err: any) {
+      console.error('Reverse search error:', err);
       setError(err?.message || 'Reverse image search failed');
       setImages([]);
     } finally {
@@ -131,266 +146,303 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
     }
   };
 
+  // Reverse search with existing preview
+  const handleReverseSearch = async () => {
+    if (!uploadPreview) return;
+    
+    // Convert base64 to blob
+    const response = await fetch(uploadPreview);
+    const blob = await response.blob();
+    const file = new File([blob], 'image.jpg', { type: blob.type });
+    await handleReverseSearchWithFile(file);
+  };
+
+  // Remove uploaded image
+  const removeImage = () => {
+    setUploadPreview(null);
+    setUploadedImageUrl(null);
+    setGoogleByImageUrl(null);
+    setImages([]);
+    setWeb([]);
+  };
+
+  // Handle image click
+  const handleImageClick = (imageUrl: string) => {
+    if (onImageSelect) {
+      onImageSelect(imageUrl);
+    }
+  };
+
   return (
     <div className={isGoogle ? 'w-full' : 'h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-lg'}>
       {isGoogle ? (
         <div className="flex flex-col items-center">
+          {/* Logo/Title */}
           <div className="text-5xl font-semibold tracking-tight text-gray-900 mb-8 select-none">
             WebSearch
           </div>
-          <form onSubmit={handleSearch} className="w-full flex items-center justify-center">
-            <div className="w-full max-w-2xl relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search the web…"
-                className="w-full px-5 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base shadow-sm text-gray-900 placeholder:text-gray-400 bg-white"
-              />
-              <button
-                type="submit"
-                disabled={loading || !searchQuery.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-              >
-                {loading ? '…' : 'Search'}
-              </button>
-            </div>
-          </form>
 
-          {/* Tabs */}
-          <div className="mt-5 flex flex-wrap gap-2 justify-center">
-            {(['all', 'web', 'images', 'social', 'upload'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`px-4 py-2 rounded-full text-sm border transition-colors ${
-                  tab === t
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {t === 'all'
-                  ? 'All'
-                  : t === 'web'
-                  ? 'Web'
-                  : t === 'images'
-                  ? 'Images'
-                  : t === 'social'
-                  ? 'Social'
-                  : 'Upload Image'}
-              </button>
-            ))}
+          {/* Input Box - Similar to websearch/ChatInput.tsx */}
+          <div className="w-full max-w-2xl">
+            {/* Image Preview */}
+            {uploadPreview && (
+              <div className="mb-3 flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                <img 
+                  src={uploadPreview} 
+                  alt="Preview" 
+                  className="w-16 h-16 object-cover rounded border border-gray-300"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gray-600">Image selected</div>
+                  {uploadedImageUrl && (
+                    <div className="text-xs text-blue-600 truncate">
+                      <a href={uploadedImageUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        View uploaded
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={removeImage}
+                  className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                  title="Remove image"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            {/* Input Container */}
+            <div className="relative bg-white rounded-full shadow-lg border border-gray-300 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-200">
+              <textarea
+                ref={textareaRef}
+                value={searchQuery}
+                onChange={handleTextareaChange}
+                onKeyDown={handleKeyDown}
+                placeholder={uploadPreview ? "Search with image..." : "Search the web..."}
+                disabled={loading || uploading}
+                className="w-full bg-transparent text-gray-900 px-5 py-3 pr-24 resize-none outline-none placeholder-gray-400 disabled:opacity-50 rounded-full"
+                rows={1}
+                style={{ maxHeight: '200px', minHeight: '48px' }}
+              />
+              
+              {/* Buttons */}
+              <div className="absolute right-2 bottom-2 flex items-center space-x-2">
+                {/* Image Upload Button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  disabled={loading || uploading}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={loading || uploading}
+                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Upload image"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </button>
+
+                {/* Search/Submit Button */}
+                <button
+                  onClick={handleSearch}
+                  disabled={loading || uploading || (!searchQuery.trim() && !uploadPreview)}
+                  className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Search"
+                >
+                  {loading || uploading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Info text */}
+            {uploadPreview && (uploadedImageUrl || googleByImageUrl) && (
+              <div className="mt-3 text-xs text-gray-500 text-center">
+                {googleByImageUrl && (
+                  <a
+                    href={googleByImageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                  >
+                    Open Google "search by image"
+                  </a>
+                )}
+                {!process.env.NEXT_PUBLIC_SERP_API_KEY && (
+                  <div className="mt-1">
+                    Better results: Set <b>SERP_API_KEY</b> in Railway Variables
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-3">🔎 Web Search</h3>
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search…"
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white text-sm"
-            />
-            <button
-              type="submit"
-              disabled={loading || !searchQuery.trim()}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-            >
-              {loading ? '...' : 'Search'}
-            </button>
-          </form>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(['all', 'web', 'images', 'social', 'upload'] as const).map((t) => (
+          
+          {/* Image Preview */}
+          {uploadPreview && (
+            <div className="mb-3 flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <img 
+                src={uploadPreview} 
+                alt="Preview" 
+                className="w-16 h-16 object-cover rounded border border-gray-300 dark:border-gray-600"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-600 dark:text-gray-400">Image selected</div>
+                {uploadedImageUrl && (
+                  <div className="text-xs text-blue-600 dark:text-blue-400 truncate">
+                    <a href={uploadedImageUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      View uploaded
+                    </a>
+                  </div>
+                )}
+              </div>
               <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                  tab === t
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
-                }`}
+                onClick={removeImage}
+                className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                title="Remove image"
               >
-                {t === 'all'
-                  ? 'All'
-                  : t === 'web'
-                  ? 'Web'
-                  : t === 'images'
-                  ? 'Images'
-                  : t === 'social'
-                  ? 'Social'
-                  : 'Upload'}
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
-            ))}
+            </div>
+          )}
+
+          {/* Input Container */}
+          <div className="relative bg-gray-50 dark:bg-gray-700 rounded-lg shadow-lg border border-gray-300 dark:border-gray-600">
+            <textarea
+              ref={textareaRef}
+              value={searchQuery}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
+              placeholder={uploadPreview ? "Search with image..." : "Search..."}
+              disabled={loading || uploading}
+              className="w-full bg-transparent text-gray-900 dark:text-white px-4 py-3 pr-24 resize-none outline-none placeholder-gray-500 dark:placeholder-gray-400 disabled:opacity-50 rounded-lg"
+              rows={1}
+              style={{ maxHeight: '200px', minHeight: '48px' }}
+            />
+            
+            {/* Buttons */}
+            <div className="absolute right-2 bottom-2 flex items-center space-x-2">
+              {/* Image Upload Button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                disabled={loading || uploading}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || uploading}
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Upload image"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+
+              {/* Search Button */}
+              <button
+                onClick={handleSearch}
+                disabled={loading || uploading || (!searchQuery.trim() && !uploadPreview)}
+                className="p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Search"
+              >
+                {loading || uploading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Error Message */}
       {error && (
         <div className={isGoogle ? "mt-4 w-full max-w-2xl bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" : "p-3 mx-4 mt-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 rounded text-sm"}>
           {error}
         </div>
       )}
 
+      {/* Results Section - Below input */}
       <div className={isGoogle ? "mt-8 w-full max-w-5xl px-2" : "flex-1 overflow-y-auto p-4"}>
-        {loading ? (
+        {loading || uploading ? (
           <div className="flex items-center justify-center h-48">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
           </div>
-        ) : tab === 'upload' ? (
-          <div className="w-full flex flex-col items-center justify-center py-10">
-            <div className="w-full max-w-3xl">
-              <div className="text-sm font-semibold text-gray-900 mb-3">Reverse image search</div>
-
-              {/* Upload area */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-col sm:flex-row gap-4 items-start">
-                  <div className="w-full sm:w-56">
-                    <div className="text-xs text-gray-600 mb-2">Preview</div>
-                    <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
-                      {uploadPreview ? (
-                        <img src={uploadPreview} alt="Upload preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="text-xs text-gray-500 text-center px-3">
-                          No image selected
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex-1 w-full">
-                    <div className="text-xs text-gray-600 mb-2">Choose an image</div>
-                    <div className="flex flex-wrap gap-2">
-                      <label className="cursor-pointer px-4 py-2 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50">
-                        {uploading ? 'Uploading…' : 'Select image'}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          disabled={uploading}
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) handleUpload(f);
-                          }}
-                        />
-                      </label>
-                      {uploadPreview && (
-                        <button
-                          type="button"
-                          className="px-4 py-2 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-900 text-sm"
-                          onClick={() => {
-                            setUploadPreview(null);
-                            setImages([]);
-                            setUploadInfo(null);
-                            setGoogleByImageUrl(null);
-                            setUploadedImageUrl(null);
-                          }}
-                          disabled={uploading}
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Info + links */}
-                    {(uploadInfo || googleByImageUrl || uploadedImageUrl) && (
-                      <div className="mt-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-900">
-                        {uploadInfo && <div className="mb-2">{uploadInfo}</div>}
-                        {uploadedImageUrl && (
-                          <div className="text-xs text-yellow-800 break-all">
-                            Uploaded: <a className="underline" href={uploadedImageUrl} target="_blank" rel="noopener noreferrer">{uploadedImageUrl}</a>
-                          </div>
-                        )}
-                        {googleByImageUrl && (
-                          <div className="mt-1">
-                            <a
-                              href={googleByImageUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 text-blue-700 underline"
-                            >
-                              Open Google “search by image”
-                            </a>
-                          </div>
-                        )}
-                        <div className="mt-2 text-xs text-yellow-800">
-                          Better in-app results: set <b>SERP_API_KEY</b> in Railway Variables (SerpAPI reverse image).
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {images.length > 0 && (
-              <div className="mt-6 w-full">
-                <div className="text-sm font-semibold text-gray-900 mb-3">Similar images</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {images.map((image, index) => (
-                    <div
-                      key={`${image.url}-${index}`}
-                      className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-blue-500 transition-all bg-white"
-                      onClick={() => handleImageClick(image.url)}
-                    >
-                      <img src={image.url} alt={image.title} className="w-full h-32 object-cover bg-gray-100" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         ) : (
           <>
-            {/* Web results */}
-            {(tab === 'all' || tab === 'web') && web.length > 0 && (
+            {/* Web Results */}
+            {web.length > 0 && (
               <div className="mb-8">
-                <div className="text-sm font-semibold text-gray-900 mb-3">Web results</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Web Results</div>
                 <div className="space-y-3">
                   {web.map((item, idx) => (
-                    <div key={`${item.url}-${idx}`} className="rounded-lg border border-gray-200 bg-white p-4">
+                    <div key={`${item.url}-${idx}`} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 hover:shadow-md transition-shadow">
                       <a
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-700 hover:underline font-medium"
+                        className="text-blue-700 dark:text-blue-400 hover:underline font-medium block"
                       >
                         {item.title}
                       </a>
-                      <div className="text-xs text-gray-500 mt-1">{item.source}</div>
-                      {item.snippet && <div className="text-sm text-gray-700 mt-2">{item.snippet}</div>}
-                      <div className="text-xs text-gray-500 mt-2 break-all">{item.url}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.source}</div>
+                      {item.snippet && (
+                        <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{item.snippet}</div>
+                      )}
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 break-all">{item.url}</div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Image results */}
-            {(tab === 'all' || tab === 'images') && images.length > 0 && (
+            {/* Image Results */}
+            {images.length > 0 && (
               <div>
-                <div className="text-sm font-semibold text-gray-900 mb-3">Images</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Images</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {images.map((image, index) => (
                     <div
                       key={`${image.url}-${index}`}
                       onClick={() => handleImageClick(image.url)}
-                      className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-blue-500 transition-all bg-white"
+                      className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-400 transition-all bg-white dark:bg-gray-800"
                     >
                       <img
                         src={image.url}
                         alt={image.title}
-                        className="w-full h-32 object-cover bg-gray-100"
+                        className="w-full h-32 object-cover bg-gray-100 dark:bg-gray-700"
                         loading="lazy"
                       />
                       <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center">
                         <span className="text-white opacity-0 group-hover:opacity-100 text-xs">Click to select</span>
                       </div>
                       {image.source && (
-                        <div className="absolute left-2 bottom-2 text-[10px] bg-white/90 rounded px-2 py-0.5 text-gray-700">
+                        <div className="absolute left-2 bottom-2 text-[10px] bg-white/90 dark:bg-gray-800/90 rounded px-2 py-0.5 text-gray-700 dark:text-gray-300">
                           {image.source}
                         </div>
                       )}
@@ -400,14 +452,14 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
               </div>
             )}
 
-            {/* Empty state */}
-            {searchQuery && !loading && web.length === 0 && images.length === 0 && (
-              <div className="flex items-center justify-center h-40 text-gray-500 text-sm">
+            {/* Empty State */}
+            {!loading && !uploading && searchQuery && web.length === 0 && images.length === 0 && (
+              <div className="flex items-center justify-center h-40 text-gray-500 dark:text-gray-400 text-sm">
                 No results found. Try a different query.
               </div>
             )}
 
-            {!searchQuery && (
+            {!searchQuery && !uploadPreview && (
               <div className={isGoogle ? "mt-10 flex items-center justify-center text-gray-500 text-sm" : "flex items-center justify-center h-40 text-gray-500 dark:text-gray-400 text-sm"}>
                 Search to get started
               </div>
