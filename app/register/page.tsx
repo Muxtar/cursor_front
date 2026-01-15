@@ -91,10 +91,18 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 py-8 px-4">
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Side - Registration Form */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl">
+    <div className="min-h-screen flex items-center justify-center bg-black py-10 px-4">
+      <div className="w-full max-w-6xl">
+        {/* Center - Web Search (Image Search) */}
+        <div className="w-full flex justify-center mb-6">
+          <div className="w-full max-w-2xl">
+            <ImageSearch />
+          </div>
+        </div>
+
+        {/* Center - Registration Form */}
+        <div className="w-full flex justify-center">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex justify-end mb-4">
           <LanguageSelector />
         </div>
@@ -306,12 +314,6 @@ export default function RegisterPage() {
             {t('login')}
           </Link>
         </p>
-        </div>
-
-        {/* Right Side - Image Search */}
-        <div className="hidden lg:block">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl h-full min-h-[600px]">
-            <ImageSearch />
           </div>
         </div>
       </div>
