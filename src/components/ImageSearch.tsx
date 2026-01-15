@@ -26,9 +26,10 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   const [searchQuery, setSearchQuery] = useState('');
   const [images, setImages] = useState<ImageResult[]>([]);
   const [web, setWeb] = useState<WebResult[]>([]);
-  const [tab, setTab] = useState<'all' | 'web' | 'images'>('all');
+  const [tab, setTab] = useState<'all' | 'web' | 'images' | 'social' | 'upload'>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const runSearch = async (query: string, searchType: 'all' | 'web' | 'images') => {
     if (!query.trim()) return;
@@ -60,7 +61,27 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    runSearch(searchQuery, tab);
+    if (tab === 'social') {
+      // social uses the same endpoint but different type
+      setLoading(true);
+      setError('');
+      fetch(`/api/websearch?q=${encodeURIComponent(searchQuery)}&type=social`)
+        .then(async (r) => {
+          const data: any = await r.json();
+          if (!r.ok) throw new Error(data?.error || 'Search failed');
+          setWeb(Array.isArray(data?.web) ? data.web : []);
+          setImages([]);
+        })
+        .catch((err: any) => {
+          setError(err?.message || 'Search failed');
+          setWeb([]);
+          setImages([]);
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+    if (tab === 'upload') return; // handled by upload UI
+    runSearch(searchQuery, tab === 'all' || tab === 'web' || tab === 'images' ? tab : 'all');
   };
 
   const handleImageClick = (imageUrl: string) => {
@@ -70,6 +91,25 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
   };
 
   const isGoogle = variant === 'google';
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const res = await fetch('/api/websearch/reverse-image', { method: 'POST', body: fd });
+      const data: any = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Reverse image search failed');
+      setImages(Array.isArray(data?.images) ? data.images : []);
+      setWeb([]);
+    } catch (err: any) {
+      setError(err?.message || 'Reverse image search failed');
+      setImages([]);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   return (
     <div className={isGoogle ? 'w-full' : 'h-full flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-lg'}>
@@ -98,8 +138,8 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
           </form>
 
           {/* Tabs */}
-          <div className="mt-5 flex gap-2">
-            {(['all', 'web', 'images'] as const).map((t) => (
+          <div className="mt-5 flex flex-wrap gap-2 justify-center">
+            {(['all', 'web', 'images', 'social', 'upload'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -110,7 +150,15 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                {t === 'all' ? 'All' : t === 'web' ? 'Web' : 'Images'}
+                {t === 'all'
+                  ? 'All'
+                  : t === 'web'
+                  ? 'Web'
+                  : t === 'images'
+                  ? 'Images'
+                  : t === 'social'
+                  ? 'Social'
+                  : 'Upload Image'}
               </button>
             ))}
           </div>
@@ -134,8 +182,8 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
               {loading ? '...' : 'Search'}
             </button>
           </form>
-          <div className="mt-3 flex gap-2">
-            {(['all', 'web', 'images'] as const).map((t) => (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(['all', 'web', 'images', 'social', 'upload'] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -146,7 +194,15 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
                     : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
                 }`}
               >
-                {t === 'all' ? 'All' : t === 'web' ? 'Web' : 'Images'}
+                {t === 'all'
+                  ? 'All'
+                  : t === 'web'
+                  ? 'Web'
+                  : t === 'images'
+                  ? 'Images'
+                  : t === 'social'
+                  ? 'Social'
+                  : 'Upload'}
               </button>
             ))}
           </div>
@@ -163,6 +219,42 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
         {loading ? (
           <div className="flex items-center justify-center h-48">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          </div>
+        ) : tab === 'upload' ? (
+          <div className="w-full flex flex-col items-center justify-center py-10">
+            <div className="text-sm text-gray-700 mb-3">Upload an image to find similar images.</div>
+            <label className="cursor-pointer px-4 py-2 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700">
+              {uploading ? 'Uploading…' : 'Choose image'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUpload(f);
+                }}
+              />
+            </label>
+            <div className="mt-3 text-xs text-gray-500">
+              For reverse image search you may need a provider key (Bing Visual Search).
+            </div>
+            {images.length > 0 && (
+              <div className="mt-6 w-full">
+                <div className="text-sm font-semibold text-gray-900 mb-3">Similar images</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {images.map((image, index) => (
+                    <div
+                      key={`${image.url}-${index}`}
+                      className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-blue-500 transition-all bg-white"
+                      onClick={() => handleImageClick(image.url)}
+                    >
+                      <img src={image.url} alt={image.title} className="w-full h-32 object-cover bg-gray-100" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <>
