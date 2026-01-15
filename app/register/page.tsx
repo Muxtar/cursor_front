@@ -1,12 +1,12 @@
 'use client';
 
 import LandingShell from '@/components/LandingShell';
-import RegisterWidget from '@/components/RegisterWidget';
+import TelegramAuthWidget from '@/components/TelegramAuthWidget';
 
 export default function RegisterPage() {
   return (
     <LandingShell>
-      <RegisterWidget />
+      <TelegramAuthWidget />
     </LandingShell>
   );
 }
