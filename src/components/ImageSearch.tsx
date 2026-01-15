@@ -124,7 +124,7 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search Google Images…"
-                className="w-full px-5 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base shadow-sm"
+                className="w-full px-5 py-3 border border-gray-300 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base shadow-sm text-gray-900 placeholder:text-gray-400 bg-white"
               />
               <button
                 type="submit"
