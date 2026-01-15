@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       // No key: return helpful link instead of throwing an error
       return NextResponse.json({
         images: [],
-        info: 'Reverse search provider key is not configured. Open the Google search-by-image link or set SERP_API_KEY for in-app results.',
+        info: 'For better in-app results, set SERP_API_KEY in Railway Variables. You can also use the Google link below.',
         googleByImageUrl,
         uploadedImageUrl: imageUrl,
       });
