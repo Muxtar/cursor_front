@@ -63,7 +63,7 @@ export default function ChatPage() {
 
   return (
     <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Sidebar - Telegram Style */}
+      {/* Sidebar */}
       <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} />
 
       {/* Main Chat Area */}

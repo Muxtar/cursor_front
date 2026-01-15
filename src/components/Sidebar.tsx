@@ -156,7 +156,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   return (
     <>
       <div className={`w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen`}>
-        {/* Header - Telegram Style (Not Green) */}
+        {/* Header */}
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
