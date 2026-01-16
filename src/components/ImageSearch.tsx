@@ -9,6 +9,8 @@ interface OSINTResult {
   description: string;
   matchReason: string;
   activeStatus?: string;
+  source: string; // Serper / PDL / Clearbit
+  notes?: string;
   warnings?: string[];
 }
 
@@ -20,6 +22,7 @@ interface OSINTResponse {
     matchReason: string;
     possibleFalseMatches: string[];
     dataReliability: string;
+    missingInfo?: string[];
   };
   warnings: string[];
   images?: ImageResult[];
@@ -504,10 +507,14 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
                         </div>
                       )}
                       
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 space-y-1">
                         <div><strong>Match Reason:</strong> {result.matchReason}</div>
+                        <div><strong>Source:</strong> {result.source}</div>
+                        {result.notes && (
+                          <div><strong>Notes:</strong> {result.notes}</div>
+                        )}
                         {result.activeStatus && (
-                          <div className="mt-1"><strong>Status:</strong> {result.activeStatus}</div>
+                          <div><strong>Status:</strong> {result.activeStatus}</div>
                         )}
                       </div>
                       
@@ -545,6 +552,16 @@ export default function ImageSearch({ onImageSelect, variant = 'panel' }: ImageS
                   <div>
                     <strong>Data Reliability:</strong> {osintData.analysis.dataReliability}
                   </div>
+                  {osintData.analysis.missingInfo && osintData.analysis.missingInfo.length > 0 && (
+                    <div className="mt-2">
+                      <strong>Missing Information:</strong>
+                      <ul className="list-disc list-inside ml-2 mt-1">
+                        {osintData.analysis.missingInfo.map((info, idx) => (
+                          <li key={idx} className="text-xs">{info}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

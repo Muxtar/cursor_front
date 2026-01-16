@@ -8,6 +8,8 @@ type OSINTResult = {
   description: string;
   matchReason: string;
   activeStatus?: string;
+  source: string; // Serper / PDL / Clearbit
+  notes?: string;
   warnings?: string[];
 };
 
@@ -19,6 +21,7 @@ type OSINTResponse = {
     matchReason: string;
     possibleFalseMatches: string[];
     dataReliability: string;
+    missingInfo?: string[];
   };
   warnings: string[];
   images?: ImageItem[];
@@ -32,6 +35,14 @@ type ImageItem = {
   source: string;
   license?: string;
   context?: string;
+};
+
+type ProfileMatch = {
+  url: string;
+  platform: string;
+  title: string;
+  snippet: string;
+  source: string;
 };
 
 export const dynamic = 'force-dynamic';
@@ -66,322 +77,377 @@ function detectInputType(query: string): 'name' | 'username' | 'image' | 'unknow
     }
   }
   
-  // Image keyword: everything else (single word or special patterns)
+  // Single word - could be name or image keyword, default to name for people search
+  if (words.length === 1 && words[0].length > 2) {
+    return 'name';
+  }
+  
+  // Image keyword: everything else
   return 'image';
 }
 
-// Check if URL is a social media profile
-function isSocialMediaUrl(url: string): boolean {
-  const socialDomains = [
-    'instagram.com',
-    'twitter.com',
-    'x.com',
-    'facebook.com',
-    'tiktok.com',
-    'youtube.com',
-    'linkedin.com',
-    'pinterest.com',
-    'snapchat.com',
-    'reddit.com',
-    'github.com',
-    'twitch.tv',
-    'medium.com',
-    'vk.com',
-    'telegram.org',
-  ];
-  
-  const excludePaths = ['/search', '/results', '/top/', '/people/', '/pages/', '/hashtag/'];
+// Extract estimated country, language, profession from name (basic heuristics)
+function extractMetadata(name: string): { country?: string; language?: string; profession?: string } {
+  // This is a placeholder - in real OSINT, you'd use more sophisticated methods
+  // For now, return empty as we don't have reliable data sources
+  return {};
+}
+
+// Search using Serper API (Google Search alternative)
+async function searchWithSerper(
+  query: string,
+  apiKey: string
+): Promise<ProfileMatch[]> {
+  const results: ProfileMatch[] = [];
   
   try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname.toLowerCase();
-    const pathname = urlObj.pathname.toLowerCase();
+    const t = withTimeout(15000);
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ q: query, num: 20 }),
+      signal: t.signal,
+    });
+    t.done();
     
-    const isSocialDomain = socialDomains.some((domain) => hostname.includes(domain));
-    if (!isSocialDomain) return false;
+    if (!res.ok) return results;
     
-    const isSearchPage = excludePaths.some((path) => pathname.includes(path));
-    if (isSearchPage) return false;
+    const data: any = await res.json();
     
-    if (pathname === '/' || pathname === '') return false;
-    
-    return pathname.length > 1;
-  } catch {
-    return false;
+    // Process organic results
+    if (Array.isArray(data?.organic)) {
+      for (const item of data.organic) {
+        const link = safeString(item?.link);
+        const title = safeString(item?.title);
+        const snippet = safeString(item?.snippet);
+        
+        // Check if it's a Facebook, LinkedIn, or Twitter profile
+        if (link && (link.includes('facebook.com') || link.includes('linkedin.com') || link.includes('twitter.com') || link.includes('x.com'))) {
+          // Exclude search pages and non-profile pages
+          if (!link.includes('/search') && !link.includes('/hashtag/') && !link.includes('/pages/')) {
+            let platform = 'Unknown';
+            if (link.includes('facebook.com')) platform = 'Facebook';
+            else if (link.includes('linkedin.com')) platform = 'LinkedIn';
+            else if (link.includes('twitter.com') || link.includes('x.com')) platform = 'X (Twitter)';
+            
+            results.push({
+              url: link,
+              platform,
+              title: title || link,
+              snippet: snippet || '',
+              source: 'Serper',
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Serper API error:', e);
   }
+  
+  return results;
 }
 
-function getPlatformName(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname.toLowerCase();
-    if (hostname.includes('instagram')) return 'Instagram';
-    if (hostname.includes('twitter') || hostname.includes('x.com')) return 'X (Twitter)';
-    if (hostname.includes('facebook')) return 'Facebook';
-    if (hostname.includes('tiktok')) return 'TikTok';
-    if (hostname.includes('youtube')) return 'YouTube';
-    if (hostname.includes('linkedin')) return 'LinkedIn';
-    if (hostname.includes('pinterest')) return 'Pinterest';
-    if (hostname.includes('snapchat')) return 'Snapchat';
-    if (hostname.includes('reddit')) return 'Reddit';
-    if (hostname.includes('github')) return 'GitHub';
-    if (hostname.includes('twitch')) return 'Twitch';
-    if (hostname.includes('medium')) return 'Medium';
-    if (hostname.includes('vk.com')) return 'VKontakte';
-    if (hostname.includes('telegram')) return 'Telegram';
-    return 'Social Media';
-  } catch {
-    return 'Social Media';
-  }
-}
-
-// Calculate confidence score based on various factors
-function calculateConfidenceScore(
-  url: string,
-  title: string,
-  snippet: string,
-  query: string
-): number {
-  let score = 50; // Base score
-  
-  const queryLower = query.toLowerCase();
-  const titleLower = title.toLowerCase();
-  const snippetLower = snippet.toLowerCase();
-  
-  // Exact match in title
-  if (titleLower.includes(queryLower)) score += 20;
-  
-  // Exact match in snippet
-  if (snippetLower.includes(queryLower)) score += 10;
-  
-  // URL contains query
-  if (url.toLowerCase().includes(queryLower.replace(/\s+/g, ''))) score += 15;
-  
-  // Has meaningful snippet
-  if (snippet && snippet.length > 20) score += 5;
-  
-  // Social media profile (more reliable)
-  if (isSocialMediaUrl(url)) score += 10;
-  
-  return Math.min(100, Math.max(0, score));
-}
-
-// Search for person by name across platforms
-async function searchPersonByName(
+// Search People Data Labs
+async function searchPDL(
   name: string,
-  serpApiKey: string,
-  googleApiKey: string,
-  googleEngineId: string,
-  apifyToken: string
+  apiKey: string,
+  location?: string
+): Promise<ProfileMatch[]> {
+  const results: ProfileMatch[] = [];
+  
+  try {
+    const t = withTimeout(15000);
+    const params: any = {
+      full_name: name,
+    };
+    if (location) {
+      params.location = location;
+    }
+    
+    const queryString = new URLSearchParams(params).toString();
+    const res = await fetch(`https://api.peopledatalabs.com/v5/person/search?${queryString}`, {
+      headers: {
+        'X-Api-Key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      signal: t.signal,
+    });
+    t.done();
+    
+    if (!res.ok) return results;
+    
+    const data: any = await res.json();
+    
+    // Process PDL results
+    if (Array.isArray(data?.data)) {
+      for (const person of data.data) {
+        const confidence = typeof person?.confidence === 'number' ? person.confidence : 0;
+        
+        // Only include if confidence is reasonable
+        if (confidence >= 40) {
+          const profiles = person?.profiles || [];
+          
+          for (const profile of profiles) {
+            const url = safeString(profile?.url);
+            const platform = safeString(profile?.network);
+            
+            if (url && (platform === 'facebook' || platform === 'linkedin' || platform === 'twitter')) {
+              let platformName = 'Unknown';
+              if (platform === 'facebook') platformName = 'Facebook';
+              else if (platform === 'linkedin') platformName = 'LinkedIn';
+              else if (platform === 'twitter') platformName = 'X (Twitter)';
+              
+              results.push({
+                url,
+                platform: platformName,
+                title: `${name} - ${safeString(person?.job_title) || 'Professional'}`,
+                snippet: `${safeString(person?.summary) || ''} Confidence: ${confidence}%`,
+                source: 'PDL',
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('PDL API error:', e);
+  }
+  
+  return results;
+}
+
+// Search Clearbit (professional matching)
+async function searchClearbit(
+  name: string,
+  apiKey: string,
+  domain?: string
+): Promise<ProfileMatch[]> {
+  const results: ProfileMatch[] = [];
+  
+  try {
+    // Clearbit Person Enrichment API
+    const t = withTimeout(15000);
+    const params: any = { name };
+    if (domain) {
+      params.domain = domain;
+    }
+    
+    const queryString = new URLSearchParams(params).toString();
+    const res = await fetch(`https://person.clearbit.com/v2/combined/find?${queryString}`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: t.signal,
+    });
+    t.done();
+    
+    if (!res.ok) return results;
+    
+    const data: any = await res.json();
+    
+    // Process Clearbit results
+    const person = data?.person;
+    if (person) {
+      const linkedin = safeString(person?.linkedin?.handle);
+      const twitter = safeString(person?.twitter?.handle);
+      
+      if (linkedin) {
+        results.push({
+          url: `https://www.linkedin.com/in/${linkedin}`,
+          platform: 'LinkedIn',
+          title: `${name} - ${safeString(person?.title) || 'Professional'}`,
+          snippet: safeString(person?.bio) || safeString(person?.summary) || '',
+          source: 'Clearbit',
+        });
+      }
+      
+      if (twitter) {
+        results.push({
+          url: `https://twitter.com/${twitter}`,
+          platform: 'X (Twitter)',
+          title: `${name} - ${safeString(person?.title) || 'Professional'}`,
+          snippet: safeString(person?.bio) || safeString(person?.summary) || '',
+          source: 'Clearbit',
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Clearbit API error:', e);
+  }
+  
+  return results;
+}
+
+// Search for person by name - OSINT People Search
+async function searchPersonByNameOSINT(
+  name: string,
+  serperKey: string,
+  pdlKey: string,
+  clearbitKey: string
 ): Promise<OSINTResult[]> {
-  const results: OSINTResult[] = [];
-  const platforms = [
-    'Instagram',
-    'X (Twitter)',
-    'LinkedIn',
-    'Facebook',
-    'TikTok',
-    'YouTube',
-    'GitHub',
-    'Medium',
+  const allMatches: ProfileMatch[] = [];
+  const metadata = extractMetadata(name);
+  
+  // 1. Google-style search with Serper
+  const serperQueries = [
+    `site:facebook.com "${name}"`,
+    `site:linkedin.com/in "${name}"`,
+    `site:twitter.com "${name}"`,
+    `site:x.com "${name}"`,
   ];
   
-  // Build search queries
-  const searchQueries = [
-    `"${name}"`,
-    `${name} Instagram`,
-    `${name} Twitter`,
-    `${name} LinkedIn`,
-    `${name} Facebook`,
-    `${name} TikTok`,
-    `${name} YouTube`,
-    `${name} GitHub`,
-    `${name} site:medium.com`,
-  ];
-  
-  const allResults: Array<{ url: string; title: string; snippet: string; source: string }> = [];
-  
-  // Search using available APIs
-  for (const query of searchQueries.slice(0, 3)) { // Limit to avoid rate limits
-    try {
-      // Try SerpAPI first
-      if (serpApiKey) {
-        const t = withTimeout(10000);
-        const res = await fetch(
-          `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${encodeURIComponent(serpApiKey)}`,
-          { signal: t.signal }
-        );
-        t.done();
-        if (res.ok) {
-          const data: any = await res.json();
-          if (Array.isArray(data?.organic_results)) {
-            for (const item of data.organic_results) {
-              const link = safeString(item?.link);
-              if (link && isSocialMediaUrl(link)) {
-                allResults.push({
-                  url: link,
-                  title: safeString(item?.title) || link,
-                  snippet: safeString(item?.snippet) || '',
-                  source: getPlatformName(link),
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      // Try Google Custom Search
-      if (googleApiKey && googleEngineId && allResults.length < 10) {
-        const t = withTimeout(10000);
-        const res = await fetch(
-          `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(googleApiKey)}&cx=${encodeURIComponent(googleEngineId)}&q=${encodeURIComponent(query)}`,
-          { signal: t.signal }
-        );
-        t.done();
-        if (res.ok) {
-          const data: any = await res.json();
-          if (Array.isArray(data?.items)) {
-            for (const item of data.items) {
-              const link = safeString(item?.link);
-              if (link && isSocialMediaUrl(link)) {
-                allResults.push({
-                  url: link,
-                  title: safeString(item?.title) || link,
-                  snippet: safeString(item?.snippet) || '',
-                  source: getPlatformName(link),
-                });
-              }
-            }
-          }
-        }
-      }
-      
-      // Try DuckDuckGo (free fallback)
-      if (allResults.length < 10) {
-        const t = withTimeout(8000);
-        const res = await fetch(
-          `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&t=websearch`,
-          { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal }
-        );
-        t.done();
-        if (res.ok) {
-          const data: any = await res.json();
-          const rt = data?.RelatedTopics;
-          if (Array.isArray(rt)) {
-            for (const entry of rt) {
-              const topics = entry?.Topics || [entry];
-              for (const topic of topics) {
-                const text = safeString(topic?.Text);
-                const url = safeString(topic?.FirstURL);
-                if (url && isSocialMediaUrl(url)) {
-                  allResults.push({
-                    url,
-                    title: text.split(' - ')[0] || text,
-                    snippet: text,
-                    source: getPlatformName(url),
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // Continue with next query
-      continue;
+  for (const query of serperQueries) {
+    if (serperKey) {
+      const serperResults = await searchWithSerper(query, serperKey);
+      allMatches.push(...serperResults);
     }
   }
   
-  // Convert to OSINT results
-  const seen = new Set<string>();
-  for (const item of allResults) {
-    if (seen.has(item.url)) continue;
-    seen.add(item.url);
+  // 2. People Data Labs verification
+  if (pdlKey) {
+    const pdlResults = await searchPDL(name, pdlKey, metadata.country);
+    allMatches.push(...pdlResults);
+  }
+  
+  // 3. Clearbit professional matching
+  if (clearbitKey) {
+    const clearbitResults = await searchClearbit(name, clearbitKey, metadata.profession ? undefined : undefined);
+    allMatches.push(...clearbitResults);
+  }
+  
+  // 4. Merge and score results
+  const urlMap = new Map<string, {
+    matches: ProfileMatch[];
+    platform: string;
+    url: string;
+  }>();
+  
+  for (const match of allMatches) {
+    const key = match.url.toLowerCase();
+    if (!urlMap.has(key)) {
+      urlMap.set(key, {
+        matches: [],
+        platform: match.platform,
+        url: match.url,
+      });
+    }
+    urlMap.get(key)!.matches.push(match);
+  }
+  
+  // 5. Convert to OSINT results with scoring
+  const results: OSINTResult[] = [];
+  
+  for (const [url, data] of urlMap.entries()) {
+    const matches = data.matches;
+    const sourceCount = new Set(matches.map(m => m.source)).size;
     
-    const confidence = calculateConfidenceScore(item.url, item.title, item.snippet, name);
-    const matchReason = item.snippet.includes(name)
-      ? 'Name appears in snippet'
-      : item.title.includes(name)
-      ? 'Name appears in title'
-      : 'URL or platform match';
+    // Calculate confidence score
+    let confidence = 40; // Base score
+    if (sourceCount >= 3) confidence = 90;
+    else if (sourceCount === 2) confidence = 75;
+    else confidence = 50;
+    
+    // Boost confidence if PDL or Clearbit found it
+    if (matches.some(m => m.source === 'PDL')) confidence = Math.min(100, confidence + 15);
+    if (matches.some(m => m.source === 'Clearbit')) confidence = Math.min(100, confidence + 10);
+    
+    // Get best description
+    const bestMatch = matches.find(m => m.snippet) || matches[0];
+    const sources = [...new Set(matches.map(m => m.source))].join(' / ');
+    
+    // Match reason
+    let matchReason = '';
+    if (sourceCount >= 3) {
+      matchReason = `Found in ${sourceCount} sources (${sources})`;
+    } else if (sourceCount === 2) {
+      matchReason = `Found in 2 sources (${sources})`;
+    } else {
+      matchReason = `Found via ${sources}`;
+    }
+    
+    // Check for potential false matches
+    const warnings: string[] = [];
+    if (confidence < 60) {
+      warnings.push('Low confidence - may be a different person with the same name');
+    }
+    if (!bestMatch.snippet || bestMatch.snippet.length < 20) {
+      warnings.push('Limited profile information available');
+    }
     
     results.push({
-      platform: item.source,
-      link: item.url,
+      platform: data.platform,
+      link: data.url,
       confidenceScore: confidence,
-      description: item.snippet || item.title,
+      description: bestMatch.snippet || bestMatch.title || '',
       matchReason,
       activeStatus: confidence > 70 ? 'Likely active' : 'Uncertain',
+      source: sources,
+      notes: bestMatch.title,
+      warnings: warnings.length > 0 ? warnings : undefined,
     });
   }
   
-  return results.slice(0, 20);
+  // Sort by confidence score (highest first)
+  results.sort((a, b) => b.confidenceScore - a.confidenceScore);
+  
+  return results.slice(0, 20); // Limit to top 20
 }
 
-// Search for username across platforms
+// Search for username across platforms (keep existing logic but simplified)
 async function searchUsername(
   username: string,
-  serpApiKey: string,
-  googleApiKey: string,
-  googleEngineId: string,
-  apifyToken: string
+  serperKey: string,
+  pdlKey: string,
+  clearbitKey: string
 ): Promise<OSINTResult[]> {
   const results: OSINTResult[] = [];
   const cleanUsername = username.replace(/^@/, '').trim();
   
   const platforms = [
-    { name: 'Instagram', url: `https://www.instagram.com/${cleanUsername}/` },
+    { name: 'Facebook', url: `https://www.facebook.com/${cleanUsername}` },
     { name: 'X (Twitter)', url: `https://x.com/${cleanUsername}` },
-    { name: 'TikTok', url: `https://www.tiktok.com/@${cleanUsername}` },
-    { name: 'GitHub', url: `https://github.com/${cleanUsername}` },
-    { name: 'Reddit', url: `https://www.reddit.com/user/${cleanUsername}` },
-    { name: 'Twitch', url: `https://www.twitch.tv/${cleanUsername}` },
-    { name: 'Pinterest', url: `https://www.pinterest.com/${cleanUsername}/` },
+    { name: 'LinkedIn', url: `https://www.linkedin.com/in/${cleanUsername}` },
   ];
   
-  // Check each platform
+  // Check each platform with Serper if available
   for (const platform of platforms) {
-    try {
-      // Try to verify if account exists using search
-      const searchQuery = `${cleanUsername} ${platform.name}`;
-      let found = false;
-      let snippet = '';
-      
-      if (serpApiKey) {
-        const t = withTimeout(8000);
-        const res = await fetch(
-          `https://serpapi.com/search.json?q=${encodeURIComponent(searchQuery)}&api_key=${encodeURIComponent(serpApiKey)}`,
-          { signal: t.signal }
-        );
-        t.done();
-        if (res.ok) {
-          const data: any = await res.json();
-          if (Array.isArray(data?.organic_results)) {
-            for (const item of data.organic_results) {
-              if (safeString(item?.link).includes(platform.url.replace('https://', '').split('/')[0])) {
-                found = true;
-                snippet = safeString(item?.snippet) || '';
-                break;
-              }
-            }
-          }
+    if (serperKey) {
+      try {
+        const query = `site:${platform.url.split('//')[1].split('/')[0]} "${cleanUsername}"`;
+        const serperResults = await searchWithSerper(query, serperKey);
+        if (serperResults.length > 0) {
+          const match = serperResults[0];
+          results.push({
+            platform: platform.name,
+            link: platform.url,
+            confidenceScore: 70,
+            description: match.snippet || 'Account found',
+            matchReason: 'Found via Serper search',
+            activeStatus: 'Likely active',
+            source: 'Serper',
+          });
+        } else {
+          results.push({
+            platform: platform.name,
+            link: platform.url,
+            confidenceScore: 30,
+            description: 'Account existence could not be verified',
+            matchReason: 'Created based on platform URL format',
+            activeStatus: 'Not verified',
+            source: 'Estimated',
+            warnings: ['Account verification failed'],
+          });
         }
+      } catch (e) {
+        // Continue
       }
-      
-      // If not found via API, still add with lower confidence
-      const confidence = found ? 75 : 30; // Lower confidence if not verified
-      
-      results.push({
-        platform: platform.name,
-        link: platform.url,
-        confidenceScore: confidence,
-        description: found ? snippet : 'Account existence could not be verified',
-        matchReason: found ? 'Found in platform search' : 'Created based on platform URL format',
-        activeStatus: found ? 'Likely active' : 'Not verified',
-        warnings: found ? undefined : ['Account existence could not be verified via API'],
-      });
-    } catch (e) {
-      // Add with low confidence if check fails
+    } else {
+      // No API, just create URL
       results.push({
         platform: platform.name,
         link: platform.url,
@@ -389,80 +455,16 @@ async function searchUsername(
         description: 'Account could not be checked',
         matchReason: 'Created based on platform URL format',
         activeStatus: 'Unknown',
-        warnings: ['Account check failed'],
+        source: 'Estimated',
+        warnings: ['Account check failed - no API available'],
       });
-    }
-  }
-  
-  // Also try Apify for Instagram/TikTok if available
-  if (apifyToken) {
-    try {
-      // Instagram
-      const t = withTimeout(30000);
-      const runRes = await fetch(
-        `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apifyToken}`,
-          },
-          body: JSON.stringify({
-            startUrls: [{ url: `https://www.instagram.com/${cleanUsername}/` }],
-          }),
-          signal: t.signal,
-        }
-      );
-      t.done();
-      if (runRes.ok) {
-        const runData: any = await runRes.json();
-        const runId = runData?.data?.id;
-        if (runId) {
-          // Wait briefly for completion
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
-            headers: { Authorization: `Bearer ${apifyToken}` },
-          });
-          if (statusRes.ok) {
-            const statusData: any = await statusRes.json();
-            if (statusData?.data?.status === 'SUCCEEDED') {
-              const datasetId = runData?.data?.defaultDatasetId;
-              if (datasetId) {
-                const dataRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, {
-                  headers: { Authorization: `Bearer ${apifyToken}` },
-                });
-                if (dataRes.ok) {
-                  const profileData: any = await dataRes.json();
-                  if (Array.isArray(profileData) && profileData.length > 0) {
-                    const profile = profileData[0];
-                    // Update Instagram result
-                    const instagramIdx = results.findIndex((r) => r.platform === 'Instagram');
-                    if (instagramIdx >= 0) {
-                      results[instagramIdx] = {
-                        platform: 'Instagram',
-                        link: `https://www.instagram.com/${cleanUsername}/`,
-                        confidenceScore: 95,
-                        description: safeString(profile?.biography) || safeString(profile?.fullName) || '',
-                        matchReason: 'Verified via Apify API',
-                        activeStatus: 'Active',
-                      };
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // Continue without Apify results
     }
   }
   
   return results;
 }
 
-// Search images using free APIs
+// Search images using free APIs (keep existing)
 async function searchImages(
   query: string,
   unsplashKey: string,
@@ -619,10 +621,12 @@ export async function GET(req: Request) {
     } as OSINTResponse);
   }
 
-  const serpApiKey = process.env.SERP_API_KEY || '';
-  const googleApiKey = process.env.GOOGLE_API_KEY || '';
-  const googleEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID || '';
-  const apifyToken = process.env.APIFY_TOKEN || '';
+  // OSINT People Search API Keys
+  const serperKey = process.env.SERPER_API_KEY || '';
+  const pdlKey = process.env.PDL_API_KEY || '';
+  const clearbitKey = process.env.CLEARBIT_API_KEY || '';
+  
+  // Fallback APIs (for image search and username search)
   const unsplashKey = process.env.UNSPLASH_ACCESS_KEY || '';
   const pexelsKey = process.env.PEXELS_API_KEY || '';
   const pixabayKey = process.env.PIXABAY_API_KEY || '';
@@ -637,41 +641,57 @@ export async function GET(req: Request) {
       matchReason: '',
       possibleFalseMatches: [] as string[],
       dataReliability: '',
+      missingInfo: [] as string[],
     };
     let warnings: string[] = [];
 
     if (inputType === 'name') {
-      // Search for person by name
-      results = await searchPersonByName(q, serpApiKey, googleApiKey, googleEngineId, apifyToken);
+      // OSINT People Search - Focus on Facebook, LinkedIn, Twitter
+      results = await searchPersonByNameOSINT(q, serperKey, pdlKey, clearbitKey);
+      
+      // Analysis
+      const highConfidence = results.filter(r => r.confidenceScore >= 70).length;
+      const mediumConfidence = results.filter(r => r.confidenceScore >= 50 && r.confidenceScore < 70).length;
+      const lowConfidence = results.filter(r => r.confidenceScore < 50).length;
+      
       analysis = {
-        matchReason: `Search performed across social media platforms for "${q}". Found accounts are listed with match reasons.`,
+        matchReason: `OSINT search performed for "${q}" across Facebook, LinkedIn, and X (Twitter). Profiles found from multiple sources (Serper, PDL, Clearbit) are scored and ranked by confidence.`,
         possibleFalseMatches: results
           .filter((r) => r.confidenceScore < 60)
-          .map((r) => `${r.platform}: ${r.link}`),
+          .map((r) => `${r.platform}: ${r.link} (${r.confidenceScore}% confidence)`),
         dataReliability: results.length > 0
-          ? results.some((r) => r.confidenceScore > 70)
-            ? 'High - Some results have high confidence scores'
-            : 'Medium - Results have low-medium confidence scores'
-          : 'Low - No results found',
+          ? highConfidence > 0
+            ? `High - ${highConfidence} profiles with high confidence (70%+)`
+            : mediumConfidence > 0
+            ? `Medium - ${mediumConfidence} profiles with medium confidence (50-69%)`
+            : `Low - ${lowConfidence} profiles with low confidence (<50%)`
+          : 'Low - No profiles found',
+        missingInfo: [
+          ...(results.length === 0 ? ['No profiles found - person may not have public profiles'] : []),
+          ...(results.some(r => !r.description || r.description.length < 20) ? ['Limited profile information available'] : []),
+        ],
       };
+      
       warnings = [
-        ...(results.length === 0 ? ['No results found. There may be different people with the same name.'] : []),
-        ...(results.some((r) => r.confidenceScore < 50)
-          ? ['Some results have low confidence scores. These may be fake/fan accounts.']
-          : []),
+        ...(results.length === 0 ? ['No profiles found. The person may not have public social media profiles, or the name may be misspelled.'] : []),
+        ...(lowConfidence > 0 ? [`${lowConfidence} profiles have low confidence scores - may be different people with the same name.`] : []),
         'There may be different people with the same name. Please verify results manually.',
+        ...(serperKey ? [] : ['Serper API key not configured - using limited search methods']),
+        ...(pdlKey ? [] : ['PDL API key not configured - People Data Labs verification unavailable']),
+        ...(clearbitKey ? [] : ['Clearbit API key not configured - professional matching unavailable']),
       ];
     } else if (inputType === 'username') {
       // Search for username across platforms
-      results = await searchUsername(q, serpApiKey, googleApiKey, googleEngineId, apifyToken);
+      results = await searchUsername(q, serperKey, pdlKey, clearbitKey);
       analysis = {
-        matchReason: `Username "${q}" checked across different platforms. Possible accounts listed based on platform URL formats.`,
+        matchReason: `Username "${q}" checked across Facebook, LinkedIn, and X (Twitter). Possible accounts listed based on platform URL formats and API verification.`,
         possibleFalseMatches: results
           .filter((r) => r.confidenceScore < 50)
           .map((r) => `${r.platform}: Account existence could not be verified`),
         dataReliability: results.some((r) => r.confidenceScore > 70)
           ? 'Medium-High - Some accounts verified'
           : 'Low-Medium - Most accounts could not be verified, created based on URL format',
+        missingInfo: ['Account verification requires API access'],
       };
       warnings = [
         'Account existence could not be fully verified via API. Manual verification recommended.',
@@ -687,6 +707,7 @@ export async function GET(req: Request) {
         dataReliability: images.length > 0
           ? 'High - Free and open source images'
           : 'Low - No results found',
+        missingInfo: [],
       };
       warnings = [
         ...(images.length === 0 ? ['No image results found.'] : []),
@@ -716,6 +737,7 @@ export async function GET(req: Request) {
           matchReason: '',
           possibleFalseMatches: [],
           dataReliability: 'Error occurred',
+          missingInfo: [],
         },
         warnings: [`Search error: ${e?.message || 'Unknown error'}`],
         images: [],
