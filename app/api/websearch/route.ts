@@ -283,17 +283,120 @@ async function searchClearbit(
   return results;
 }
 
+// Fallback search using DuckDuckGo (free, no API key required)
+async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
+  const results: ProfileMatch[] = [];
+  
+  try {
+    const t = withTimeout(10000);
+    const res = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&t=websearch`,
+      { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal }
+    );
+    t.done();
+    
+    if (!res.ok) return results;
+    
+    const data: any = await res.json();
+    const rt = data?.RelatedTopics;
+    
+    if (Array.isArray(rt)) {
+      for (const entry of rt) {
+        const topics = entry?.Topics || [entry];
+        for (const topic of topics) {
+          const text = safeString(topic?.Text);
+          const url = safeString(topic?.FirstURL);
+          
+          // Check if it's a Facebook, LinkedIn, or Twitter profile
+          if (url && (url.includes('facebook.com') || url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com'))) {
+            // Exclude search pages
+            if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/')) {
+              let platform = 'Unknown';
+              if (url.includes('facebook.com')) platform = 'Facebook';
+              else if (url.includes('linkedin.com')) platform = 'LinkedIn';
+              else if (url.includes('twitter.com') || url.includes('x.com')) platform = 'X (Twitter)';
+              
+              results.push({
+                url,
+                platform,
+                title: text.split(' - ')[0] || text,
+                snippet: text,
+                source: 'DuckDuckGo',
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('DuckDuckGo search error:', e);
+  }
+  
+  return results;
+}
+
+// Fallback search using SerpAPI (if available, different from Serper)
+async function searchWithSerpAPI(query: string, apiKey: string): Promise<ProfileMatch[]> {
+  const results: ProfileMatch[] = [];
+  
+  try {
+    const t = withTimeout(10000);
+    const res = await fetch(
+      `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${encodeURIComponent(apiKey)}`,
+      { signal: t.signal }
+    );
+    t.done();
+    
+    if (!res.ok) return results;
+    
+    const data: any = await res.json();
+    
+    // Process organic results
+    if (Array.isArray(data?.organic_results)) {
+      for (const item of data.organic_results) {
+        const link = safeString(item?.link);
+        const title = safeString(item?.title);
+        const snippet = safeString(item?.snippet);
+        
+        // Check if it's a Facebook, LinkedIn, or Twitter profile
+        if (link && (link.includes('facebook.com') || link.includes('linkedin.com') || link.includes('twitter.com') || link.includes('x.com'))) {
+          // Exclude search pages
+          if (!link.includes('/search') && !link.includes('/hashtag/') && !link.includes('/pages/')) {
+            let platform = 'Unknown';
+            if (link.includes('facebook.com')) platform = 'Facebook';
+            else if (link.includes('linkedin.com')) platform = 'LinkedIn';
+            else if (link.includes('twitter.com') || link.includes('x.com')) platform = 'X (Twitter)';
+            
+            results.push({
+              url: link,
+              platform,
+              title: title || link,
+              snippet: snippet || '',
+              source: 'SerpAPI',
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('SerpAPI error:', e);
+  }
+  
+  return results;
+}
+
 // Search for person by name - OSINT People Search
 async function searchPersonByNameOSINT(
   name: string,
   serperKey: string,
   pdlKey: string,
-  clearbitKey: string
+  clearbitKey: string,
+  serpApiKey: string
 ): Promise<OSINTResult[]> {
   const allMatches: ProfileMatch[] = [];
   const metadata = extractMetadata(name);
   
-  // 1. Google-style search with Serper
+  // 1. Google-style search with Serper (if available)
   const serperQueries = [
     `site:facebook.com "${name}"`,
     `site:linkedin.com/in "${name}"`,
@@ -301,20 +404,45 @@ async function searchPersonByNameOSINT(
     `site:x.com "${name}"`,
   ];
   
+  let hasSerperResults = false;
   for (const query of serperQueries) {
     if (serperKey) {
       const serperResults = await searchWithSerper(query, serperKey);
+      if (serperResults.length > 0) hasSerperResults = true;
       allMatches.push(...serperResults);
     }
   }
   
-  // 2. People Data Labs verification
+  // 2. Fallback: SerpAPI (if available and Serper didn't work)
+  if (!hasSerperResults && serpApiKey) {
+    for (const query of serperQueries) {
+      const serpResults = await searchWithSerpAPI(query, serpApiKey);
+      allMatches.push(...serpResults);
+    }
+  }
+  
+  // 3. Fallback: DuckDuckGo (free, always available as backup)
+  // Always try DuckDuckGo even if other APIs worked, to get more results
+  const fallbackQueries = [
+    `"${name}" facebook`,
+    `"${name}" linkedin`,
+    `"${name}" twitter`,
+    `"${name}" site:facebook.com`,
+    `"${name}" site:linkedin.com`,
+  ];
+  
+  for (const query of fallbackQueries) {
+    const ddgResults = await searchWithDuckDuckGo(query);
+    allMatches.push(...ddgResults);
+  }
+  
+  // 4. People Data Labs verification (if available)
   if (pdlKey) {
     const pdlResults = await searchPDL(name, pdlKey, metadata.country);
     allMatches.push(...pdlResults);
   }
   
-  // 3. Clearbit professional matching
+  // 5. Clearbit professional matching (if available)
   if (clearbitKey) {
     const clearbitResults = await searchClearbit(name, clearbitKey, metadata.profession ? undefined : undefined);
     allMatches.push(...clearbitResults);
@@ -647,7 +775,7 @@ export async function GET(req: Request) {
 
     if (inputType === 'name') {
       // OSINT People Search - Focus on Facebook, LinkedIn, Twitter
-      results = await searchPersonByNameOSINT(q, serperKey, pdlKey, clearbitKey);
+      results = await searchPersonByNameOSINT(q, serperKey, pdlKey, clearbitKey, serpApiKey);
       
       // Analysis
       const highConfidence = results.filter(r => r.confidenceScore >= 70).length;
@@ -676,9 +804,9 @@ export async function GET(req: Request) {
         ...(results.length === 0 ? ['No profiles found. The person may not have public social media profiles, or the name may be misspelled.'] : []),
         ...(lowConfidence > 0 ? [`${lowConfidence} profiles have low confidence scores - may be different people with the same name.`] : []),
         'There may be different people with the same name. Please verify results manually.',
-        ...(serperKey ? [] : ['Serper API key not configured - using limited search methods']),
-        ...(pdlKey ? [] : ['PDL API key not configured - People Data Labs verification unavailable']),
-        ...(clearbitKey ? [] : ['Clearbit API key not configured - professional matching unavailable']),
+        ...(serperKey ? [] : serpApiKey ? [] : ['Using free search methods (DuckDuckGo) - results may be limited. For better results, configure SERPER_API_KEY or SERP_API_KEY.']),
+        ...(pdlKey ? [] : ['PDL API key not configured - People Data Labs verification unavailable (optional)']),
+        ...(clearbitKey ? [] : ['Clearbit API key not configured - professional matching unavailable (optional)']),
       ];
     } else if (inputType === 'username') {
       // Search for username across platforms
