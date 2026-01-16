@@ -291,15 +291,16 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
     const t = withTimeout(10000);
     const res = await fetch(
       `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&t=websearch`,
-      { headers: { 'User-Agent': 'websearch/1.0' }, signal: t.signal }
+      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, signal: t.signal }
     );
     t.done();
     
     if (!res.ok) return results;
     
     const data: any = await res.json();
-    const rt = data?.RelatedTopics;
     
+    // Check RelatedTopics
+    const rt = data?.RelatedTopics;
     if (Array.isArray(rt)) {
       for (const entry of rt) {
         const topics = entry?.Topics || [entry];
@@ -309,8 +310,8 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
           
           // Check if it's a Facebook, LinkedIn, or Twitter profile
           if (url && (url.includes('facebook.com') || url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com'))) {
-            // Exclude search pages
-            if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/')) {
+            // Exclude search pages, hashtags, pages
+            if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/') && !url.includes('/hashtags/')) {
               let platform = 'Unknown';
               if (url.includes('facebook.com')) platform = 'Facebook';
               else if (url.includes('linkedin.com')) platform = 'LinkedIn';
@@ -319,11 +320,36 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
               results.push({
                 url,
                 platform,
-                title: text.split(' - ')[0] || text,
-                snippet: text,
+                title: text.split(' - ')[0] || text || url,
+                snippet: text || '',
                 source: 'DuckDuckGo',
               });
             }
+          }
+        }
+      }
+    }
+    
+    // Also check Results array if available
+    if (Array.isArray(data?.Results)) {
+      for (const item of data.Results) {
+        const url = safeString(item?.FirstURL);
+        const text = safeString(item?.Text);
+        
+        if (url && (url.includes('facebook.com') || url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com'))) {
+          if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/')) {
+            let platform = 'Unknown';
+            if (url.includes('facebook.com')) platform = 'Facebook';
+            else if (url.includes('linkedin.com')) platform = 'LinkedIn';
+            else if (url.includes('twitter.com') || url.includes('x.com')) platform = 'X (Twitter)';
+            
+            results.push({
+              url,
+              platform,
+              title: text.split(' - ')[0] || text || url,
+              snippet: text || '',
+              source: 'DuckDuckGo',
+            });
           }
         }
       }
@@ -423,17 +449,20 @@ async function searchPersonByNameOSINT(
   
   // 3. Fallback: DuckDuckGo (free, always available as backup)
   // Always try DuckDuckGo even if other APIs worked, to get more results
+  // Use simpler queries that DuckDuckGo can handle better
   const fallbackQueries = [
-    `"${name}" facebook`,
-    `"${name}" linkedin`,
-    `"${name}" twitter`,
-    `"${name}" site:facebook.com`,
-    `"${name}" site:linkedin.com`,
+    `${name} facebook`,
+    `${name} linkedin`,
+    `${name} twitter`,
+    `${name} x.com`,
+    `"${name}"`,
   ];
   
   for (const query of fallbackQueries) {
     const ddgResults = await searchWithDuckDuckGo(query);
     allMatches.push(...ddgResults);
+    // Small delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
   
   // 4. People Data Labs verification (if available)
@@ -802,9 +831,15 @@ export async function GET(req: Request) {
       };
       
       warnings = [
-        ...(results.length === 0 ? ['No profiles found. The person may not have public social media profiles, or the name may be misspelled.'] : []),
+        ...(results.length === 0 ? [
+          'No profiles found. Possible reasons:',
+          '- The person may not have public social media profiles',
+          '- The name may be misspelled or use a different spelling',
+          '- Try searching with different name variations (e.g., "John Smith" vs "Johnny Smith")',
+          '- The person may use a different name on social media',
+        ] : []),
         ...(lowConfidence > 0 ? [`${lowConfidence} profiles have low confidence scores - may be different people with the same name.`] : []),
-        'There may be different people with the same name. Please verify results manually.',
+        ...(results.length > 0 ? ['There may be different people with the same name. Please verify results manually.'] : []),
         ...(serperKey ? [] : serpApiKey ? [] : ['Using free search methods (DuckDuckGo) - results may be limited. For better results, configure SERPER_API_KEY or SERP_API_KEY.']),
         ...(pdlKey ? [] : ['PDL API key not configured - People Data Labs verification unavailable (optional)']),
         ...(clearbitKey ? [] : ['Clearbit API key not configured - professional matching unavailable (optional)']),
