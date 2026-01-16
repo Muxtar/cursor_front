@@ -753,6 +753,7 @@ export async function GET(req: Request) {
   const serperKey = process.env.SERPER_API_KEY || '';
   const pdlKey = process.env.PDL_API_KEY || '';
   const clearbitKey = process.env.CLEARBIT_API_KEY || '';
+  const serpApiKey = process.env.SERP_API_KEY || ''; // Fallback for SerpAPI
   
   // Fallback APIs (for image search and username search)
   const unsplashKey = process.env.UNSPLASH_ACCESS_KEY || '';
