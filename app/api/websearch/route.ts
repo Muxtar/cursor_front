@@ -51,21 +51,22 @@ function withTimeout(ms: number) {
 function detectInputType(query: string): 'name' | 'username' | 'image' | 'unknown' {
   const trimmed = query.trim();
   
-  // Username pattern: @username or alphanumeric with dots/underscores, single word
-  if (trimmed.startsWith('@') || /^[a-zA-Z0-9._]+$/.test(trimmed) && !trimmed.includes(' ')) {
+  // Username pattern: @username or alphanumeric with dots/underscores, single word (no spaces)
+  if (trimmed.startsWith('@') || (/^[a-zA-Z0-9._]+$/.test(trimmed) && !trimmed.includes(' '))) {
     return 'username';
   }
   
-  // Name pattern: Two or more words, likely starts with capital letters
-  const words = trimmed.split(/\s+/);
-  if (words.length >= 2 && words.every(w => w.length > 0)) {
-    // Check if it looks like a name (at least first word starts with capital)
-    if (words[0][0] === words[0][0].toUpperCase() || words.some(w => w[0] === w[0].toUpperCase())) {
+  // Name pattern: Two or more words (assume it's a person name)
+  const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+  if (words.length >= 2) {
+    // If it has 2+ words and doesn't look like a URL or special pattern, treat as name
+    // Exclude URLs and email-like patterns
+    if (!trimmed.includes('http') && !trimmed.includes('@') && !trimmed.match(/^[a-z]+:\/\//i)) {
       return 'name';
     }
   }
   
-  // Image keyword: everything else
+  // Image keyword: everything else (single word or special patterns)
   return 'image';
 }
 
@@ -700,7 +701,8 @@ export async function GET(req: Request) {
       results,
       analysis,
       warnings: [...new Set(warnings)], // Remove duplicates
-      ...(images.length > 0 ? { images } : {}),
+      // Only include images if input type is 'image'
+      ...(inputType === 'image' ? { images } : {}),
     };
 
     return NextResponse.json(response);
