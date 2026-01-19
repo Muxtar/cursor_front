@@ -284,22 +284,33 @@ async function searchClearbit(
 }
 
 // Fallback search using DuckDuckGo (free, no API key required)
+// Note: DuckDuckGo API is very limited and may not return social media results
 async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
   const results: ProfileMatch[] = [];
   
   try {
     const t = withTimeout(10000);
+    // Try the instant answer API first
     const res = await fetch(
       `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&t=websearch`,
-      { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, signal: t.signal }
+      { 
+        headers: { 
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'application/json',
+        }, 
+        signal: t.signal 
+      }
     );
     t.done();
     
-    if (!res.ok) return results;
+    if (!res.ok) {
+      console.log('DuckDuckGo API returned non-OK status:', res.status);
+      return results;
+    }
     
     const data: any = await res.json();
     
-    // Check RelatedTopics
+    // Check RelatedTopics (most common in DuckDuckGo responses)
     const rt = data?.RelatedTopics;
     if (Array.isArray(rt)) {
       for (const entry of rt) {
@@ -311,7 +322,7 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
           // Check if it's a Facebook, LinkedIn, or Twitter profile
           if (url && (url.includes('facebook.com') || url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com'))) {
             // Exclude search pages, hashtags, pages
-            if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/') && !url.includes('/hashtags/')) {
+            if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/') && !url.includes('/hashtags/') && !url.includes('/people/')) {
               let platform = 'Unknown';
               if (url.includes('facebook.com')) platform = 'Facebook';
               else if (url.includes('linkedin.com')) platform = 'LinkedIn';
@@ -337,7 +348,7 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
         const text = safeString(item?.Text);
         
         if (url && (url.includes('facebook.com') || url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com'))) {
-          if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/')) {
+          if (!url.includes('/search') && !url.includes('/hashtag/') && !url.includes('/pages/') && !url.includes('/people/')) {
             let platform = 'Unknown';
             if (url.includes('facebook.com')) platform = 'Facebook';
             else if (url.includes('linkedin.com')) platform = 'LinkedIn';
@@ -352,6 +363,25 @@ async function searchWithDuckDuckGo(query: string): Promise<ProfileMatch[]> {
             });
           }
         }
+      }
+    }
+    
+    // Check AbstractURL and AbstractText (sometimes DuckDuckGo returns these)
+    const abstractUrl = safeString(data?.AbstractURL);
+    if (abstractUrl && (abstractUrl.includes('facebook.com') || abstractUrl.includes('linkedin.com') || abstractUrl.includes('twitter.com') || abstractUrl.includes('x.com'))) {
+      if (!abstractUrl.includes('/search') && !abstractUrl.includes('/hashtag/') && !abstractUrl.includes('/pages/')) {
+        let platform = 'Unknown';
+        if (abstractUrl.includes('facebook.com')) platform = 'Facebook';
+        else if (abstractUrl.includes('linkedin.com')) platform = 'LinkedIn';
+        else if (abstractUrl.includes('twitter.com') || abstractUrl.includes('x.com')) platform = 'X (Twitter)';
+        
+        results.push({
+          url: abstractUrl,
+          platform,
+          title: safeString(data?.Heading) || safeString(data?.AbstractText) || abstractUrl,
+          snippet: safeString(data?.AbstractText) || '',
+          source: 'DuckDuckGo',
+        });
       }
     }
   } catch (e) {
@@ -813,7 +843,9 @@ export async function GET(req: Request) {
       const lowConfidence = results.filter(r => r.confidenceScore < 50).length;
       
       analysis = {
-        matchReason: `OSINT search performed for "${q}" across Facebook, LinkedIn, and X (Twitter). Profiles found from multiple sources (Serper, PDL, Clearbit) are scored and ranked by confidence.`,
+        matchReason: results.length > 0
+          ? `OSINT search performed for "${q}" across Facebook, LinkedIn, and X (Twitter). Profiles found from multiple sources (Serper, PDL, Clearbit, DuckDuckGo) are scored and ranked by confidence.`
+          : `OSINT search performed for "${q}" across Facebook, LinkedIn, and X (Twitter). No profiles found. Note: Without API keys (SERPER_API_KEY or SERP_API_KEY), search capabilities are very limited. DuckDuckGo free API has restricted access to social media profiles.`,
         possibleFalseMatches: results
           .filter((r) => r.confidenceScore < 60)
           .map((r) => `${r.platform}: ${r.link} (${r.confidenceScore}% confidence)`),
@@ -823,9 +855,14 @@ export async function GET(req: Request) {
             : mediumConfidence > 0
             ? `Medium - ${mediumConfidence} profiles with medium confidence (50-69%)`
             : `Low - ${lowConfidence} profiles with low confidence (<50%)`
-          : 'Low - No profiles found',
+          : serperKey || serpApiKey
+          ? 'Low - No profiles found despite API access'
+          : 'Very Low - No API keys configured. Free search methods (DuckDuckGo) have very limited access to social media profiles.',
         missingInfo: [
-          ...(results.length === 0 ? ['No profiles found - person may not have public profiles'] : []),
+          ...(results.length === 0 ? [
+            'No profiles found - person may not have public profiles',
+            ...(serperKey || serpApiKey ? [] : ['⚠️ IMPORTANT: To get reliable results, configure SERPER_API_KEY or SERP_API_KEY. Free search methods cannot effectively search social media platforms.']),
+          ] : []),
           ...(results.some(r => !r.description || r.description.length < 20) ? ['Limited profile information available'] : []),
         ],
       };

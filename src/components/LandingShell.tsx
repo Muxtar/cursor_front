@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageSearch from '@/components/ImageSearch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LandingShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && user) {
@@ -25,10 +26,50 @@ export default function LandingShell({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen bg-white relative">
-      {/* Top-right panel */}
-      <div className="fixed top-4 right-4 z-50">
+      {/* Desktop: Top-right panel */}
+      <div className="hidden md:block fixed top-4 right-4 z-50">
         {children}
       </div>
+
+      {/* Mobile: Hamburger menu button */}
+      <div className="md:hidden fixed top-4 right-4 z-50">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="p-2 bg-white rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+          aria-label="Toggle menu"
+        >
+          <svg
+            className="w-6 h-6 text-gray-700"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            {mobileMenuOpen ? (
+              <path d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Mobile: Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/20 z-30"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile: Menu panel */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed top-16 right-4 z-40 w-[calc(100vw-2rem)] max-w-sm animate-in slide-in-from-top-2">
+          {children}
+        </div>
+      )}
 
       {/* Center websearch like Google (hide immediately if user becomes available) */}
       {!user && (

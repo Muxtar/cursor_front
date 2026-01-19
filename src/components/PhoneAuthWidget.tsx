@@ -231,6 +231,7 @@ export default function PhoneAuthWidget() {
       <div className="p-5">
         {step === 'phone' && (
           <form onSubmit={sendCode} className="space-y-4">
+            {/* Country selection - moved to top */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-700">Country</label>
               <div className="relative">
@@ -251,31 +252,38 @@ export default function PhoneAuthWidget() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-700">Country code</label>
-              <input
-                value={dialCodeInput}
-                onChange={(e) => onDialCodeChange(e.target.value)}
-                placeholder="+994"
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                inputMode="tel"
-              />
-              <div className="text-[11px] text-gray-500">
-                Selected: <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
+            {/* Country code and phone number side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">Country code</label>
+                <input
+                  value={dialCodeInput}
+                  onChange={(e) => onDialCodeChange(e.target.value)}
+                  placeholder="+994"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  inputMode="tel"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-700">Phone number</label>
+                <input
+                  value={localPhone}
+                  onChange={(e) => setLocalPhone(e.target.value)}
+                  placeholder="xx xxx xx xx"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  inputMode="numeric"
+                  required
+                />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-700">Phone number</label>
-              <input
-                value={localPhone}
-                onChange={(e) => setLocalPhone(e.target.value)}
-                placeholder="xx xxx xx xx"
-                className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                inputMode="numeric"
-                required
-              />
-              <div className="text-[11px] text-gray-500">
+            {/* Info text below */}
+            <div className="text-[11px] text-gray-500 space-y-1">
+              <div>
+                Selected: <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
+              </div>
+              <div>
                 Will be sent to: <span className="font-medium">{fullPhone}</span>
               </div>
             </div>
