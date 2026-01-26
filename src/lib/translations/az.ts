@@ -245,6 +245,28 @@ export const az = {
   createAccount: 'Hesab Yarad',
   usernameOptional: 'İstifadəçi Adı (İstəyə Bağlı)',
   passwordOptional: 'Şifrə (İstəyə Bağlı)',
+  
+  // Phone Auth
+  enterPhoneNumber: 'Kod almaq üçün telefon nömrənizi daxil edin',
+  enterCode: 'Telefonunuza göndərdiyimiz kodu daxil edin',
+  setupProfile: 'Profilinizi yaradın',
+  country: 'Ölkə',
+  countryCode: 'Ölkə kodu',
+  phoneNumberPlaceholder: 'xx xxx xx xx',
+  codeSentTo: 'Kod göndərildi',
+  newAccountFor: 'Yeni hesab',
+  sendCode: 'Kod göndər',
+  sending: 'Göndərilir…',
+  verifying: 'Yoxlanılır…',
+  continue: 'Davam et',
+  creating: 'Yaradılır…',
+  selected: 'Seçilmiş',
+  willBeSentTo: 'Göndəriləcək nömrə',
+  testCode: 'Test Kodu',
+  pleaseEnterCode: 'Zəhmət olmasa 6 rəqəmli kodu daxil edin',
+  failedToSendCode: 'Kod göndərilmədi',
+  invalidCode: 'Yanlış kod',
+  registrationFailed: 'Qeydiyyat uğursuz oldu',
 };
 
 

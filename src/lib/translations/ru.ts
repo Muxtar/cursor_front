@@ -245,6 +245,28 @@ export const ru = {
   createAccount: 'Создать аккаунт',
   usernameOptional: 'Имя пользователя (необязательно)',
   passwordOptional: 'Пароль (необязательно)',
+  
+  // Phone Auth
+  enterPhoneNumber: 'Введите номер телефона для получения кода',
+  enterCode: 'Введите код, который мы отправили на ваш телефон',
+  setupProfile: 'Настройте свой профиль',
+  country: 'Страна',
+  countryCode: 'Код страны',
+  phoneNumberPlaceholder: 'xx xxx xx xx',
+  codeSentTo: 'Код отправлен на',
+  newAccountFor: 'Новый аккаунт для',
+  sendCode: 'Отправить код',
+  sending: 'Отправка…',
+  verifying: 'Проверка…',
+  continue: 'Продолжить',
+  creating: 'Создание…',
+  selected: 'Выбрано',
+  willBeSentTo: 'Будет отправлено на',
+  testCode: 'Тестовый код',
+  pleaseEnterCode: 'Пожалуйста, введите 6-значный код',
+  failedToSendCode: 'Не удалось отправить код',
+  invalidCode: 'Неверный код',
+  registrationFailed: 'Регистрация не удалась',
 };
 
 

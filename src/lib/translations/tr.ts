@@ -245,5 +245,27 @@ export const tr = {
   createAccount: 'Hesap Oluştur',
   usernameOptional: 'Kullanıcı Adı (İsteğe Bağlı)',
   passwordOptional: 'Şifre (İsteğe Bağlı)',
+  
+  // Phone Auth
+  enterPhoneNumber: 'Kod almak için telefon numaranızı girin',
+  enterCode: 'Telefonunuza gönderdiğimiz kodu girin',
+  setupProfile: 'Profilinizi oluşturun',
+  country: 'Ülke',
+  countryCode: 'Ülke kodu',
+  phoneNumberPlaceholder: 'xx xxx xx xx',
+  codeSentTo: 'Kod gönderildi',
+  newAccountFor: 'Yeni hesap',
+  sendCode: 'Kod gönder',
+  sending: 'Gönderiliyor…',
+  verifying: 'Doğrulanıyor…',
+  continue: 'Devam et',
+  creating: 'Oluşturuluyor…',
+  selected: 'Seçilen',
+  willBeSentTo: 'Gönderilecek numara',
+  testCode: 'Test Kodu',
+  pleaseEnterCode: 'Lütfen 6 haneli kodu girin',
+  failedToSendCode: 'Kod gönderilemedi',
+  invalidCode: 'Geçersiz kod',
+  registrationFailed: 'Kayıt başarısız',
 };
 

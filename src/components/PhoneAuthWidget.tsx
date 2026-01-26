@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { authApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
@@ -115,6 +116,7 @@ function normalizePhone(dialCode: string, local: string) {
 
 export default function PhoneAuthWidget() {
   const { loginWithCode, registerWithCode } = useAuth();
+  const { t } = useLanguage();
 
   const [step, setStep] = useState<Step>('phone');
   const [selectedCountryCode, setSelectedCountryCode] = useState('AZ');
@@ -161,7 +163,7 @@ export default function PhoneAuthWidget() {
       if (resp?.code) setSentCode(resp.code); // backend test-mode
       setStep('code');
     } catch (err: any) {
-      setError(err?.message || 'Failed to send code');
+      setError(err?.message || t('failedToSendCode'));
     } finally {
       setLoading(false);
     }
@@ -171,7 +173,7 @@ export default function PhoneAuthWidget() {
     e.preventDefault();
     setError('');
     if (code.length !== 6) {
-      setError('Please enter the 6-digit code');
+      setError(t('pleaseEnterCode'));
       return;
     }
     setLoading(true);
@@ -182,7 +184,7 @@ export default function PhoneAuthWidget() {
       if (msg.includes('user not found') || msg.includes('register')) {
         setStep('details');
       } else {
-        setError(err?.message || 'Invalid code');
+        setError(err?.message || t('invalidCode'));
       }
     } finally {
       setLoading(false);
@@ -201,7 +203,7 @@ export default function PhoneAuthWidget() {
         userType: 'normal',
       });
     } catch (err: any) {
-      setError(err?.message || 'Registration failed');
+      setError(err?.message || t('registrationFailed'));
       setLoading(false);
     }
   };
@@ -218,13 +220,15 @@ export default function PhoneAuthWidget() {
   };
 
   return (
-    <div className="w-[380px] rounded-2xl border border-gray-200 bg-white/95 backdrop-blur shadow-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-200">
-        <div className="text-base font-semibold text-gray-900">Register</div>
-        <div className="text-xs text-gray-600 mt-1">
-          {step === 'phone' && 'Enter your phone number to receive a code'}
-          {step === 'code' && 'Enter the code we sent to your phone'}
-          {step === 'details' && 'Set up your profile'}
+    <div className="w-[380px] rounded-2xl border border-gray-200/50 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 hover:shadow-3xl">
+      <div className="px-5 py-4 border-b border-gray-200/50 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
+        <div className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+          {t('register')}
+        </div>
+        <div className="text-xs text-gray-600 mt-1.5 font-medium">
+          {step === 'phone' && t('enterPhoneNumber')}
+          {step === 'code' && t('enterCode')}
+          {step === 'details' && t('setupProfile')}
         </div>
       </div>
 
@@ -233,12 +237,12 @@ export default function PhoneAuthWidget() {
           <form onSubmit={sendCode} className="space-y-4">
             {/* Country selection - moved to top */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-700">Country</label>
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('country')}</label>
               <div className="relative">
                 <select
                   value={selectedCountryCode}
                   onChange={(e) => onSelectCountry(e.target.value)}
-                  className="w-full appearance-none px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full appearance-none px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
                 >
                   {COUNTRIES.map((c) => (
                     <option key={`${c.code}-${c.dialCode}`} value={c.code}>
@@ -246,8 +250,10 @@ export default function PhoneAuthWidget() {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                  ▼
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
               </div>
             </div>
@@ -255,23 +261,23 @@ export default function PhoneAuthWidget() {
             {/* Country code and phone number side by side */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-700">Country code</label>
+                <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('countryCode')}</label>
                 <input
                   value={dialCodeInput}
                   onChange={(e) => onDialCodeChange(e.target.value)}
                   placeholder="+994"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
                   inputMode="tel"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-700">Phone number</label>
+                <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('phoneNumber')}</label>
                 <input
                   value={localPhone}
                   onChange={(e) => setLocalPhone(e.target.value)}
-                  placeholder="xx xxx xx xx"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder={t('phoneNumberPlaceholder')}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
                   inputMode="numeric"
                   required
                 />
@@ -279,90 +285,108 @@ export default function PhoneAuthWidget() {
             </div>
 
             {/* Info text below */}
-            <div className="text-[11px] text-gray-500 space-y-1">
+            <div className="text-[11px] text-gray-500 space-y-1 bg-gray-50 rounded-lg p-3 border border-gray-100">
               <div>
-                Selected: <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
+                <span className="font-semibold">{t('selected')}:</span> <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
               </div>
               <div>
-                Will be sent to: <span className="font-medium">{fullPhone}</span>
+                <span className="font-semibold">{t('willBeSentTo')}:</span> <span className="font-medium text-blue-600">{fullPhone}</span>
               </div>
             </div>
 
-            {error && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{error}</div>}
+            {error && (
+              <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={loading || !normalizeDialCode(dialCodeInput) || localPhone.replace(/[^\d]/g, '').length < 4}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {loading ? 'Sending…' : 'Send code'}
+              {loading ? t('sending') : t('sendCode')}
             </button>
           </form>
         )}
 
         {step === 'code' && (
           <form onSubmit={verifyCode} className="space-y-4">
-            <div className="text-xs text-gray-600">
-              Code sent to <span className="font-medium">{fullPhone}</span>
+            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+              {t('codeSentTo')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              className="w-full px-3 py-3 border border-gray-300 rounded-xl bg-white text-center tracking-[0.35em] text-lg text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              inputMode="numeric"
-              required
-            />
+            <div className="relative">
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                maxLength={6}
+                className="w-full px-4 py-4 border-2 border-gray-200 rounded-xl bg-white text-center tracking-[0.5em] text-2xl font-bold text-gray-900 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-lg"
+                inputMode="numeric"
+                required
+                autoFocus
+              />
+            </div>
             {sentCode && (
-              <div className="text-[11px] text-yellow-800 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <span className="font-semibold">Test Code:</span> {sentCode}
+              <div className="text-[11px] text-yellow-800 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-xl p-3">
+                <span className="font-semibold">{t('testCode')}:</span> <span className="font-mono text-base">{sentCode}</span>
               </div>
             )}
-            {error && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{error}</div>}
+            {error && (
+              <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={loading || code.length !== 6}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {loading ? 'Verifying…' : 'Continue'}
+              {loading ? t('verifying') : t('continue')}
             </button>
             <button
               type="button"
               onClick={back}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-2.5 rounded-xl text-sm"
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md"
             >
-              Back
+              {t('back')}
             </button>
           </form>
         )}
 
         {step === 'details' && (
           <form onSubmit={completeRegister} className="space-y-4">
-            <div className="text-xs text-gray-600">
-              New account for <span className="font-medium">{fullPhone}</span>
+            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+              {t('newAccountFor')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username (optional)"
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            {error && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">{error}</div>}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={t('usernameOptional')}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+              />
+            </div>
+            {error && (
+              <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
+                {error}
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-medium disabled:opacity-50"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {loading ? 'Creating…' : 'Create account'}
+              {loading ? t('creating') : t('createAccount')}
             </button>
             <button
               type="button"
               onClick={back}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-2.5 rounded-xl text-sm"
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md"
             >
-              Back
+              {t('back')}
             </button>
           </form>
         )}

@@ -245,5 +245,27 @@ export const en = {
   createAccount: 'Create Account',
   usernameOptional: 'Username (Optional)',
   passwordOptional: 'Password (Optional)',
+  
+  // Phone Auth
+  enterPhoneNumber: 'Enter your phone number to receive a code',
+  enterCode: 'Enter the code we sent to your phone',
+  setupProfile: 'Set up your profile',
+  country: 'Country',
+  countryCode: 'Country code',
+  phoneNumberPlaceholder: 'xx xxx xx xx',
+  codeSentTo: 'Code sent to',
+  newAccountFor: 'New account for',
+  sendCode: 'Send code',
+  sending: 'Sending…',
+  verifying: 'Verifying…',
+  continue: 'Continue',
+  creating: 'Creating…',
+  selected: 'Selected',
+  willBeSentTo: 'Will be sent to',
+  testCode: 'Test Code',
+  pleaseEnterCode: 'Please enter the 6-digit code',
+  failedToSendCode: 'Failed to send code',
+  invalidCode: 'Invalid code',
+  registrationFailed: 'Registration failed',
 };
 

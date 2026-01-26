@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageSearch from '@/components/ImageSearch';
 import { useAuth } from '@/contexts/AuthContext';
+import LanguageSelector from '@/components/LanguageSelector';
 
 export default function LandingShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -26,13 +27,18 @@ export default function LandingShell({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen bg-white relative">
-      {/* Desktop: Top-right panel */}
-      <div className="hidden md:block fixed top-4 right-4 z-50">
+      {/* Language Selector - Top Right Corner */}
+      <div className="fixed top-4 right-4 z-50 md:top-4 md:right-4">
+        <LanguageSelector />
+      </div>
+
+      {/* Desktop: Top-right panel - Adjusted to not overlap with language selector */}
+      <div className="hidden md:block fixed top-4 right-4 z-40" style={{ marginTop: '60px' }}>
         {children}
       </div>
 
       {/* Mobile: Hamburger menu button */}
-      <div className="md:hidden fixed top-4 right-4 z-50">
+      <div className="md:hidden fixed top-4 right-4 z-40" style={{ marginTop: '50px' }}>
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="p-2 bg-white rounded-lg shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors"
