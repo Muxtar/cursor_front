@@ -1,4 +1,29 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+// Get API URL from environment variable
+// In Railway, this should be set as: NEXT_PUBLIC_API_URL=https://your-backend-app.railway.app/api/v1
+const getApiUrl = () => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+  
+  if (typeof window !== 'undefined') {
+    // Client-side: check if we're in production
+    const hostname = window.location.hostname;
+    
+    // If we're on Railway (not localhost), but API_URL is still localhost, show error
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1' && apiUrl.includes('localhost')) {
+      console.error('⚠️ NEXT_PUBLIC_API_URL is not set correctly!');
+      console.error('Current API URL:', apiUrl);
+      console.error('Current hostname:', hostname);
+      console.error('Please set NEXT_PUBLIC_API_URL in Railway environment variables');
+      console.error('Example: NEXT_PUBLIC_API_URL=https://your-backend-app.railway.app/api/v1');
+      console.error('After adding the variable, you must redeploy the front-end service!');
+    } else {
+      console.log('✅ API URL:', apiUrl);
+    }
+  }
+  
+  return apiUrl;
+};
+
+const API_URL = getApiUrl();
 
 export interface ApiResponse<T> {
   data?: T;
