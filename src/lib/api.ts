@@ -78,7 +78,9 @@ class ApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
-        credentials: 'include', // Include cookies if using credentials
+        // NOTE: Do NOT send cookies by default.
+        // This endpoint (/auth/send-code) and JWT Bearer auth do not require cookies.
+        // If you later implement cookie-based auth, add credentials per-request.
       });
 
       // Parse response body first (even if error)
