@@ -78,6 +78,7 @@ class ApiClient {
       const response = await fetch(url, {
         ...options,
         headers,
+        credentials: 'include', // Include cookies if using credentials
       });
 
       // Parse response body first (even if error)
