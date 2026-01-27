@@ -1,4 +1,29 @@
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+// Get WebSocket URL from environment variable
+// Railway production: wss://cursurback-production.up.railway.app/ws
+const getWsUrl = () => {
+  let wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+  
+  if (!wsUrl) {
+    // Check if we're in production (Railway)
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
+      // If not localhost, use production back-end with secure WebSocket
+      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        wsUrl = 'wss://cursurback-production.up.railway.app/ws';
+      } else {
+        wsUrl = 'ws://localhost:8080/ws';
+      }
+    } else {
+      // Server-side: default to production
+      wsUrl = 'wss://cursurback-production.up.railway.app/ws';
+    }
+  }
+  
+  return wsUrl;
+};
+
+const WS_URL = getWsUrl();
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
