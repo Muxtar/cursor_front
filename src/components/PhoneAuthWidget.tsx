@@ -158,12 +158,35 @@ export default function PhoneAuthWidget() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
+    // Validate phone number before sending
+    if (!fullPhone || fullPhone.length < 10) {
+      setError('Please enter a valid phone number');
+      setLoading(false);
+      return;
+    }
+
     try {
+      console.log('Sending code to:', fullPhone);
       const resp: any = await authApi.sendCode(fullPhone);
-      if (resp?.code) setSentCode(resp.code); // backend test-mode
-      setStep('code');
+      console.log('Send code response:', resp);
+      
+      // Check if response indicates success
+      if (resp?.message || resp?.code) {
+        // Backend returned success (with or without code for dev mode)
+        if (resp?.code) {
+          setSentCode(resp.code); // backend test-mode
+        }
+        setStep('code');
+      } else {
+        // Unexpected response format
+        setError(t('failedToSendCode'));
+      }
     } catch (err: any) {
-      setError(err?.message || t('failedToSendCode'));
+      console.error('Send code error:', err);
+      // Extract error message
+      const errorMessage = err?.message || err?.error || t('failedToSendCode');
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -296,7 +319,8 @@ export default function PhoneAuthWidget() {
 
             {error && (
               <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
-                {error}
+                <div className="font-semibold mb-1">⚠️ {t('error')}</div>
+                <div>{error}</div>
               </div>
             )}
 

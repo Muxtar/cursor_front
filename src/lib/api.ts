@@ -44,17 +44,48 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || 'Request failed');
+      // Parse response body first (even if error)
+      let responseData: any;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        responseData = await response.json().catch(() => ({}));
+      } else {
+        const text = await response.text();
+        responseData = text ? { error: text } : { error: 'Request failed' };
+      }
+
+      if (!response.ok) {
+        // More detailed error message
+        const errorMessage = responseData.error || responseData.message || `Request failed with status ${response.status}`;
+        console.error(`API Error [${response.status}]:`, {
+          endpoint,
+          url,
+          error: errorMessage,
+          response: responseData,
+        });
+        throw new Error(errorMessage);
+      }
+
+      return responseData;
+    } catch (error: any) {
+      // Network errors or other fetch errors
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        console.error('Network error:', error);
+        throw new Error('Network error: Could not connect to server. Please check your connection.');
+      }
+      // Re-throw if it's already our Error
+      if (error instanceof Error) {
+        throw error;
+      }
+      // Otherwise wrap it
+      throw new Error(error?.message || 'An unexpected error occurred');
     }
-
-    return response.json();
   }
 
   async get<T>(endpoint: string): Promise<T> {
