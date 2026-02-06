@@ -49,13 +49,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
+  const normalizeUser = (raw: any): User => {
+    if (!raw) return null as any;
+    return {
+      ...raw,
+      id: raw.id || raw._id,
+      _id: raw._id || raw.id,
+    } as User;
+  };
+
   const checkAuth = async () => {
     const token = localStorage.getItem('token');
     if (token) {
       api.setToken(token);
       try {
         const userData = await userApi.getMe();
-        setUser(userData as User);
+        setUser(normalizeUser(userData));
       } catch (error) {
         console.error('Auth check failed:', error);
         api.clearToken();
@@ -69,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response: any = await authApi.login({ phone_number: phoneNumber, password });
       api.setToken(response.token);
-      setUser(response.user);
+      setUser(normalizeUser(response.user));
       router.push('/chat');
     } catch (error: any) {
       throw new Error(error.message || 'Login failed');
@@ -84,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password,
       });
       api.setToken(response.token);
-      setUser(response.user);
+      setUser(normalizeUser(response.user));
       router.push('/chat');
     } catch (error: any) {
       throw new Error(error.message || 'Registration failed');
@@ -95,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response: any = await authApi.verifyCode(phoneNumber, code);
       api.setToken(response.token);
-      setUser(response.user);
+      setUser(normalizeUser(response.user));
       router.push('/chat');
     } catch (error: any) {
       throw new Error(error.message || 'Login failed');
@@ -120,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         company_category: data.companyCategory,
       });
       api.setToken(response.token);
-      setUser(response.user);
+      setUser(normalizeUser(response.user));
       router.push('/chat');
     } catch (error: any) {
       throw new Error(error.message || 'Registration failed');

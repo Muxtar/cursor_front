@@ -1,26 +1,15 @@
-// Get WebSocket URL from environment variable
-// Railway production: wss://cursurback-production.up.railway.app/ws
-const getWsUrl = () => {
-  let wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-  
-  if (!wsUrl) {
-    // Check if we're in production (Railway)
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      const protocol = window.location.protocol;
-      // If not localhost, use production back-end with secure WebSocket
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        wsUrl = 'wss://cursurback-production.up.railway.app/ws';
-      } else {
-        wsUrl = 'ws://localhost:8080/ws';
-      }
-    } else {
-      // Server-side: default to production
-      wsUrl = 'wss://cursurback-production.up.railway.app/ws';
+// WebSocket URL: Railway'da NEXT_PUBLIC_WS_URL verin, örn: wss://your-backend.up.railway.app/ws
+const getWsUrl = (): string => {
+  const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (wsUrl) return wsUrl;
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'ws://localhost:8080/ws';
     }
+    console.warn('NEXT_PUBLIC_WS_URL is not set. In Railway, set it to your backend WebSocket URL (e.g. wss://your-backend.up.railway.app/ws)');
   }
-  
-  return wsUrl;
+  return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
 };
 
 const WS_URL = getWsUrl();

@@ -1,31 +1,16 @@
-// Get API URL from environment variable
-// Railway production: https://cursurback-production.up.railway.app/api/v1
-const getApiUrl = () => {
-  // Check if we have environment variable set
-  let apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  
-  // If not set, use production back-end URL
-  if (!apiUrl) {
-    // Check if we're in production (Railway)
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      // If not localhost, use production back-end
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        apiUrl = 'https://cursurback-production.up.railway.app/api/v1';
-      } else {
-        apiUrl = 'http://localhost:8080/api/v1';
-      }
-    } else {
-      // Server-side: default to production
-      apiUrl = 'https://cursurback-production.up.railway.app/api/v1';
-    }
-  }
-  
+// API URL: Railway'da front-end servisinize NEXT_PUBLIC_API_URL olarak backend URL'inizi verin.
+// Örn: https://your-backend.up.railway.app/api/v1
+const getApiUrl = (): string => {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (apiUrl) return apiUrl;
   if (typeof window !== 'undefined') {
-    console.log('✅ API URL:', apiUrl);
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8080/api/v1';
+    }
+    console.warn('NEXT_PUBLIC_API_URL is not set. In Railway, set it to your backend URL (e.g. https://your-backend.up.railway.app/api/v1)');
   }
-  
-  return apiUrl;
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 };
 
 const API_URL = getApiUrl();
