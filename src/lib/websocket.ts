@@ -1,18 +1,50 @@
 // WebSocket URL: Railway'da NEXT_PUBLIC_WS_URL verin, örn: wss://your-backend.up.railway.app/ws
+// ÖNEMLİ: Next.js'te NEXT_PUBLIC_* değişkenleri build-time'da bundle'a gömülür.
 const getWsUrl = (): string => {
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
-  if (wsUrl) return wsUrl;
+  // 1. Build-time env variable (Railway'da set edilmeli)
+  const buildTimeUrl = process.env.NEXT_PUBLIC_WS_URL;
+  if (buildTimeUrl) return buildTimeUrl;
+
+  // 2. Runtime detection (sadece browser'da)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    
+    // Local development
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'ws://localhost:8080/ws';
     }
-    console.warn('NEXT_PUBLIC_WS_URL is not set. In Railway, set it to your backend WebSocket URL (e.g. wss://your-backend.up.railway.app/ws)');
+
+    // Railway production - backend URL'i runtime'da localStorage'dan oku (fallback)
+    const savedBackendWsUrl = localStorage.getItem('backend_ws_url');
+    if (savedBackendWsUrl) {
+      return savedBackendWsUrl;
+    }
+
+    console.error('❌ NEXT_PUBLIC_WS_URL is not set!');
+    console.error('Railway Front-end Service → Variables → Add:');
+    console.error('NEXT_PUBLIC_WS_URL=wss://YOUR-BACKEND-SERVICE.up.railway.app/ws');
+    console.error('Then REDEPLOY the front-end service!');
+
+    // Fallback: window.location'dan backend URL'ini tahmin etmeye çalış
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${hostname}/ws`; // Bu genelde yanlış olacak
   }
+
+  // Server-side (SSR) - build-time env variable zorunlu
   return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
 };
 
-const WS_URL = getWsUrl();
+// Runtime'da her çağrıda yeniden hesapla
+let WS_URL: string | null = null;
+const getWsUrlRuntime = (): string => {
+  if (!WS_URL) {
+    WS_URL = getWsUrl();
+    if (typeof window !== 'undefined') {
+      console.log('🔗 WebSocket URL:', WS_URL);
+    }
+  }
+  return WS_URL;
+};
 
 export class WebSocketClient {
   private ws: WebSocket | null = null;
@@ -24,7 +56,8 @@ export class WebSocketClient {
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
 
   constructor(wsUrl?: string, token?: string) {
-    this.wsUrl = wsUrl || WS_URL;
+    // Runtime'da URL'i dinamik olarak al (build-time'da set edilmemişse)
+    this.wsUrl = wsUrl || getWsUrlRuntime();
     this.token = token || null;
   }
 

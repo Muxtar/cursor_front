@@ -1,19 +1,54 @@
 // API URL: Railway'da front-end servisinize NEXT_PUBLIC_API_URL olarak backend URL'inizi verin.
-// Örn: https://your-backend.up.railway.app/api/v1
+// ÖNEMLİ: Next.js'te NEXT_PUBLIC_* değişkenleri build-time'da bundle'a gömülür.
+// Railway'da env variable'ı ekledikten sonra MUTLAKA REDEPLOY yapın!
 const getApiUrl = (): string => {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (apiUrl) return apiUrl;
+  // 1. Build-time env variable (Railway'da set edilmeli)
+  const buildTimeUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (buildTimeUrl) return buildTimeUrl;
+
+  // 2. Runtime detection (sadece browser'da)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    
+    // Local development
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:8080/api/v1';
     }
-    console.warn('NEXT_PUBLIC_API_URL is not set. In Railway, set it to your backend URL (e.g. https://your-backend.up.railway.app/api/v1)');
+
+    // Railway production - backend URL'i runtime'da localStorage'dan oku (fallback)
+    // Kullanıcı ilk kez giriş yaparken backend URL'i localStorage'a kaydedilebilir
+    const savedBackendUrl = localStorage.getItem('backend_api_url');
+    if (savedBackendUrl) {
+      return savedBackendUrl;
+    }
+
+    // Railway'da front-end ve back-end aynı domain'de değilse bu çalışmaz
+    // Bu durumda NEXT_PUBLIC_API_URL env variable ZORUNLU
+    console.error('❌ NEXT_PUBLIC_API_URL is not set!');
+    console.error('Railway Front-end Service → Variables → Add:');
+    console.error('NEXT_PUBLIC_API_URL=https://YOUR-BACKEND-SERVICE.up.railway.app/api/v1');
+    console.error('Then REDEPLOY the front-end service!');
+    
+    // Fallback: window.location'dan backend URL'ini tahmin etmeye çalış (genelde çalışmaz)
+    // Railway'da front-end ve back-end farklı servisler olduğu için bu genelde yanlış olur
+    return `${window.location.protocol}//${hostname}/api/v1`; // Bu genelde yanlış olacak
   }
+
+  // Server-side (SSR) - build-time env variable zorunlu
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 };
 
-const API_URL = getApiUrl();
+// Runtime'da her çağrıda yeniden hesapla (build-time'da set edilmemişse runtime'da tespit et)
+let API_URL: string | null = null;
+const getApiUrlRuntime = (): string => {
+  if (!API_URL) {
+    API_URL = getApiUrl();
+    if (typeof window !== 'undefined') {
+      console.log('🔗 API URL:', API_URL);
+    }
+  }
+  return API_URL;
+};
 
 export interface ApiResponse<T> {
   data?: T;
@@ -24,8 +59,9 @@ class ApiClient {
   private baseURL: string;
   private token: string | null = null;
 
-  constructor(baseURL: string) {
-    this.baseURL = baseURL;
+  constructor(baseURL?: string) {
+    // Runtime'da URL'i dinamik olarak al (build-time'da set edilmemişse)
+    this.baseURL = baseURL || getApiUrlRuntime();
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('token');
     }
@@ -157,7 +193,8 @@ class ApiClient {
   }
 }
 
-export const api = new ApiClient(API_URL);
+// Runtime'da API URL'ini dinamik olarak belirle
+export const api = new ApiClient();
 
 // Auth API
 export const authApi = {
