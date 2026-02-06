@@ -1,50 +1,76 @@
 // API URL: Railway'da front-end servisinize NEXT_PUBLIC_API_URL olarak backend URL'inizi verin.
 // ÖNEMLİ: Next.js'te NEXT_PUBLIC_* değişkenleri build-time'da bundle'a gömülür.
 // Railway'da env variable'ı ekledikten sonra MUTLAKA REDEPLOY yapın!
+// 
+// Railway'da şu değişkenleri ekleyin:
+// NEXT_PUBLIC_API_URL=https://cursurback-production.up.railway.app/api/v1
+// NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws
 const getApiUrl = (): string => {
-  // 1. Build-time env variable (Railway'da set edilmeli)
+  // 1. Build-time env variable (Railway'da set edilmeli - ZORUNLU)
   const buildTimeUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (buildTimeUrl) return buildTimeUrl;
+  if (buildTimeUrl && buildTimeUrl.trim() !== '') {
+    return buildTimeUrl.trim();
+  }
 
-  // 2. Runtime detection (sadece browser'da)
+  // 2. Runtime detection (sadece browser'da - sadece localhost için)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
-    // Local development
+    // Local development - sadece localhost için localhost backend kullan
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:8080/api/v1';
     }
 
-    // Railway production - backend URL'i runtime'da localStorage'dan oku (fallback)
-    // Kullanıcı ilk kez giriş yaparken backend URL'i localStorage'a kaydedilebilir
-    const savedBackendUrl = localStorage.getItem('backend_api_url');
-    if (savedBackendUrl) {
-      return savedBackendUrl;
-    }
-
-    // Railway'da front-end ve back-end aynı domain'de değilse bu çalışmaz
-    // Bu durumda NEXT_PUBLIC_API_URL env variable ZORUNLU
-    console.error('❌ NEXT_PUBLIC_API_URL is not set!');
-    console.error('Railway Front-end Service → Variables → Add:');
-    console.error('NEXT_PUBLIC_API_URL=https://YOUR-BACKEND-SERVICE.up.railway.app/api/v1');
-    console.error('Then REDEPLOY the front-end service!');
+    // Production'da (Railway) - env variable ZORUNLU
+    // window.location kullanma çünkü front-end ve back-end farklı domain'lerde
+    console.error('❌ NEXT_PUBLIC_API_URL is not set in Railway!');
+    console.error('🔧 ÇÖZÜM:');
+    console.error('1. Railway Dashboard → Front-end Service → Variables');
+    console.error('2. Şu değişkeni ekleyin:');
+    console.error('   NEXT_PUBLIC_API_URL=https://cursurback-production.up.railway.app/api/v1');
+    console.error('3. REDEPLOY yapın (Deployments → Redeploy)');
+    console.error('');
+    console.error('⚠️  ŞU AN KULLANILAN (YANLIŞ): window.location fallback');
     
-    // Fallback: window.location'dan backend URL'ini tahmin etmeye çalış (genelde çalışmaz)
-    // Railway'da front-end ve back-end farklı servisler olduğu için bu genelde yanlış olur
-    return `${window.location.protocol}//${hostname}/api/v1`; // Bu genelde yanlış olacak
+    // Fallback'i kaldırdık - hata ver ama yanlış URL kullanma
+    // Kullanıcı env variable ekleyip redeploy yapmalı
+    throw new Error(
+      'NEXT_PUBLIC_API_URL environment variable is not set. ' +
+      'Please add it in Railway Front-end Service → Variables and redeploy. ' +
+      'Expected: NEXT_PUBLIC_API_URL=https://cursurback-production.up.railway.app/api/v1'
+    );
   }
 
   // Server-side (SSR) - build-time env variable zorunlu
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+  if (!process.env.NEXT_PUBLIC_API_URL) {
+    throw new Error(
+      'NEXT_PUBLIC_API_URL is required. Set it in Railway environment variables.'
+    );
+  }
+  return process.env.NEXT_PUBLIC_API_URL;
 };
 
-// Runtime'da her çağrıda yeniden hesapla (build-time'da set edilmemişse runtime'da tespit et)
+// Runtime'da her çağrıda yeniden hesapla
 let API_URL: string | null = null;
 const getApiUrlRuntime = (): string => {
   if (!API_URL) {
-    API_URL = getApiUrl();
-    if (typeof window !== 'undefined') {
-      console.log('🔗 API URL:', API_URL);
+    try {
+      API_URL = getApiUrl();
+      if (typeof window !== 'undefined') {
+        console.log('✅ API URL:', API_URL);
+      }
+    } catch (error: any) {
+      // Hata durumunda, kullanıcıya daha iyi bir mesaj göster
+      if (typeof window !== 'undefined') {
+        console.error('❌ API URL hatası:', error.message);
+        // Geçici olarak Railway backend URL'ini kullan (kullanıcı env ekleyene kadar)
+        // Ama bu sadece geçici bir çözüm - kullanıcı mutlaka env variable eklemeli
+        API_URL = 'https://cursurback-production.up.railway.app/api/v1';
+        console.warn('⚠️  Geçici olarak hardcoded URL kullanılıyor:', API_URL);
+        console.warn('⚠️  Lütfen Railway\'da NEXT_PUBLIC_API_URL env variable\'ını ekleyin ve redeploy yapın!');
+      } else {
+        throw error;
+      }
     }
   }
   return API_URL;

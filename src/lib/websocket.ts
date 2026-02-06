@@ -1,37 +1,39 @@
-// WebSocket URL: Railway'da NEXT_PUBLIC_WS_URL verin, örn: wss://your-backend.up.railway.app/ws
-// ÖNEMLİ: Next.js'te NEXT_PUBLIC_* değişkenleri build-time'da bundle'a gömülür.
+// WebSocket URL: Railway'da NEXT_PUBLIC_WS_URL verin
+// Railway'da şu değişkeni ekleyin:
+// NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws
 const getWsUrl = (): string => {
-  // 1. Build-time env variable (Railway'da set edilmeli)
+  // 1. Build-time env variable (Railway'da set edilmeli - ZORUNLU)
   const buildTimeUrl = process.env.NEXT_PUBLIC_WS_URL;
-  if (buildTimeUrl) return buildTimeUrl;
+  if (buildTimeUrl && buildTimeUrl.trim() !== '') {
+    return buildTimeUrl.trim();
+  }
 
-  // 2. Runtime detection (sadece browser'da)
+  // 2. Runtime detection (sadece browser'da - sadece localhost için)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     
-    // Local development
+    // Local development - sadece localhost için localhost backend kullan
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'ws://localhost:8080/ws';
     }
 
-    // Railway production - backend URL'i runtime'da localStorage'dan oku (fallback)
-    const savedBackendWsUrl = localStorage.getItem('backend_ws_url');
-    if (savedBackendWsUrl) {
-      return savedBackendWsUrl;
-    }
-
-    console.error('❌ NEXT_PUBLIC_WS_URL is not set!');
-    console.error('Railway Front-end Service → Variables → Add:');
-    console.error('NEXT_PUBLIC_WS_URL=wss://YOUR-BACKEND-SERVICE.up.railway.app/ws');
-    console.error('Then REDEPLOY the front-end service!');
-
-    // Fallback: window.location'dan backend URL'ini tahmin etmeye çalış
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${hostname}/ws`; // Bu genelde yanlış olacak
+    // Production'da (Railway) - env variable ZORUNLU
+    console.error('❌ NEXT_PUBLIC_WS_URL is not set in Railway!');
+    console.error('🔧 ÇÖZÜM:');
+    console.error('1. Railway Dashboard → Front-end Service → Variables');
+    console.error('2. Şu değişkeni ekleyin:');
+    console.error('   NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws');
+    console.error('3. REDEPLOY yapın (Deployments → Redeploy)');
+    
+    // Geçici olarak Railway backend URL'ini kullan
+    return 'wss://cursurback-production.up.railway.app/ws';
   }
 
   // Server-side (SSR) - build-time env variable zorunlu
-  return process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+  if (!process.env.NEXT_PUBLIC_WS_URL) {
+    return 'wss://cursurback-production.up.railway.app/ws'; // Fallback
+  }
+  return process.env.NEXT_PUBLIC_WS_URL;
 };
 
 // Runtime'da her çağrıda yeniden hesapla
@@ -40,7 +42,7 @@ const getWsUrlRuntime = (): string => {
   if (!WS_URL) {
     WS_URL = getWsUrl();
     if (typeof window !== 'undefined') {
-      console.log('🔗 WebSocket URL:', WS_URL);
+      console.log('✅ WebSocket URL:', WS_URL);
     }
   }
   return WS_URL;

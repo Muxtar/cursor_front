@@ -8,16 +8,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
 // Get base API URL for file serving (remove /api/v1 suffix)
-// Runtime'da API URL'ini dinamik olarak al
 const getBaseUrl = () => {
+  // API URL'ini api.ts'den al (aynı mantık)
   let apiUrl: string;
   if (typeof window !== 'undefined') {
-    // Browser'da: localStorage'dan veya window.location'dan
-    const savedUrl = localStorage.getItem('backend_api_url');
-    apiUrl = savedUrl || process.env.NEXT_PUBLIC_API_URL || `${window.location.protocol}//${window.location.hostname}/api/v1`;
+    // Browser'da: build-time env variable veya fallback
+    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
   } else {
     // SSR: build-time env variable
-    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
   }
   // Remove /api/v1 suffix to get base URL
   return apiUrl.replace('/api/v1', '');
