@@ -3,13 +3,14 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import type { TranslationKey } from '@/lib/translations';
 import { authApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
 type UserType = 'normal' | 'company';
 
 // Şirket kategorileri (iş alanı)
-const COMPANY_CATEGORIES: { value: string; labelKey: string }[] = [
+const COMPANY_CATEGORIES: { value: string; labelKey: TranslationKey }[] = [
   { value: 'technology', labelKey: 'categoryTechnology' },
   { value: 'retail', labelKey: 'categoryRetail' },
   { value: 'food', labelKey: 'categoryFood' },
