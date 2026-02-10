@@ -21,6 +21,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showRemoveContactModal, setShowRemoveContactModal] = useState(false);
+  const [addContactByNumber, setAddContactByNumber] = useState(false);
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactName, setNewContactName] = useState('');
+  const [showChatModeModal, setShowChatModeModal] = useState(false);
+  const [pendingChatUserId, setPendingChatUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -123,13 +128,56 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
   const handleAddContact = async (userId: string) => {
     try {
-      await contactApi.addContact(userId);
+      await contactApi.addContact({ user_id: userId });
       alert('Contact added successfully');
       setShowAddContactModal(false);
       setSearchQuery('');
       loadContacts();
     } catch (error: any) {
       alert('Failed to add contact: ' + error.message);
+    }
+  };
+
+  const handleAddContactByPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContactPhone.trim()) return;
+    try {
+      await contactApi.addContact({
+        phone_number: newContactPhone.trim(),
+        display_name: newContactName.trim() || newContactPhone.trim(),
+      });
+      alert('Contact added successfully');
+      setShowAddContactModal(false);
+      setAddContactByNumber(false);
+      setNewContactPhone('');
+      setNewContactName('');
+      loadContacts();
+    } catch (error: any) {
+      alert('Failed to add contact: ' + (error?.message || 'Unknown error'));
+    }
+  };
+
+  const openChatWithContact = (userId: string) => {
+    setPendingChatUserId(userId);
+    setShowChatModeModal(true);
+  };
+
+  const handleCreateChatWithMode = async (isAnonymous: boolean) => {
+    if (!pendingChatUserId) return;
+    try {
+      const chat: any = await chatApi.createChat({
+        type: 'direct',
+        member_ids: [pendingChatUserId],
+        is_anonymous: isAnonymous,
+      });
+      const chatId = chat.id || chat._id || chat.chat_id;
+      setShowChatModeModal(false);
+      setPendingChatUserId(null);
+      if (onChatSelect) onChatSelect(chatId);
+      loadChats();
+      router.push('/chat');
+    } catch (error: any) {
+      alert('Failed to start chat: ' + (error?.message || 'Unknown error'));
     }
   };
 
@@ -292,7 +340,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               {searchResults.map((result) => (
                 <button
                   key={result.id || result._id}
-                  onClick={() => handleCreateChat(result.id || result._id)}
+                  onClick={() => openChatWithContact(result.id || result._id)}
                   className={`w-full p-4 text-left transition-colors ${
                     actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                   }`}
@@ -320,28 +368,30 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   No chats yet
                 </div>
               ) : (
-                chats.map((chat) => (
+                chats.map((chat) => {
+                  const chatId = chat.id || chat._id;
+                  const isAnonymous = chat.other_party_anonymous === true;
+                  const chatTitle = isAnonymous ? 'Anonymous' : (chat.group_name || chat.members?.[0]?.username || 'Chat');
+                  return (
                   <button
-                    key={chat.id || chat._id}
+                    key={chatId}
                     onClick={() => {
-                      if (onChatSelect) {
-                        onChatSelect(chat.id || chat._id);
-                      }
+                      if (onChatSelect) onChatSelect(chatId);
                       router.push('/chat');
                     }}
                     className={`w-full p-4 text-left transition-colors ${
-                      selectedChat === (chat.id || chat._id)
+                      selectedChat === chatId
                         ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
                         : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                        {chat.group_name?.[0]?.toUpperCase() || chat.members?.[0]?.username?.[0]?.toUpperCase() || 'C'}
+                        {chatTitle?.[0]?.toUpperCase() || 'C'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                          {chat.group_name || chat.members?.[0]?.username || 'Chat'}
+                          {chatTitle}
                         </p>
                         {chat.last_message && (
                           <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -351,7 +401,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                       </div>
                     </div>
                   </button>
-                ))
+                  );
+                })
               )}
             </div>
           ) : (
@@ -361,37 +412,55 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   No contacts yet
                 </div>
               ) : (
-                contacts.map((contact: any) => (
+                contacts.map((contact: any) => {
+                  const contactUserId = contact.user?.id ?? contact.user?._id ?? contact.contact?.contact_id;
+                  const displayName = contact.user?.username || contact.user?.display_name || contact.user?.phone_number || 'Contact';
+                  const displaySub = contact.user?.phone_number || '';
+                  return (
                   <div
-                    key={contact.id || contact._id}
+                    key={contact.contact?.id || contact.id || contact._id}
                     className={`w-full p-4 flex items-center justify-between transition-colors ${
                       actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
                       <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                        {contact.user?.username?.[0]?.toUpperCase() || contact.user?.phone_number?.[0] || 'U'}
+                        {displayName?.[0]?.toUpperCase() || displaySub?.[0] || 'U'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                          {contact.user?.username || contact.user?.phone_number || 'Contact'}
+                          {displayName}
                         </p>
                         <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {contact.user?.phone_number}
+                          {displaySub || (contactUserId ? '' : 'Not in app')}
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleRemoveContact(contact.id || contact._id)}
-                      className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition`}
-                      title="Remove Contact"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {contactUserId && (
+                        <button
+                          onClick={() => openChatWithContact(contactUserId)}
+                          className={`p-2 ${actualTheme === 'dark' ? 'text-blue-400 hover:bg-gray-600' : 'text-blue-600 hover:bg-blue-50'} rounded transition`}
+                          title="Message"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleRemoveContact(contact.contact?.id || contact.id || contact._id)}
+                        className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition`}
+                        title="Remove Contact"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -494,7 +563,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     {searchResults.map((result) => (
                       <button
                         key={result.id || result._id}
-                        onClick={() => handleCreateChat(result.id || result._id)}
+                        onClick={() => openChatWithContact(result.id || result._id)}
                         className={`w-full p-3 text-left rounded-lg transition flex items-center space-x-3 ${
                           actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                         }`}
@@ -526,12 +595,12 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
       {/* Add Contact Modal */}
       {showAddContactModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAddContactModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowAddContactModal(false); setAddContactByNumber(false); setNewContactPhone(''); setNewContactName(''); }}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg w-96 max-h-[80vh] overflow-hidden`} onClick={(e) => e.stopPropagation()}>
             <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
               <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Add Contact</h2>
               <button
-                onClick={() => setShowAddContactModal(false)}
+                onClick={() => { setShowAddContactModal(false); setAddContactByNumber(false); }}
                 className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -540,53 +609,131 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               </button>
             </div>
             <div className="p-4">
-              <input
-                type="text"
-                placeholder="Search users..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  handleSearchUsers(e.target.value);
-                }}
-                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  actualTheme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300'
-                }`}
-                autoFocus
-              />
-              <div className="mt-4 max-h-96 overflow-y-auto">
-                {searchResults.length > 0 ? (
-                  <div className="space-y-2">
-                    {searchResults.map((result) => (
-                      <button
-                        key={result.id || result._id}
-                        onClick={() => handleAddContact(result.id || result._id)}
-                        className={`w-full p-3 text-left rounded-lg transition flex items-center space-x-3 ${
-                          actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                          {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
-                        </div>
-                        <div>
-                          <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {result.username || result.phone_number}
-                          </p>
-                          <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {result.phone_number}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : searchQuery ? (
-                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No users found</p>
-                ) : (
-                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Start typing to search users</p>
-                )}
+              <div className="flex gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setAddContactByNumber(false)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium ${!addContactByNumber ? (actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white') : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
+                >
+                  Search user
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAddContactByNumber(true)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium ${addContactByNumber ? (actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white') : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
+                >
+                  Number + name
+                </button>
               </div>
+              {addContactByNumber ? (
+                <form onSubmit={handleAddContactByPhone} className="space-y-3">
+                  <input
+                    type="tel"
+                    placeholder="Phone number (e.g. +994501234567)"
+                    value={newContactPhone}
+                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Contact name"
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newContactPhone.trim()}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
+                  >
+                    Add contact
+                  </button>
+                </form>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Search users..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      handleSearchUsers(e.target.value);
+                    }}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                    autoFocus
+                  />
+                  <div className="mt-4 max-h-96 overflow-y-auto">
+                    {searchResults.length > 0 ? (
+                      <div className="space-y-2">
+                        {searchResults.map((result) => (
+                          <button
+                            key={result.id || result._id}
+                            onClick={() => handleAddContact(result.id || result._id)}
+                            className={`w-full p-3 text-left rounded-lg transition flex items-center space-x-3 ${
+                              actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                              {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                            </div>
+                            <div>
+                              <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {result.username || result.phone_number}
+                              </p>
+                              <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {result.phone_number}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : searchQuery ? (
+                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No users found</p>
+                    ) : (
+                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Start typing to search users</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat mode: Normal vs Anonymous */}
+      {showChatModeModal && pendingChatUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowChatModeModal(false); setPendingChatUserId(null); }}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-80 shadow-xl`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Start chat as</h3>
+            <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Your identity will be visible in normal chat. In anonymous chat the other person will not see your number.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleCreateChatWithMode(false)}
+                className={`flex-1 py-3 rounded-xl font-medium ${actualTheme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+              >
+                Normal
+              </button>
+              <button
+                onClick={() => handleCreateChatWithMode(true)}
+                className="flex-1 py-3 rounded-xl font-medium bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Anonymous
+              </button>
+            </div>
+            <button
+              onClick={() => { setShowChatModeModal(false); setPendingChatUserId(null); }}
+              className={`mt-3 w-full py-2 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

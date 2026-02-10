@@ -8,15 +8,21 @@ import { chatApi } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function ChatPage() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { actualTheme } = useTheme();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocketClient | null>(null);
+
+  useEffect(() => {
+    const openChatId = searchParams.get('open');
+    if (openChatId) setSelectedChat(openChatId);
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) {

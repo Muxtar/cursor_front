@@ -24,7 +24,7 @@ const getBaseUrl = () => {
 
 interface Message {
   id: string;
-  sender_id: string;
+  sender_id: string | null;
   content: string;
   message_type: string;
   file_url?: string;
@@ -238,7 +238,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   };
 
   const isMyMessage = (message: Message) => {
-    return message.sender_id === user?.id || !message.is_anonymous;
+    return message.sender_id != null && (message.sender_id === user?.id || message.sender_id === user?._id);
   };
 
   const getDisplayName = (message: Message) => {
@@ -262,11 +262,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             </button>
           )}
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-semibold">
-            {chatInfo?.group_name?.[0]?.toUpperCase() || 'U'}
+            {(chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
           </div>
           <div>
             <h2 className="text-lg font-semibold">
-              {chatInfo?.group_name || 'Chat'}
+              {chatInfo?.other_party_anonymous ? 'Anonymous' : (chatInfo?.group_name || 'Chat')}
             </h2>
             {isTyping && (
               <p className="text-xs text-green-100">typing...</p>
@@ -314,7 +314,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       <div className={`flex-1 overflow-y-auto p-4 space-y-2 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
         {messages.map((message, index) => {
           const isMine = isMyMessage(message);
-          const showAvatar = index === 0 || messages[index - 1].sender_id !== message.sender_id;
+          const senderKey = message.sender_id ?? (message.is_anonymous ? 'anonymous' : '');
+          const showAvatar = index === 0 || (messages[index - 1].sender_id ?? (messages[index - 1].is_anonymous ? 'anonymous' : '')) !== senderKey;
           const showTime = index === messages.length - 1 || 
                           new Date(messages[index + 1].created_at).getTime() - new Date(message.created_at).getTime() > 300000;
           

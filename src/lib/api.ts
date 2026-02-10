@@ -202,6 +202,7 @@ export const authApi = {
 // User API
 export const userApi = {
   getMe: () => api.get('/users/me'),
+  getUserById: (id: string) => api.get(`/users/profile/${id}`),
   updateMe: (data: any) => api.put('/users/me', data),
   updateLocation: (data: { latitude: number; longitude: number; address?: string }) =>
     api.put('/users/location', data),
@@ -216,7 +217,9 @@ export const userApi = {
 // Contact API
 export const contactApi = {
   getContacts: () => api.get('/contacts'),
-  addContact: (userId: string) => api.post('/contacts', { user_id: userId }),
+  addContact: (data: { user_id?: string; phone_number?: string; display_name?: string }) =>
+    api.post('/contacts', data),
+  addContactByUserId: (userId: string) => api.post('/contacts', { user_id: userId }),
   scanQRCode: (qrData: string) => api.post('/contacts/scan', { qr_data: qrData }),
   deleteContact: (contactId: string) => api.delete(`/contacts/${contactId}`),
   removeContact: (contactId: string) => api.delete(`/contacts/${contactId}`),
@@ -225,11 +228,20 @@ export const contactApi = {
 // Chat API
 export const chatApi = {
   getChats: () => api.get('/chats'),
-  createChat: (data: { type: string; member_ids?: string[]; group_name?: string }) =>
+  createChat: (data: { type: string; member_ids?: string[]; group_name?: string; is_anonymous?: boolean }) =>
     api.post('/chats', data),
   getChat: (chatId: string) => api.get(`/chats/${chatId}`),
   getMessages: (chatId: string) => api.get(`/chats/${chatId}/messages`),
   sendMessage: (chatId: string, data: any) => api.post(`/chats/${chatId}/messages`, data),
+};
+
+// Profile comments (anonymous comments about a user; profile owner can reply to commenter)
+export const profileCommentApi = {
+  create: (targetUserId: string, text: string) =>
+    api.post('/profile-comments', { target_user_id: targetUserId, text }),
+  list: (targetUserId: string) =>
+    api.get(`/profile-comments?target_user_id=${encodeURIComponent(targetUserId)}`),
+  reply: (commentId: string) => api.post(`/profile-comments/${commentId}/reply`),
 };
 
 // Message API

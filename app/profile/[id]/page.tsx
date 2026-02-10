@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { userApi, productApi, proposalApi } from '@/lib/api';
+import { userApi, productApi, proposalApi, profileCommentApi, chatApi } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
 import Sidebar from '@/components/Sidebar';
 import Link from 'next/link';
@@ -25,6 +25,9 @@ export default function ProfilePage() {
   const [proposalTitle, setProposalTitle] = useState('');
   const [proposalContent, setProposalContent] = useState('');
   const [sendingProposal, setSendingProposal] = useState(false);
+  const [comments, setComments] = useState<{ id: string; text: string; created_at: string }[]>([]);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
 
   useEffect(() => {
     if (currentUser && userId) {
@@ -32,6 +35,7 @@ export default function ProfilePage() {
       setIsOwnProfile(isOwn);
       loadProfile();
       loadProducts();
+      loadComments();
     } else if (!currentUser) {
       router.push('/login');
     }
@@ -39,12 +43,22 @@ export default function ProfilePage() {
 
   const loadProfile = async () => {
     try {
-      const data = await userApi.getMe();
+      const isOwn = currentUser?.id === userId || (currentUser as any)?._id === userId;
+      const data = isOwn ? await userApi.getMe() : await userApi.getUserById(userId);
       setProfileUser(data);
     } catch (error) {
       console.error('Failed to load profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadComments = async () => {
+    try {
+      const data: any = await profileCommentApi.list(userId);
+      setComments(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load comments:', error);
     }
   };
 
@@ -54,6 +68,35 @@ export default function ProfilePage() {
       setProducts(Array.isArray(data) ? data : data?.products || []);
     } catch (error) {
       console.error('Failed to load products:', error);
+    }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCommentText.trim()) return;
+    setSendingComment(true);
+    try {
+      await profileCommentApi.create(userId, newCommentText.trim());
+      setNewCommentText('');
+      loadComments();
+    } catch (error: any) {
+      alert('Failed to add comment: ' + (error?.message || 'Unknown error'));
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const handleReplyToComment = async (commentId: string) => {
+    try {
+      const res: any = await profileCommentApi.reply(commentId);
+      const chatId = res?.chat_id;
+      if (chatId) {
+        router.push(`/chat?open=${chatId}`);
+      } else {
+        router.push('/chat');
+      }
+    } catch (error: any) {
+      alert('Failed to start conversation: ' + (error?.message || 'Unknown error'));
     }
   };
 
@@ -246,6 +289,64 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Comments (anonymous; profile owner can reply to commenter) */}
+        <div className="mt-8">
+          <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            Comments
+          </h2>
+          <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            {isOwnProfile
+              ? 'Comments about you. Authors are anonymous. You can reply to start a conversation.'
+              : 'Comments are anonymous. Only the profile owner can see who wrote and can reply.'}
+          </p>
+          {!isOwnProfile && (
+            <form onSubmit={handleAddComment} className="mb-6">
+              <textarea
+                value={newCommentText}
+                onChange={(e) => setNewCommentText(e.target.value)}
+                placeholder="Write an anonymous comment..."
+                rows={3}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 resize-none ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                }`}
+              />
+              <button
+                type="submit"
+                disabled={sendingComment || !newCommentText.trim()}
+                className="mt-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
+              >
+                {sendingComment ? 'Sending...' : 'Post comment (anonymous)'}
+              </button>
+            </form>
+          )}
+          <div className={`rounded-lg ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md divide-y ${actualTheme === 'dark' ? 'divide-gray-700' : 'divide-gray-200'}`}>
+            {comments.length === 0 ? (
+              <p className={`p-6 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                No comments yet.
+              </p>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                  <p className={`${actualTheme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-xs ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {new Date(comment.created_at).toLocaleDateString()}
+                    </span>
+                    {isOwnProfile && (
+                      <button
+                        onClick={() => handleReplyToComment(comment.id)}
+                        className="text-sm text-green-500 hover:text-green-600 font-medium"
+                      >
+                        Reply / Contact writer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
 
