@@ -6,6 +6,21 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { authApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
+type UserType = 'normal' | 'company';
+
+// Şirket kategorileri (iş alanı)
+const COMPANY_CATEGORIES: { value: string; labelKey: string }[] = [
+  { value: 'technology', labelKey: 'categoryTechnology' },
+  { value: 'retail', labelKey: 'categoryRetail' },
+  { value: 'food', labelKey: 'categoryFood' },
+  { value: 'healthcare', labelKey: 'categoryHealthcare' },
+  { value: 'education', labelKey: 'categoryEducation' },
+  { value: 'finance', labelKey: 'categoryFinance' },
+  { value: 'real-estate', labelKey: 'categoryRealEstate' },
+  { value: 'manufacturing', labelKey: 'categoryManufacturing' },
+  { value: 'services', labelKey: 'categoryServices' },
+  { value: 'other', labelKey: 'categoryOther' },
+];
 
 type Country = {
   name: string;
@@ -124,6 +139,9 @@ export default function PhoneAuthWidget() {
   const [localPhone, setLocalPhone] = useState('');
   const [code, setCode] = useState('');
   const [username, setUsername] = useState('');
+  const [userType, setUserType] = useState<UserType>('normal');
+  const [companyName, setCompanyName] = useState('');
+  const [companyCategory, setCompanyCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sentCode, setSentCode] = useState<string | null>(null);
@@ -216,6 +234,10 @@ export default function PhoneAuthWidget() {
 
   const completeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (userType === 'company' && (!companyName.trim() || !companyCategory)) {
+      setError(t('fillCompanyFields'));
+      return;
+    }
     setError('');
     setLoading(true);
     try {
@@ -223,7 +245,9 @@ export default function PhoneAuthWidget() {
         phoneNumber: fullPhone,
         code,
         username: username || undefined,
-        userType: 'normal',
+        userType,
+        companyName: userType === 'company' ? companyName.trim() : undefined,
+        companyCategory: userType === 'company' ? companyCategory : undefined,
       });
     } catch (err: any) {
       setError(err?.message || t('registrationFailed'));
@@ -384,6 +408,64 @@ export default function PhoneAuthWidget() {
             <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
               {t('newAccountFor')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('accountType')}</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUserType('normal')}
+                  className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                    userType === 'normal'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {t('normalUser')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserType('company')}
+                  className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                    userType === 'company'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {t('companyAccount')}
+                </button>
+              </div>
+            </div>
+
+            {userType === 'company' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('companyName')}</label>
+                  <input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder={t('companyNamePlaceholder')}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('companyCategory')}</label>
+                  <select
+                    value={companyCategory}
+                    onChange={(e) => setCompanyCategory(e.target.value)}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                  >
+                    <option value="">{t('selectCategory')}</option>
+                    {COMPANY_CATEGORIES.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {t(cat.labelKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
               <input
@@ -400,7 +482,7 @@ export default function PhoneAuthWidget() {
             )}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (userType === 'company' && (!companyName.trim() || !companyCategory))}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
               {loading ? t('creating') : t('createAccount')}
