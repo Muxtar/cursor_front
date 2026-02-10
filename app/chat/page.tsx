@@ -1,20 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { chatApi } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
-export default function ChatPage() {
+function ChatContent() {
   const { user } = useAuth();
-  const { t } = useLanguage();
   const { actualTheme } = useTheme();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocketClient | null>(null);
@@ -69,10 +65,7 @@ export default function ChatPage() {
 
   return (
     <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Sidebar */}
       <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} />
-
-      {/* Main Chat Area */}
       <div className={`flex-1 flex flex-col ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
         {selectedChat ? (
           <ChatWindow chatId={selectedChat} ws={ws} onBack={() => setSelectedChat(null)} />
@@ -95,5 +88,13 @@ export default function ChatPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50"><div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent" /></div>}>
+      <ChatContent />
+    </Suspense>
   );
 }
