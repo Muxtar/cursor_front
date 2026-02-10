@@ -34,6 +34,8 @@ interface AuthContextType {
     companyName?: string;
     companyCategory?: string;
   }) => Promise<void>;
+  /** Kodu doğruladıktan sonra hesap tipi ekranından devam etmek için (mevcut kullanıcı) */
+  completeLoginWithStoredSession: (token: string, user: any) => void;
   logout: () => void;
   updateUser: (data: Partial<User>) => Promise<void>;
 }
@@ -136,6 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const completeLoginWithStoredSession = (token: string, user: any) => {
+    api.setToken(token);
+    setUser(normalizeUser(user));
+    router.push('/chat');
+  };
+
   const logout = () => {
     api.clearToken();
     setUser(null);
@@ -152,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithCode, registerWithCode, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithCode, registerWithCode, completeLoginWithStoredSession, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

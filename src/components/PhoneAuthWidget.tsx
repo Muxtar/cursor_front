@@ -130,8 +130,11 @@ function normalizePhone(dialCode: string, local: string) {
   return `${dialCode}${digits}`;
 }
 
+// Doğrulama sonrası mevcut kullanıcı için saklanan oturum (hesap tipi ekranından devam için)
+type PendingLogin = { token: string; user: any };
+
 export default function PhoneAuthWidget() {
-  const { loginWithCode, registerWithCode } = useAuth();
+  const { registerWithCode, completeLoginWithStoredSession } = useAuth();
   const { t } = useLanguage();
 
   const [step, setStep] = useState<Step>('phone');
@@ -146,6 +149,10 @@ export default function PhoneAuthWidget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sentCode, setSentCode] = useState<string | null>(null);
+  /** Mevcut kullanıcı mı (kodu doğruladı, hesap tipi ekranından devam edecek) */
+  const [isExistingUser, setIsExistingUser] = useState<boolean | null>(null);
+  /** Mevcut kullanıcı için verify sonrası token ve user (hesap tipi ekranından Devam’da kullanılır) */
+  const [pendingLogin, setPendingLogin] = useState<PendingLogin | null>(null);
 
   const selectedCountry = useMemo(
     () => COUNTRIES.find((c) => c.code === selectedCountryCode) ?? COUNTRIES[0],
@@ -219,11 +226,20 @@ export default function PhoneAuthWidget() {
       return;
     }
     setLoading(true);
+    setPendingLogin(null);
+    setIsExistingUser(null);
     try {
-      await loginWithCode(fullPhone, code);
+      const response: any = await authApi.verifyCode(fullPhone, code);
+      // Mevcut kullanıcı: token ve user geldi, her zaman hesap tipi ekranına geç
+      setPendingLogin({ token: response.token, user: response.user });
+      setIsExistingUser(true);
+      const ut = response.user?.user_type;
+      if (ut === 'company' || ut === 'normal') setUserType(ut);
+      setStep('details');
     } catch (err: any) {
       const msg = (err?.message || '').toLowerCase();
       if (msg.includes('user not found') || msg.includes('register')) {
+        setIsExistingUser(false);
         setStep('details');
       } else {
         setError(err?.message || t('invalidCode'));
@@ -256,8 +272,19 @@ export default function PhoneAuthWidget() {
     }
   };
 
+  /** Mevcut kullanıcı: sadece hesap tipi seçip Devam (token zaten verify’da alındı) */
+  const completeExistingUserLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingLogin) return;
+    completeLoginWithStoredSession(pendingLogin.token, pendingLogin.user);
+    setPendingLogin(null);
+    setIsExistingUser(null);
+  };
+
   const back = () => {
     setError('');
+    setPendingLogin(null);
+    setIsExistingUser(null);
     if (step === 'code') {
       setStep('phone');
       setCode('');
@@ -405,7 +432,7 @@ export default function PhoneAuthWidget() {
         )}
 
         {step === 'details' && (
-          <form onSubmit={completeRegister} className="space-y-4">
+          <form onSubmit={isExistingUser ? completeExistingUserLogin : completeRegister} className="space-y-4">
             <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
               {t('newAccountFor')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
@@ -438,7 +465,7 @@ export default function PhoneAuthWidget() {
               </div>
             </div>
 
-            {userType === 'company' && (
+            {!isExistingUser && userType === 'company' && (
               <>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('companyName')}</label>
@@ -467,15 +494,17 @@ export default function PhoneAuthWidget() {
               </>
             )}
 
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t('usernameOptional')}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-              />
-            </div>
+            {!isExistingUser && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={t('usernameOptional')}
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                />
+              </div>
+            )}
             {error && (
               <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
                 {error}
@@ -483,10 +512,13 @@ export default function PhoneAuthWidget() {
             )}
             <button
               type="submit"
-              disabled={loading || (userType === 'company' && (!companyName.trim() || !companyCategory))}
+              disabled={
+                loading ||
+                (!isExistingUser && userType === 'company' && (!companyName.trim() || !companyCategory))
+              }
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
-              {loading ? t('creating') : t('createAccount')}
+              {isExistingUser ? t('continue') : loading ? t('creating') : t('createAccount')}
             </button>
             <button
               type="button"
