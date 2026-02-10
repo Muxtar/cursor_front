@@ -293,7 +293,7 @@ export const groupApi = {
 
 // Proposal API
 export const proposalApi = {
-  createProposal: (data: { receiver_id: string; title: string; content: string }) =>
+  createProposal: (data: { receiver_id: string; title: string; content: string; chat_anonymous?: boolean }) =>
     api.post('/proposals', data),
   getProposals: () => api.get('/proposals'),
   acceptProposal: (proposalId: string) => api.put(`/proposals/${proposalId}/accept`),

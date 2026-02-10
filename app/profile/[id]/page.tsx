@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { userApi, productApi, proposalApi, profileCommentApi, chatApi } from '@/lib/api';
+import { userApi, productApi, proposalApi, profileCommentApi, chatApi, fileApi } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
 import Sidebar from '@/components/Sidebar';
 import Link from 'next/link';
@@ -28,6 +28,10 @@ export default function ProfilePage() {
   const [comments, setComments] = useState<{ id: string; text: string; created_at: string }[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [proposalChatAnonymous, setProposalChatAnonymous] = useState(false);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     if (currentUser && userId) {
@@ -36,6 +40,7 @@ export default function ProfilePage() {
       loadProfile();
       loadProducts();
       loadComments();
+      if (isOwn) loadProposals();
     } else if (!currentUser) {
       router.push('/login');
     }
@@ -71,6 +76,15 @@ export default function ProfilePage() {
     }
   };
 
+  const loadProposals = async () => {
+    try {
+      const data: any = await proposalApi.getProposals();
+      setProposals(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load proposals:', error);
+    }
+  };
+
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCommentText.trim()) return;
@@ -101,8 +115,8 @@ export default function ProfilePage() {
   };
 
   const handleSendProposal = async () => {
-    if (!proposalTitle.trim() || !proposalContent.trim()) {
-      alert('Please fill in both title and content');
+    if (!proposalContent.trim()) {
+      alert('Please write your proposal');
       return;
     }
 
@@ -110,17 +124,69 @@ export default function ProfilePage() {
     try {
       await proposalApi.createProposal({
         receiver_id: userId,
-        title: proposalTitle,
-        content: proposalContent,
+        title: proposalTitle.trim() || 'Proposal',
+        content: proposalContent.trim(),
+        chat_anonymous: proposalChatAnonymous,
       });
-      alert('Proposal sent successfully!');
+      alert('Proposal sent! If they accept, a chat will open.');
       setShowProposalModal(false);
       setProposalTitle('');
       setProposalContent('');
+      setProposalChatAnonymous(false);
+      loadProposals();
     } catch (error: any) {
       alert('Failed to send proposal: ' + error.message);
     } finally {
       setSendingProposal(false);
+    }
+  };
+
+  const handleAcceptProposal = async (proposalId: string) => {
+    setAcceptingId(proposalId);
+    try {
+      const res: any = await proposalApi.acceptProposal(proposalId);
+      const chatId = res?.chat_id;
+      if (chatId) {
+        router.push(`/chat?open=${chatId}`);
+      } else {
+        loadProposals();
+      }
+    } catch (error: any) {
+      alert('Failed to accept: ' + (error?.message || 'Unknown error'));
+    } finally {
+      setAcceptingId(null);
+    }
+  };
+
+  const handleRejectProposal = async (proposalId: string) => {
+    try {
+      await proposalApi.rejectProposal(proposalId);
+      loadProposals();
+    } catch (error: any) {
+      alert('Failed to reject: ' + (error?.message || 'Unknown error'));
+    }
+  };
+
+  const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !isOwnProfile) return;
+    setUploadingPhoto(true);
+    try {
+      const res: any = await fileApi.uploadFile(file);
+      const fileUrl = res?.file_url || res?.url;
+      if (fileUrl) {
+        const base = (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL)
+          ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '')
+          : 'http://localhost:8080';
+        const avatarUrl = fileUrl.startsWith('http') ? fileUrl : `${base}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+        await userApi.updateMe({ avatar: avatarUrl });
+        loadProfile();
+      }
+    } catch (err: any) {
+      alert('Failed to update photo: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
     }
   };
 
@@ -188,9 +254,29 @@ export default function ProfilePage() {
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6 mb-6`}>
           <div className="flex items-start space-x-6">
             <div className="relative">
-              <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-green-600' : 'bg-green-500'} rounded-full flex items-center justify-center text-white text-3xl font-semibold`}>
-                {profileUser.username?.[0]?.toUpperCase() || profileUser.phone_number?.[0] || 'U'}
-              </div>
+              <label className={`block w-24 h-24 rounded-full overflow-hidden cursor-pointer ${isOwnProfile ? 'hover:opacity-90' : ''}`} title={isOwnProfile ? 'Change profile photo' : ''}>
+                {profileUser.avatar ? (
+                  <img src={profileUser.avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className={`w-full h-full ${actualTheme === 'dark' ? 'bg-green-600' : 'bg-green-500'} flex items-center justify-center text-white text-3xl font-semibold`}>
+                    {profileUser.username?.[0]?.toUpperCase() || profileUser.phone_number?.[0] || 'U'}
+                  </div>
+                )}
+                {isOwnProfile && (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleProfilePhotoChange}
+                    disabled={uploadingPhoto}
+                  />
+                )}
+              </label>
+              {isOwnProfile && uploadingPhoto && (
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center text-white text-sm">
+                  Uploading...
+                </div>
+              )}
               {isOwnProfile && profileUser.qr_code && (
                 <button
                   onClick={() => setShowQRCode(true)}
@@ -290,6 +376,77 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Proposals (only on own profile) */}
+        {isOwnProfile && (
+          <div className="mt-8 space-y-8">
+            <div>
+              <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Proposals received
+              </h2>
+              <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                When you accept, a chat opens with the sender. They can choose to chat anonymously (you won&apos;t see their number).
+              </p>
+              <div className={`rounded-lg ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md divide-y ${actualTheme === 'dark' ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                {proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending').length === 0 ? (
+                  <p className={`p-6 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No pending proposals</p>
+                ) : (
+                  proposals
+                    .filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending')
+                    .map((p: any) => (
+                      <div key={p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                        <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                        <p className={`mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                        <p className={`text-xs mt-2 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                          {new Date(p.created_at).toLocaleDateString()}
+                        </p>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => handleAcceptProposal(p.id || p._id)}
+                            disabled={acceptingId === (p.id || p._id)}
+                            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm"
+                          >
+                            {acceptingId === (p.id || p._id) ? 'Opening...' : 'Accept (open chat)'}
+                          </button>
+                          <button
+                            onClick={() => handleRejectProposal(p.id || p._id)}
+                            className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+            <div>
+              <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Proposals you sent
+              </h2>
+              <div className={`rounded-lg ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md divide-y ${actualTheme === 'dark' ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                {proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id)).length === 0 ? (
+                  <p className={`p-6 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No proposals sent</p>
+                ) : (
+                  proposals
+                    .filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id))
+                    .map((p: any) => (
+                      <div key={p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                        <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                        <p className={`mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
+                          {p.status}
+                        </span>
+                        <p className={`text-xs mt-1 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                          {new Date(p.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Comments (anonymous; profile owner can reply to commenter) */}
         <div className="mt-8">
@@ -397,41 +554,34 @@ export default function ProfilePage() {
             <div className="space-y-4">
               <div>
                 <label className={`block text-sm font-medium mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Title
-                </label>
-                <input
-                  type="text"
-                  value={proposalTitle}
-                  onChange={(e) => setProposalTitle(e.target.value)}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${
-                    actualTheme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300'
-                  }`}
-                  placeholder="Proposal title"
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Content
+                  Your message
                 </label>
                 <textarea
                   value={proposalContent}
                   onChange={(e) => setProposalContent(e.target.value)}
-                  rows={5}
+                  rows={4}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none ${
                     actualTheme === 'dark'
                       ? 'bg-gray-700 border-gray-600 text-white'
                       : 'bg-white border-gray-300'
                   }`}
-                  placeholder="Describe your proposal..."
+                  placeholder="e.g. I'd like to get to know you"
                 />
               </div>
+              <label className={`flex items-center gap-2 cursor-pointer ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                <input
+                  type="checkbox"
+                  checked={proposalChatAnonymous}
+                  onChange={(e) => setProposalChatAnonymous(e.target.checked)}
+                  className="rounded border-gray-400"
+                />
+                <span className="text-sm">When accepted, open chat as anonymous (they won&apos;t see my number)</span>
+              </label>
               <button
                 onClick={handleSendProposal}
-                disabled={sendingProposal || !proposalTitle.trim() || !proposalContent.trim()}
+                disabled={sendingProposal || !proposalContent.trim()}
                 className={`w-full py-3 rounded-lg font-semibold transition ${
-                  sendingProposal || !proposalTitle.trim() || !proposalContent.trim()
+                  sendingProposal || !proposalContent.trim()
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-green-500 hover:bg-green-600'
                 } text-white`}

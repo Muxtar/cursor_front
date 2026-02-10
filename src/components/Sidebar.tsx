@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { chatApi, contactApi, userApi } from '@/lib/api';
+import { chatApi, contactApi, userApi, fileApi } from '@/lib/api';
 
 interface SidebarProps {
   onChatSelect?: (chatId: string) => void;
@@ -31,6 +31,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [contacts, setContacts] = useState<any[]>([]);
   const [chats, setChats] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'chats' | 'contacts'>('chats');
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -44,6 +49,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       const target = event.target as HTMLElement;
       if (!target.closest('.menu-dropdown') && !target.closest('.menu-button')) {
         setShowMenuDropdown(false);
+      }
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target) && profileButtonRef.current && !profileButtonRef.current.contains(target)) {
+        setShowProfileMenu(false);
       }
     };
 
@@ -199,6 +207,31 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const res: any = await fileApi.uploadFile(file);
+      const fileUrl = res?.file_url || res?.url;
+      if (fileUrl) {
+        const base = (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_API_URL)
+          ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '')
+          : 'http://localhost:8080';
+        const avatarUrl = fileUrl.startsWith('http') ? fileUrl : `${base}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+        await userApi.updateMe({ avatar: avatarUrl });
+        window.location.reload(); // refresh to show new avatar
+      }
+    } catch (err: any) {
+      alert('Failed to update photo: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setUploadingPhoto(false);
+      setShowChangePhotoModal(false);
+      setShowProfileMenu(false);
+      e.target.value = '';
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -207,15 +240,39 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         {/* Header */}
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 relative" ref={profileMenuRef}>
               <button
-                onClick={() => router.push(`/profile/${user.id || user._id}`)}
-                className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center hover:opacity-80 transition`}
+                ref={profileButtonRef}
+                onClick={() => { setShowProfileMenu(!showProfileMenu); setShowMenuDropdown(false); }}
+                className="rounded-full overflow-hidden w-10 h-10 flex items-center justify-center hover:opacity-90 transition ring-2 ring-transparent focus:ring-blue-400"
+                title="Profile menu"
               >
-                <span className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                  {user.username?.[0]?.toUpperCase() || user.phone_number?.[0] || 'U'}
-                </span>
+                {user.avatar ? (
+                  <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className={`w-full h-full flex items-center justify-center text-lg font-semibold ${actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                    {user.username?.[0]?.toUpperCase() || user.phone_number?.[0] || 'U'}
+                  </span>
+                )}
               </button>
+              {showProfileMenu && (
+                <div className={`profile-menu absolute left-0 top-12 w-56 rounded-lg shadow-lg border z-50 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                  <Link
+                    href={`/profile/${user.id || user._id}`}
+                    onClick={() => setShowProfileMenu(false)}
+                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-t-lg transition`}
+                  >
+                    <span>View profile</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => { setShowChangePhotoModal(true); setShowProfileMenu(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-b-lg transition`}
+                  >
+                    Change profile photo
+                  </button>
+                </div>
+              )}
               <div>
                 <h1 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                   {user.username || 'User'}
@@ -730,6 +787,32 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             </div>
             <button
               onClick={() => { setShowChatModeModal(false); setPendingChatUserId(null); }}
+              className={`mt-3 w-full py-2 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Change profile photo modal */}
+      {showChangePhotoModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowChangePhotoModal(false)}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-80 shadow-xl`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Change profile photo</h3>
+            <label className={`block w-full py-3 px-4 rounded-xl border-2 border-dashed cursor-pointer text-center text-sm ${actualTheme === 'dark' ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoChange}
+                disabled={uploadingPhoto}
+              />
+              {uploadingPhoto ? 'Uploading...' : 'Choose image'}
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowChangePhotoModal(false)}
               className={`mt-3 w-full py-2 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
             >
               Cancel
