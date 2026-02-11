@@ -322,8 +322,6 @@ export const ru = {
   removeContactFailed: 'Не удалось удалить контакт',
   startChatAs: 'Начать чат как',
   startChatDescription: 'Ваша личность будет видна в обычном чате. В анонимном чате другой пользователь не увидит ваш номер.',
-  normal: 'Обычный',
-  anonymous: 'Анонимный',
   uploading: 'Загрузка...',
   chooseImage: 'Выбрать изображение',
   searchUser: 'Поиск пользователя',

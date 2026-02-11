@@ -322,8 +322,6 @@ export const az = {
   removeContactFailed: 'Əlaqə silinə bilmədi',
   startChatAs: 'Söhbətə başla',
   startChatDescription: 'Normal söhbətdə kimliyiniz görünəcək. Anonim söhbətdə digər şəxs nömrənizi görməyəcək.',
-  normal: 'Normal',
-  anonymous: 'Anonim',
   uploading: 'Yüklənir...',
   chooseImage: 'Şəkil seç',
   searchUser: 'İstifadəçi axtar',

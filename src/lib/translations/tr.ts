@@ -322,8 +322,6 @@ export const tr = {
   removeContactFailed: 'İletişim kaldırılamadı',
   startChatAs: 'Sohbete başla',
   startChatDescription: 'Normal sohbette kimliğiniz görünür. Anonim sohbette karşı taraf numaranızı görmez.',
-  normal: 'Normal',
-  anonymous: 'Anonim',
   uploading: 'Yükleniyor...',
   chooseImage: 'Görsel seç',
   searchUser: 'Kullanıcı ara',

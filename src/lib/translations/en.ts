@@ -322,8 +322,6 @@ export const en = {
   removeContactFailed: 'Failed to remove contact',
   startChatAs: 'Start chat as',
   startChatDescription: 'Your identity will be visible in normal chat. In anonymous chat the other person will not see your number.',
-  normal: 'Normal',
-  anonymous: 'Anonymous',
   uploading: 'Uploading...',
   chooseImage: 'Choose image',
   searchUser: 'Search user',
