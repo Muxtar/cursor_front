@@ -310,7 +310,7 @@ export const tr = {
   noContactsYet: 'Henüz iletişim yok',
   searchOrStartChat: 'Ara veya yeni sohbet başlat',
   chats: 'Sohbetler',
-  contacts: 'İletişimler',
+  contactsTab: 'İletişimler',
   stories: 'Hikayeler',
   explore: 'Keşfet',
   location: 'Konum',

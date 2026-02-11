@@ -485,7 +485,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {t('contacts')}
+              {t('contactsTab')}
             </button>
           </div>
         </div>

@@ -310,7 +310,7 @@ export const en = {
   noContactsYet: 'No contacts yet',
   searchOrStartChat: 'Search or start new chat',
   chats: 'Chats',
-  contacts: 'Contacts',
+  contactsTab: 'Contacts',
   stories: 'Stories',
   explore: 'Explore',
   location: 'Location',

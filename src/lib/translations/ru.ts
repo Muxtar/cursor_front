@@ -310,7 +310,7 @@ export const ru = {
   noContactsYet: 'Пока нет контактов',
   searchOrStartChat: 'Поиск или новый чат',
   chats: 'Чаты',
-  contacts: 'Контакты',
+  contactsTab: 'Контакты',
   stories: 'Истории',
   explore: 'Обзор',
   location: 'Местоположение',

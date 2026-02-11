@@ -310,7 +310,7 @@ export const az = {
   noContactsYet: 'Hələ əlaqə yoxdur',
   searchOrStartChat: 'Axtar və ya yeni söhbət başlat',
   chats: 'Söhbətlər',
-  contacts: 'Əlaqələr',
+  contactsTab: 'Əlaqələr',
   stories: 'Hekayələr',
   explore: 'Kəşf et',
   location: 'Məkan',
