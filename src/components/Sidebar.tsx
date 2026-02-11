@@ -156,7 +156,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       setSearchQuery('');
       loadChats();
       router.push('/chat');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create chat:', error);
       alert(t('sendFailed') + ': ' + (error?.message || ''));
     }
