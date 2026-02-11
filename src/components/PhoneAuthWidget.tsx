@@ -230,11 +230,13 @@ export default function PhoneAuthWidget() {
     setIsExistingUser(null);
     try {
       const response: any = await authApi.verifyCode(fullPhone, code);
-      // Mevcut kullanıcı: token ve user geldi, her zaman hesap tipi ekranına geç
       setPendingLogin({ token: response.token, user: response.user });
-      setIsExistingUser(true);
+      // Only treat as existing user if they already have a name (username or display_name)
+      const hasName = !!(response.user?.username?.trim?.() || response.user?.display_name?.trim?.());
+      setIsExistingUser(hasName);
       const ut = response.user?.user_type;
       if (ut === 'company' || ut === 'normal') setUserType(ut);
+      if (response.user?.username) setUsername(response.user.username);
       setStep('details');
     } catch (err: any) {
       const msg = (err?.message || '').toLowerCase();

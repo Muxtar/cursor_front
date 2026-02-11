@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { chatApi, contactApi, userApi, fileApi, proposalApi } from '@/lib/api';
@@ -15,6 +16,7 @@ interface SidebarProps {
 export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const { user, logout } = useAuth();
   const { actualTheme } = useTheme();
+  const { t } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
@@ -32,6 +34,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [chats, setChats] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'chats' | 'contacts'>('chats');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showProposalsDropdown, setShowProposalsDropdown] = useState(false);
+  const [incomingProposalsCount, setIncomingProposalsCount] = useState(0);
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showNewProposalModal, setShowNewProposalModal] = useState(false);
@@ -43,13 +47,27 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [sendingProposal, setSendingProposal] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
+  const proposalsDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user) {
       loadContacts();
       loadChats();
+      loadProposalsCount();
     }
   }, [user]);
+
+  const loadProposalsCount = async () => {
+    try {
+      const data: any = await proposalApi.getProposals();
+      const list = Array.isArray(data) ? data : data?.proposals ?? data?.data ?? [];
+      const myId = user?.id || (user as any)?._id;
+      const received = list.filter((p: any) => (p.receiver_id || p.receiver?._id || p.receiver) === myId && (p.status === 'pending' || !p.status));
+      setIncomingProposalsCount(received.length);
+    } catch {
+      setIncomingProposalsCount(0);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -59,6 +77,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       }
       if (profileMenuRef.current && !profileMenuRef.current.contains(target) && profileButtonRef.current && !profileButtonRef.current.contains(target)) {
         setShowProfileMenu(false);
+      }
+      if (proposalsDropdownRef.current && !proposalsDropdownRef.current.contains(target) && !target.closest('.proposals-bell-button')) {
+        setShowProposalsDropdown(false);
       }
     };
 
@@ -137,19 +158,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       router.push('/chat');
     } catch (error) {
       console.error('Failed to create chat:', error);
-      alert('Failed to create chat');
+      alert(t('sendFailed') + ': ' + (error?.message || ''));
     }
   };
 
   const handleAddContact = async (userId: string) => {
     try {
       await contactApi.addContact({ user_id: userId });
-      alert('Contact added successfully');
+      alert(t('contactAdded'));
       setShowAddContactModal(false);
       setSearchQuery('');
       loadContacts();
     } catch (error: any) {
-      alert('Failed to add contact: ' + error.message);
+      alert(t('addContactFailed') + ': ' + error.message);
     }
   };
 
@@ -161,14 +182,14 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         phone_number: newContactPhone.trim(),
         display_name: newContactName.trim() || newContactPhone.trim(),
       });
-      alert('Contact added successfully');
+      alert(t('contactAdded'));
       setShowAddContactModal(false);
       setAddContactByNumber(false);
       setNewContactPhone('');
       setNewContactName('');
       loadContacts();
     } catch (error: any) {
-      alert('Failed to add contact: ' + (error?.message || 'Unknown error'));
+      alert(t('addContactFailed') + ': ' + (error?.message || ''));
     }
   };
 
@@ -192,23 +213,23 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadChats();
       router.push('/chat');
     } catch (error: any) {
-      alert('Failed to start chat: ' + (error?.message || 'Unknown error'));
+      alert(t('sendFailed') + ': ' + (error?.message || ''));
     }
   };
 
   const handleRemoveContact = async (contactId: string) => {
     try {
       await contactApi.deleteContact(contactId);
-      alert('Contact removed successfully');
+      alert(t('contactRemoved'));
       setShowRemoveContactModal(false);
       loadContacts();
     } catch (error: any) {
-      alert('Failed to remove contact: ' + error.message);
+      alert(t('removeContactFailed') + ': ' + (error?.message || ''));
     }
   };
 
   const handleLogout = () => {
-    if (confirm('Are you sure you want to logout?')) {
+    if (confirm(t('logout') + '?')) {
       logout();
       router.push('/login');
     }
@@ -235,7 +256,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     try {
       await proposalApi.createProposal({
         receiver_id: proposalTargetUser.id || proposalTargetUser._id,
-        title: 'İstek',
+        title: t('newProposal'),
         content: proposalContent.trim(),
         chat_anonymous: proposalChatAnonymous,
       });
@@ -245,9 +266,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       setProposalChatAnonymous(false);
       setProposalSearchQuery('');
       setProposalSearchResults([]);
-      alert('İstek gönderildi.');
+      loadProposalsCount();
+      alert(t('requestSent'));
     } catch (err: any) {
-      alert('Gönderilemedi: ' + (err?.message || 'Bilinmeyen hata'));
+      alert(t('sendFailed') + ': ' + (err?.message || ''));
     } finally {
       setSendingProposal(false);
     }
@@ -269,7 +291,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         window.location.reload(); // refresh to show new avatar
       }
     } catch (err: any) {
-      alert('Failed to update photo: ' + (err?.message || 'Unknown error'));
+      alert(t('photoUpdateFailed') + ': ' + (err?.message || ''));
     } finally {
       setUploadingPhoto(false);
       setShowChangePhotoModal(false);
@@ -289,9 +311,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             <div className="flex items-center space-x-3 relative" ref={profileMenuRef}>
               <button
                 ref={profileButtonRef}
-                onClick={() => { setShowProfileMenu(!showProfileMenu); setShowMenuDropdown(false); }}
-                className="rounded-full overflow-hidden w-10 h-10 flex items-center justify-center hover:opacity-90 transition ring-2 ring-transparent focus:ring-blue-400"
-                title="Profile menu"
+                onClick={() => { setShowProfileMenu(!showProfileMenu); setShowMenuDropdown(false); setShowProposalsDropdown(false); }}
+                className="rounded-full overflow-hidden w-10 h-10 flex items-center justify-center hover:opacity-90 transition ring-2 ring-transparent focus:ring-blue-400 flex-shrink-0"
+                title={t('viewProfile')}
               >
                 {user.avatar ? (
                   <img src={user.avatar} alt="" className="w-full h-full object-cover" />
@@ -301,51 +323,80 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   </span>
                 )}
               </button>
+              <div className="relative flex-shrink-0" ref={proposalsDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowProposalsDropdown(!showProposalsDropdown)}
+                  onMouseEnter={() => setShowProposalsDropdown(true)}
+                  className={`proposals-bell-button relative p-2 rounded-full transition ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                  title={t('newProposalsCount')}
+                  aria-label={t('newProposalsCount')}
+                >
+                  <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {incomingProposalsCount > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+                      {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
+                    </span>
+                  )}
+                </button>
+                {showProposalsDropdown && (
+                  <div
+                    className={`absolute left-0 top-full mt-1 w-56 rounded-xl shadow-xl border z-50 py-1.5 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}
+                    onMouseLeave={() => setShowProposalsDropdown(false)}
+                  >
+                    <div className={`px-3 py-2 border-b ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-100'}`}>
+                      <span className={`text-xs font-semibold uppercase tracking-wide ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('newProposalsCount')}</span>
+                    </div>
+                    <Link
+                      href={`/profile/${user.id || user._id}#proposals-received`}
+                      onClick={() => { setShowProposalsDropdown(false); loadProposalsCount(); }}
+                      className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                    >
+                      <span className="flex-1">{t('proposalsReceived')}</span>
+                      {incomingProposalsCount > 0 && <span className="rounded-full bg-red-500 text-white text-xs font-medium px-2 py-0.5">{incomingProposalsCount}</span>}
+                    </Link>
+                    <Link
+                      href={`/profile/${user.id || user._id}#proposals-sent`}
+                      onClick={() => setShowProposalsDropdown(false)}
+                      className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                    >
+                      <span>{t('proposalsSent')}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewProposalModal(true); setShowProposalsDropdown(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                    >
+                      <span className="font-medium">{t('newProposal')}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
               {showProfileMenu && (
-                <div className={`profile-menu absolute left-0 top-12 w-56 rounded-lg shadow-lg border z-50 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
+                <div className={`profile-menu absolute left-0 top-12 w-56 rounded-xl shadow-lg border z-50 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-200'}`}>
                   <Link
                     href={`/profile/${user.id || user._id}`}
                     onClick={() => setShowProfileMenu(false)}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-t-lg transition`}
+                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-t-xl transition`}
                   >
-                    <span>View profile</span>
+                    <span>{t('viewProfile')}</span>
                   </Link>
                   <button
                     type="button"
                     onClick={() => { setShowChangePhotoModal(true); setShowProfileMenu(false); }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
                   >
-                    Change profile photo
-                  </button>
-                  <div className={`border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`} />
-                  <Link
-                    href={`/profile/${user.id || user._id}#proposals-sent`}
-                    onClick={() => setShowProfileMenu(false)}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
-                  >
-                    <span>Gönderdiğim teklifler</span>
-                  </Link>
-                  <Link
-                    href={`/profile/${user.id || user._id}#proposals-received`}
-                    onClick={() => setShowProfileMenu(false)}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
-                  >
-                    <span>Bana gelen teklifler</span>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => { setShowNewProposalModal(true); setShowProfileMenu(false); }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-b-lg transition`}
-                  >
-                    <span>Yeni istek yarat</span>
+                    {t('changeProfilePhoto')}
                   </button>
                 </div>
               )}
-              <div>
-                <h1 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                  {user.username || 'User'}
+              <div className="min-w-0">
+                <h1 className={`text-lg font-semibold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                  {user.username || user.phone_number || 'User'}
                 </h1>
-                <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                   {user.phone_number}
                 </p>
               </div>
@@ -354,7 +405,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <button
                 onClick={() => setShowNewChatModal(true)}
                 className={`p-2 ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded-full transition`}
-                title="New Chat"
+                title={t('newChat')}
               >
                 <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -363,7 +414,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <button
                 onClick={() => setShowAddContactModal(true)}
                 className={`p-2 ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded-full transition`}
-                title="Add Contact"
+                title={t('addContact')}
               >
                 <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
@@ -373,7 +424,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 <button
                   onClick={() => setShowMenuDropdown(!showMenuDropdown)}
                   className="menu-button p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"
-                  title="Menu"
+                  title={t('menu')}
                 >
                   <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -391,7 +442,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        <span>Settings</span>
+                        <span>{t('settings')}</span>
                       </div>
                     </Link>
                     <button
@@ -405,7 +456,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                         </svg>
-                        <span>Logout</span>
+                        <span>{t('logout')}</span>
                       </div>
                     </button>
                   </div>
@@ -424,7 +475,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              Chats
+              {t('chats')}
             </button>
             <button
               onClick={() => setActiveTab('contacts')}
@@ -434,7 +485,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              Contacts
+              {t('contacts')}
             </button>
           </div>
         </div>
@@ -444,7 +495,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search or start new chat"
+              placeholder={t('searchOrStartChat')}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -490,7 +541,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {chats.length === 0 ? (
                 <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  No chats yet
+                  {t('noChatsYet')}
                 </div>
               ) : (
                 chats.map((chat) => {
@@ -534,7 +585,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {contacts.length === 0 ? (
                 <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  No contacts yet
+                  {t('noContactsYet')}
                 </div>
               ) : (
                 contacts.map((contact: any) => {
@@ -605,7 +656,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <span className="text-xs">Stories</span>
+              <span className="text-xs">{t('stories')}</span>
             </Link>
             <Link
               href="/explore"
@@ -618,7 +669,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span className="text-xs">Explore</span>
+              <span className="text-xs">{t('explore')}</span>
             </Link>
             <Link
               href="/location"
@@ -632,7 +683,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              <span className="text-xs">Location</span>
+              <span className="text-xs">{t('location')}</span>
             </Link>
             <Link
               href={`/profile/${user?.id || user?._id}`}
@@ -645,7 +696,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <span className="text-xs">Profile</span>
+              <span className="text-xs">{t('profile')}</span>
             </Link>
           </div>
         </div>
@@ -656,7 +707,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowNewChatModal(false)}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg w-96 max-h-[80vh] overflow-hidden`} onClick={(e) => e.stopPropagation()}>
             <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
-              <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>New Chat</h2>
+              <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('newChat')}</h2>
               <button
                 onClick={() => setShowNewChatModal(false)}
                 className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}
@@ -669,7 +720,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             <div className="p-4">
               <input
                 type="text"
-                placeholder="Search users..."
+                placeholder={t('searchUserPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -708,9 +759,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     ))}
                   </div>
                 ) : searchQuery ? (
-                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No users found</p>
+                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('noUsersFound')}</p>
                 ) : (
-                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Start typing to search users</p>
+                  <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('startTypingToSearch')}</p>
                 )}
               </div>
             </div>
@@ -723,7 +774,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowAddContactModal(false); setAddContactByNumber(false); setNewContactPhone(''); setNewContactName(''); }}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg w-96 max-h-[80vh] overflow-hidden`} onClick={(e) => e.stopPropagation()}>
             <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
-              <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Add Contact</h2>
+              <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('addContact')}</h2>
               <button
                 onClick={() => { setShowAddContactModal(false); setAddContactByNumber(false); }}
                 className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}
@@ -740,21 +791,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   onClick={() => setAddContactByNumber(false)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium ${!addContactByNumber ? (actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white') : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
                 >
-                  Search user
+                  {t('searchUser')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setAddContactByNumber(true)}
                   className={`flex-1 py-2 rounded-lg text-sm font-medium ${addContactByNumber ? (actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white') : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'}`}
                 >
-                  Number + name
+                  {t('numberAndName')}
                 </button>
               </div>
               {addContactByNumber ? (
                 <form onSubmit={handleAddContactByPhone} className="space-y-3">
                   <input
                     type="tel"
-                    placeholder="Phone number (e.g. +994501234567)"
+                    placeholder={t('phoneNumberExample')}
                     value={newContactPhone}
                     onChange={(e) => setNewContactPhone(e.target.value)}
                     className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -763,7 +814,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   />
                   <input
                     type="text"
-                    placeholder="Contact name"
+                    placeholder={t('contactName')}
                     value={newContactName}
                     onChange={(e) => setNewContactName(e.target.value)}
                     className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -775,14 +826,14 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     disabled={!newContactPhone.trim()}
                     className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium"
                   >
-                    Add contact
+                    {t('addContact')}
                   </button>
                 </form>
               ) : (
                 <>
                   <input
                     type="text"
-                    placeholder="Search users..."
+                    placeholder={t('searchUserPlaceholder')}
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -819,9 +870,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                         ))}
                       </div>
                     ) : searchQuery ? (
-                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No users found</p>
+                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('noUsersFound')}</p>
                     ) : (
-                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Start typing to search users</p>
+                      <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('startTypingToSearch')}</p>
                     )}
                   </div>
                 </>
@@ -835,29 +886,29 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       {showChatModeModal && pendingChatUserId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowChatModeModal(false); setPendingChatUserId(null); }}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-80 shadow-xl`} onClick={(e) => e.stopPropagation()}>
-            <h3 className={`text-lg font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Start chat as</h3>
+            <h3 className={`text-lg font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('startChatAs')}</h3>
             <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-              Your identity will be visible in normal chat. In anonymous chat the other person will not see your number.
+              {t('startChatDescription')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => handleCreateChatWithMode(false)}
                 className={`flex-1 py-3 rounded-xl font-medium ${actualTheme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
               >
-                Normal
+                {t('normal')}
               </button>
               <button
                 onClick={() => handleCreateChatWithMode(true)}
                 className="flex-1 py-3 rounded-xl font-medium bg-blue-600 hover:bg-blue-700 text-white"
               >
-                Anonymous
+                {t('anonymous')}
               </button>
             </div>
             <button
               onClick={() => { setShowChatModeModal(false); setPendingChatUserId(null); }}
               className={`mt-3 w-full py-2 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
             >
-              Cancel
+              {t('cancel')}
             </button>
           </div>
         </div>
@@ -867,7 +918,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       {showChangePhotoModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowChangePhotoModal(false)}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-80 shadow-xl`} onClick={(e) => e.stopPropagation()}>
-            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Change profile photo</h3>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('changeProfilePhoto')}</h3>
             <label className={`block w-full py-3 px-4 rounded-xl border-2 border-dashed cursor-pointer text-center text-sm ${actualTheme === 'dark' ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
               <input
                 type="file"
@@ -876,25 +927,25 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 onChange={handlePhotoChange}
                 disabled={uploadingPhoto}
               />
-              {uploadingPhoto ? 'Uploading...' : 'Choose image'}
+              {uploadingPhoto ? t('uploading') : t('chooseImage')}
             </label>
             <button
               type="button"
               onClick={() => setShowChangePhotoModal(false)}
               className={`mt-3 w-full py-2 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}
             >
-              Cancel
+              {t('cancel')}
             </button>
           </div>
         </div>
       )}
 
-      {/* Yeni istek yarat modal */}
+      {/* New proposal modal */}
       {showNewProposalModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowNewProposalModal(false); setProposalTargetUser(null); setProposalContent(''); setProposalSearchQuery(''); setProposalSearchResults([]); }}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-96 max-h-[90vh] overflow-hidden flex flex-col`} onClick={(e) => e.stopPropagation()}>
             <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
-              <h3 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Yeni istek yarat</h3>
+              <h3 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('proposalModalTitle')}</h3>
               <button
                 type="button"
                 onClick={() => { setShowNewProposalModal(false); setProposalTargetUser(null); setProposalContent(''); }}
@@ -906,10 +957,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             <div className="p-4 overflow-y-auto flex-1">
               {!proposalTargetUser ? (
                 <>
-                  <p className={`text-sm mb-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Kime istek göndermek istiyorsunuz?</p>
+                  <p className={`text-sm mb-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{t('sendToWhom')}</p>
                   <input
                     type="text"
-                    placeholder="Kullanıcı ara..."
+                    placeholder={t('searchUserPlaceholder')}
                     value={proposalSearchQuery}
                     onChange={(e) => handleProposalSearch(e.target.value)}
                     className={`w-full px-4 py-2 border rounded-lg text-sm ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
@@ -942,19 +993,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     <div className="flex-1 min-w-0">
                       <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{proposalTargetUser.username || proposalTargetUser.phone_number}</p>
                     </div>
-                    <button type="button" onClick={() => setProposalTargetUser(null)} className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Değiştir</button>
+                    <button type="button" onClick={() => setProposalTargetUser(null)} className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('changeRecipient')}</button>
                   </div>
-                  <label className={`block text-sm font-medium mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Mesajınız</label>
+                  <label className={`block text-sm font-medium mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{t('yourMessage')}</label>
                   <textarea
                     value={proposalContent}
                     onChange={(e) => setProposalContent(e.target.value)}
-                    placeholder="Örn: Seninle tanışmak isterim"
+                    placeholder={t('exampleProposalMessage')}
                     rows={4}
                     className={`w-full px-4 py-2 border rounded-lg text-sm resize-none ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
                   />
                   <label className={`flex items-center gap-2 mt-3 cursor-pointer ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
                     <input type="checkbox" checked={proposalChatAnonymous} onChange={(e) => setProposalChatAnonymous(e.target.checked)} className="rounded" />
-                    <span className="text-sm">Kabul edilirse anonim sohbet açılsın (numaram görünmesin)</span>
+                    <span className="text-sm">{t('anonymousChatIfAccepted')}</span>
                   </label>
                 </>
               )}
@@ -967,7 +1018,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   disabled={sendingProposal || !proposalContent.trim()}
                   className="w-full py-3 rounded-xl font-medium bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {sendingProposal ? 'Gönderiliyor...' : 'İstek gönder'}
+                  {sendingProposal ? t('sendingProposal') : t('sendProposal')}
                 </button>
               </div>
             )}
