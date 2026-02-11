@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { chatApi, contactApi, userApi, fileApi } from '@/lib/api';
+import { chatApi, contactApi, userApi, fileApi, proposalApi } from '@/lib/api';
 
 interface SidebarProps {
   onChatSelect?: (chatId: string) => void;
@@ -34,6 +34,13 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showNewProposalModal, setShowNewProposalModal] = useState(false);
+  const [proposalSearchQuery, setProposalSearchQuery] = useState('');
+  const [proposalSearchResults, setProposalSearchResults] = useState<any[]>([]);
+  const [proposalTargetUser, setProposalTargetUser] = useState<any>(null);
+  const [proposalContent, setProposalContent] = useState('');
+  const [proposalChatAnonymous, setProposalChatAnonymous] = useState(false);
+  const [sendingProposal, setSendingProposal] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -207,6 +214,45 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
+  const handleProposalSearch = async (query: string) => {
+    setProposalSearchQuery(query);
+    if (!query.trim()) {
+      setProposalSearchResults([]);
+      return;
+    }
+    try {
+      const results: any = await userApi.searchUsers(query);
+      const list = Array.isArray(results) ? results : results?.users || [];
+      setProposalSearchResults(list.filter((u: any) => (u.id || u._id) !== (user?.id || (user as any)?._id)));
+    } catch {
+      setProposalSearchResults([]);
+    }
+  };
+
+  const handleSendNewProposal = async () => {
+    if (!proposalTargetUser || !proposalContent.trim()) return;
+    setSendingProposal(true);
+    try {
+      await proposalApi.createProposal({
+        receiver_id: proposalTargetUser.id || proposalTargetUser._id,
+        title: 'İstek',
+        content: proposalContent.trim(),
+        chat_anonymous: proposalChatAnonymous,
+      });
+      setShowNewProposalModal(false);
+      setProposalTargetUser(null);
+      setProposalContent('');
+      setProposalChatAnonymous(false);
+      setProposalSearchQuery('');
+      setProposalSearchResults([]);
+      alert('İstek gönderildi.');
+    } catch (err: any) {
+      alert('Gönderilemedi: ' + (err?.message || 'Bilinmeyen hata'));
+    } finally {
+      setSendingProposal(false);
+    }
+  };
+
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -267,9 +313,31 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   <button
                     type="button"
                     onClick={() => { setShowChangePhotoModal(true); setShowProfileMenu(false); }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-b-lg transition`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
                   >
                     Change profile photo
+                  </button>
+                  <div className={`border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`} />
+                  <Link
+                    href={`/profile/${user.id || user._id}#proposals-sent`}
+                    onClick={() => setShowProfileMenu(false)}
+                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                  >
+                    <span>Gönderdiğim teklifler</span>
+                  </Link>
+                  <Link
+                    href={`/profile/${user.id || user._id}#proposals-received`}
+                    onClick={() => setShowProfileMenu(false)}
+                    className={`flex items-center gap-3 px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                  >
+                    <span>Bana gelen teklifler</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => { setShowNewProposalModal(true); setShowProfileMenu(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} rounded-b-lg transition`}
+                  >
+                    <span>Yeni istek yarat</span>
                   </button>
                 </div>
               )}
@@ -817,6 +885,92 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Yeni istek yarat modal */}
+      {showNewProposalModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowNewProposalModal(false); setProposalTargetUser(null); setProposalContent(''); setProposalSearchQuery(''); setProposalSearchResults([]); }}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-xl w-96 max-h-[90vh] overflow-hidden flex flex-col`} onClick={(e) => e.stopPropagation()}>
+            <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between`}>
+              <h3 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Yeni istek yarat</h3>
+              <button
+                type="button"
+                onClick={() => { setShowNewProposalModal(false); setProposalTargetUser(null); setProposalContent(''); }}
+                className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              {!proposalTargetUser ? (
+                <>
+                  <p className={`text-sm mb-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Kime istek göndermek istiyorsunuz?</p>
+                  <input
+                    type="text"
+                    placeholder="Kullanıcı ara..."
+                    value={proposalSearchQuery}
+                    onChange={(e) => handleProposalSearch(e.target.value)}
+                    className={`w-full px-4 py-2 border rounded-lg text-sm ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                  />
+                  <div className="mt-3 space-y-1 max-h-48 overflow-y-auto">
+                    {proposalSearchResults.map((u: any) => (
+                      <button
+                        key={u.id || u._id}
+                        type="button"
+                        onClick={() => setProposalTargetUser(u)}
+                        className={`w-full p-3 text-left rounded-lg flex items-center gap-3 ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                      >
+                        <span className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${actualTheme === 'dark' ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                          {u.username?.[0]?.toUpperCase() || u.phone_number?.[0] || '?'}
+                        </span>
+                        <div>
+                          <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{u.username || u.phone_number}</p>
+                          {u.phone_number && <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{u.phone_number}</p>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={`flex items-center gap-3 p-2 rounded-lg mb-4 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                    <span className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${actualTheme === 'dark' ? 'bg-gray-600 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                      {proposalTargetUser.username?.[0]?.toUpperCase() || proposalTargetUser.phone_number?.[0] || '?'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{proposalTargetUser.username || proposalTargetUser.phone_number}</p>
+                    </div>
+                    <button type="button" onClick={() => setProposalTargetUser(null)} className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>Değiştir</button>
+                  </div>
+                  <label className={`block text-sm font-medium mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Mesajınız</label>
+                  <textarea
+                    value={proposalContent}
+                    onChange={(e) => setProposalContent(e.target.value)}
+                    placeholder="Örn: Seninle tanışmak isterim"
+                    rows={4}
+                    className={`w-full px-4 py-2 border rounded-lg text-sm resize-none ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                  />
+                  <label className={`flex items-center gap-2 mt-3 cursor-pointer ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <input type="checkbox" checked={proposalChatAnonymous} onChange={(e) => setProposalChatAnonymous(e.target.checked)} className="rounded" />
+                    <span className="text-sm">Kabul edilirse anonim sohbet açılsın (numaram görünmesin)</span>
+                  </label>
+                </>
+              )}
+            </div>
+            {proposalTargetUser && (
+              <div className={`p-4 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+                <button
+                  type="button"
+                  onClick={handleSendNewProposal}
+                  disabled={sendingProposal || !proposalContent.trim()}
+                  className="w-full py-3 rounded-xl font-medium bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingProposal ? 'Gönderiliyor...' : 'İstek gönder'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

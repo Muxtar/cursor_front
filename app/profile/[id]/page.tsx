@@ -379,7 +379,7 @@ export default function ProfilePage() {
 
         {/* Proposals (only on own profile) */}
         {isOwnProfile && (
-          <div className="mt-8 space-y-8">
+          <div className="mt-8 space-y-8" id="proposals-received">
             <div>
               <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 Proposals received
@@ -420,7 +420,7 @@ export default function ProfilePage() {
                 )}
               </div>
             </div>
-            <div>
+            <div id="proposals-sent">
               <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 Proposals you sent
               </h2>
