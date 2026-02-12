@@ -212,6 +212,8 @@ export const userApi = {
     api.get(`/public/users/search?q=${encodeURIComponent(query)}`),
   searchUsers: (query: string) =>
     api.get(`/public/users/search?q=${encodeURIComponent(query)}`),
+  checkOnlineStatus: (userId: string) => api.get(`/users/online/${userId}`),
+  getOnlineUsers: () => api.get('/users/online'),
 };
 
 // Contact API

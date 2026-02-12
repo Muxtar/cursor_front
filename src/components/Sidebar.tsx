@@ -37,6 +37,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [sentProposals, setSentProposals] = useState<any[]>([]);
   const [acceptingProposalId, setAcceptingProposalId] = useState<string | null>(null);
   const [proposalSubTab, setProposalSubTab] = useState<'incoming' | 'sent'>('incoming');
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProposalsDropdown, setShowProposalsDropdown] = useState(false);
   const [incomingProposalsCount, setIncomingProposalsCount] = useState(0);
@@ -58,8 +59,24 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadContacts();
       loadChats();
       loadProposalsCount();
+      loadOnlineUsers();
+      // Refresh online status every 10 seconds
+      const interval = setInterval(() => {
+        loadOnlineUsers();
+      }, 10000);
+      return () => clearInterval(interval);
     }
   }, [user]);
+
+  const loadOnlineUsers = async () => {
+    try {
+      const data: any = await userApi.getOnlineUsers();
+      const onlineList = data?.online_users || [];
+      setOnlineUsers(new Set(onlineList));
+    } catch (error) {
+      console.error('Failed to load online users:', error);
+    }
+  };
 
   useEffect(() => {
     if (user && activeTab === 'requests') {
@@ -386,20 +403,25 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3 relative" ref={profileMenuRef}>
-              <button
-                ref={profileButtonRef}
-                onClick={() => { setShowProfileMenu(!showProfileMenu); setShowMenuDropdown(false); setShowProposalsDropdown(false); }}
-                className="rounded-full overflow-hidden w-10 h-10 flex items-center justify-center hover:opacity-90 transition ring-2 ring-transparent focus:ring-blue-400 flex-shrink-0"
-                title={t('viewProfile')}
-              >
-                {user.avatar ? (
-                  <img src={user.avatar} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className={`w-full h-full flex items-center justify-center text-lg font-semibold ${actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-800'}`}>
-                    {user.username?.[0]?.toUpperCase() || user.phone_number?.[0] || 'U'}
-                  </span>
+              <div className="relative">
+                <button
+                  ref={profileButtonRef}
+                  onClick={() => { setShowProfileMenu(!showProfileMenu); setShowMenuDropdown(false); setShowProposalsDropdown(false); }}
+                  className="rounded-full overflow-hidden w-10 h-10 flex items-center justify-center hover:opacity-90 transition ring-2 ring-transparent focus:ring-blue-400 flex-shrink-0"
+                  title={t('viewProfile')}
+                >
+                  {user.avatar ? (
+                    <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className={`w-full h-full flex items-center justify-center text-lg font-semibold ${actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-800'}`}>
+                      {user.username?.[0]?.toUpperCase() || user.phone_number?.[0] || 'U'}
+                    </span>
+                  )}
+                </button>
+                {onlineUsers.has(String(user?.id || user?._id)) && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
                 )}
-              </button>
+              </div>
               <div className="relative flex-shrink-0" ref={proposalsDropdownRef}>
                 <button
                   type="button"
@@ -605,7 +627,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         <div className="flex-1 overflow-y-auto">
           {searchQuery && searchResults.length > 0 ? (
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
-              {searchResults.map((result) => (
+              {searchResults.map((result) => {
+                const resultUserId = result.id || result._id;
+                const isOnline = resultUserId ? onlineUsers.has(String(resultUserId)) : false;
+                return (
                 <button
                   key={result.id || result._id}
                   onClick={() => openChatWithContact(result.id || result._id)}
@@ -614,8 +639,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   }`}
                 >
                   <div className="flex items-center space-x-3">
-                    <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                      {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                    <div className="relative">
+                      {result.avatar ? (
+                        <img
+                          src={result.avatar}
+                          alt={result.username || result.phone_number}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                          {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                        </div>
+                      )}
+                      {isOnline && (
+                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
@@ -627,7 +665,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     </div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           ) : activeTab === 'requests' ? (
             <div>
@@ -662,112 +701,155 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
               {/* Incoming Proposals */}
               {proposalSubTab === 'incoming' && (
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                <div className="p-2 space-y-3">
                   {incomingProposals.length === 0 ? (
-                    <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {t('noRequestsYet')}
+                    <div className={`p-8 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                      </svg>
+                      <p>{t('noRequestsYet')}</p>
                     </div>
                   ) : (
-                    incomingProposals.map((p: any) => (
-                      <div
-                        key={p.id || p._id}
-                        className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
-                      >
-                        <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                          {p.title || t('newProposal')}
-                        </p>
-                        <p className={`mt-1 text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'} line-clamp-3`}>
-                          {p.content}
-                        </p>
-                        <p className={`text-xs mt-1 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                          {new Date(p.created_at).toLocaleDateString()}
-                        </p>
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={() => handleAcceptProposal(p.id || p._id)}
-                            disabled={acceptingProposalId === (p.id || p._id)}
-                            className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition"
-                            title={t('accept')}
-                            aria-label={t('accept')}
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleRejectProposal(p.id || p._id)}
-                            className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
-                            title={t('reject')}
-                            aria-label={t('reject')}
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProposal(p.id || p._id)}
-                            className="p-2 rounded-full bg-gray-500 text-white hover:bg-gray-600 transition"
-                            title={t('deleteProposal')}
-                            aria-label={t('deleteProposal')}
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                    incomingProposals.map((p: any, index: number) => {
+                      const colors = [
+                        { bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400' },
+                        { bg: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400' },
+                        { bg: 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20', border: 'border-green-200 dark:border-green-800', accent: 'text-green-600 dark:text-green-400' },
+                        { bg: 'bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20', border: 'border-orange-200 dark:border-orange-800', accent: 'text-orange-600 dark:text-orange-400' },
+                        { bg: 'bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/20 dark:to-teal-900/20', border: 'border-cyan-200 dark:border-cyan-800', accent: 'text-cyan-600 dark:text-cyan-400' },
+                      ];
+                      const colorScheme = colors[index % colors.length];
+                      return (
+                        <div
+                          key={p.id || p._id}
+                          className={`${colorScheme.bg} ${colorScheme.border} border-2 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 transform hover:scale-[1.02]`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`w-2 h-2 rounded-full ${colorScheme.accent.replace('text-', 'bg-')}`}></div>
+                                <p className={`font-semibold text-base ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                  {p.title || t('newProposal')}
+                                </p>
+                              </div>
+                              <p className={`mt-2 text-sm ${actualTheme === 'dark' ? 'text-gray-200' : 'text-gray-700'} leading-relaxed`}>
+                                {p.content}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleAcceptProposal(p.id || p._id)}
+                                disabled={acceptingProposalId === (p.id || p._id)}
+                                className="px-4 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
+                                title={t('accept')}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                {t('accept')}
+                              </button>
+                              <button
+                                onClick={() => handleRejectProposal(p.id || p._id)}
+                                className="px-4 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
+                                title={t('reject')}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                                {t('reject')}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProposal(p.id || p._id)}
+                                className="p-1.5 rounded-lg bg-gray-400 text-white hover:bg-gray-500 transition"
+                                title={t('deleteProposal')}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}
 
               {/* Sent Proposals */}
               {proposalSubTab === 'sent' && (
-                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                <div className="p-2 space-y-3">
                   {sentProposals.length === 0 ? (
-                    <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {t('noSentRequestsYet')}
+                    <div className={`p-8 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      <p>{t('noSentRequestsYet')}</p>
                     </div>
                   ) : (
-                    sentProposals.map((p: any) => (
-                      <div
-                        key={p.id || p._id}
-                        className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
-                      >
-                        <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                          {p.title || t('newProposal')}
-                        </p>
-                        <p className={`mt-1 text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'} line-clamp-3`}>
-                          {p.content}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                            p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                            'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                          }`}>
-                            {p.status || 'pending'}
-                          </span>
-                          <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {new Date(p.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        {p.status === 'pending' && (
-                          <div className="flex gap-2 mt-3">
-                            <button
-                              onClick={() => handleDeleteProposal(p.id || p._id)}
-                              className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
-                              title={t('deleteProposal')}
-                              aria-label={t('deleteProposal')}
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
+                    sentProposals.map((p: any, index: number) => {
+                      const colors = [
+                        { bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400' },
+                        { bg: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400' },
+                        { bg: 'bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20', border: 'border-green-200 dark:border-green-800', accent: 'text-green-600 dark:text-green-400' },
+                        { bg: 'bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20', border: 'border-orange-200 dark:border-orange-800', accent: 'text-orange-600 dark:text-orange-400' },
+                        { bg: 'bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/20 dark:to-teal-900/20', border: 'border-cyan-200 dark:border-cyan-800', accent: 'text-cyan-600 dark:text-cyan-400' },
+                      ];
+                      const colorScheme = colors[index % colors.length];
+                      return (
+                        <div
+                          key={p.id || p._id}
+                          className={`${colorScheme.bg} ${colorScheme.border} border-2 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 transform hover:scale-[1.02]`}
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className={`w-2 h-2 rounded-full ${colorScheme.accent.replace('text-', 'bg-')}`}></div>
+                                <p className={`font-semibold text-base ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                  {p.title || t('newProposal')}
+                                </p>
+                              </div>
+                              <p className={`mt-2 text-sm ${actualTheme === 'dark' ? 'text-gray-200' : 'text-gray-700'} leading-relaxed`}>
+                                {p.content}
+                              </p>
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))
+                          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                p.status === 'accepted' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                                p.status === 'rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                                'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                              }`}>
+                                {p.status === 'accepted' ? '✓ ' + (p.status || 'pending') :
+                                 p.status === 'rejected' ? '✕ ' + (p.status || 'pending') :
+                                 '⏳ ' + (p.status || 'pending')}
+                              </span>
+                              <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </p>
+                            </div>
+                            {p.status === 'pending' && (
+                              <button
+                                onClick={() => handleDeleteProposal(p.id || p._id)}
+                                className="px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
+                                title={t('deleteProposal')}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                {t('delete')}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               )}
@@ -783,6 +865,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   const chatId = chat.id || chat._id;
                   const isAnonymous = chat.other_party_anonymous === true;
                   const chatTitle = isAnonymous ? 'Anonymous' : (chat.group_name || chat.members?.[0]?.username || 'Chat');
+                  // Get other member's ID for online status (for direct chats)
+                  const otherMemberId = chat.type === 'direct' && chat.members ? 
+                    chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
+                  const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
                   return (
                   <button
                     key={chatId}
@@ -797,8 +883,13 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     }`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                        {chatTitle?.[0]?.toUpperCase() || 'C'}
+                      <div className="relative">
+                        <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                          {chatTitle?.[0]?.toUpperCase() || 'C'}
+                        </div>
+                        {isOtherMemberOnline && !isAnonymous && (
+                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
@@ -827,6 +918,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   const contactUserId = contact.user?.id ?? contact.user?._id ?? contact.contact?.contact_id;
                   const displayName = contact.user?.username || contact.user?.display_name || contact.user?.phone_number || 'Contact';
                   const displaySub = contact.user?.phone_number || '';
+                  const isOnline = contactUserId ? onlineUsers.has(String(contactUserId)) : false;
                   return (
                   <div
                     key={contact.contact?.id || contact.id || contact._id}
@@ -835,8 +927,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     }`}
                   >
                     <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                        {displayName?.[0]?.toUpperCase() || displaySub?.[0] || 'U'}
+                      <div className="relative">
+                        {contact.user?.avatar ? (
+                          <img
+                            src={contact.user.avatar}
+                            alt={displayName}
+                            className="w-12 h-12 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                            {displayName?.[0]?.toUpperCase() || displaySub?.[0] || 'U'}
+                          </div>
+                        )}
+                        {isOnline && (
+                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
@@ -971,7 +1076,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <div className="mt-4 max-h-96 overflow-y-auto">
                 {searchResults.length > 0 ? (
                   <div className="space-y-2">
-                    {searchResults.map((result) => (
+                    {searchResults.map((result) => {
+                      const resultUserId = result.id || result._id;
+                      const isOnline = resultUserId ? onlineUsers.has(String(resultUserId)) : false;
+                      return (
                       <button
                         key={result.id || result._id}
                         onClick={() => openChatWithContact(result.id || result._id)}
@@ -979,8 +1087,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                           actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                         }`}
                       >
-                        <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                          {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                        <div className="relative">
+                          {result.avatar ? (
+                            <img
+                              src={result.avatar}
+                              alt={result.username || result.phone_number}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                              {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                            </div>
+                          )}
+                          {isOnline && (
+                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                          )}
                         </div>
                         <div>
                           <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
@@ -991,7 +1112,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                           </p>
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : searchQuery ? (
                   <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('noUsersFound')}</p>
@@ -1082,7 +1204,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   <div className="mt-4 max-h-96 overflow-y-auto">
                     {searchResults.length > 0 ? (
                       <div className="space-y-2">
-                        {searchResults.map((result) => (
+                        {searchResults.map((result) => {
+                          const resultUserId = result.id || result._id;
+                          const isOnline = resultUserId ? onlineUsers.has(String(resultUserId)) : false;
+                          return (
                           <button
                             key={result.id || result._id}
                             onClick={() => handleAddContact(result.id || result._id)}
@@ -1090,8 +1215,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                               actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                             }`}
                           >
-                            <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
-                              {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                            <div className="relative">
+                              {result.avatar ? (
+                                <img
+                                  src={result.avatar}
+                                  alt={result.username || result.phone_number}
+                                  className="w-10 h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className={`w-10 h-10 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                                  {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
+                                </div>
+                              )}
+                              {isOnline && (
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                              )}
                             </div>
                             <div>
                               <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
@@ -1102,7 +1240,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                               </p>
                             </div>
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : searchQuery ? (
                       <p className={`text-center py-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('noUsersFound')}</p>
