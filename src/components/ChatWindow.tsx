@@ -91,7 +91,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   }, [chatId, ws]);
 
   useEffect(() => {
-    scrollToBottom();
+    // Scroll to bottom when messages change
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
 
   const loadChatInfo = async () => {
@@ -116,6 +120,13 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         messagesData = data.data;
       }
       
+      // Sort messages by created_at timestamp (oldest first)
+      messagesData.sort((a, b) => {
+        const timeA = new Date(a.created_at).getTime();
+        const timeB = new Date(b.created_at).getTime();
+        return timeA - timeB;
+      });
+      
       setMessages(messagesData);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -124,7 +135,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   const handleNewMessage = (data: any) => {
     if (data.chat_id === chatId) {
-      loadMessages();
+      loadMessages().then(() => {
+        setTimeout(() => {
+          scrollToBottom();
+        }, 100);
+      });
     }
   };
 
@@ -136,17 +151,22 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() && !replyingTo) return;
 
+    const messageContent = newMessage.trim();
+    if (!messageContent) return;
+
     setLoading(true);
     try {
       await chatApi.sendMessage(chatId, {
-        content: newMessage,
+        content: messageContent,
         message_type: 'text',
         is_anonymous: false,
         reply_to_id: replyingTo?.id,
@@ -154,7 +174,12 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
       setNewMessage('');
       setReplyingTo(null);
-      loadMessages();
+      
+      // Reload messages and scroll to bottom
+      await loadMessages();
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
@@ -311,17 +336,23 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       )}
 
       {/* Messages */}
-      <div className={`flex-1 overflow-y-auto p-4 space-y-2 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
+      <div className={`flex-1 overflow-y-auto p-4 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="flex flex-col">
         {messages.map((message, index) => {
           const isMine = isMyMessage(message);
           const senderKey = message.sender_id ?? (message.is_anonymous ? 'anonymous' : '');
-          const showAvatar = index === 0 || (messages[index - 1].sender_id ?? (messages[index - 1].is_anonymous ? 'anonymous' : '')) !== senderKey;
+          const prevMessage = index > 0 ? messages[index - 1] : null;
+          const prevSenderKey = prevMessage ? (prevMessage.sender_id ?? (prevMessage.is_anonymous ? 'anonymous' : '')) : '';
+          const showAvatar = !isMine && (index === 0 || prevSenderKey !== senderKey || 
+                          (prevMessage && new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() > 300000));
           const showTime = index === messages.length - 1 || 
-                          new Date(messages[index + 1].created_at).getTime() - new Date(message.created_at).getTime() > 300000;
+                          (messages[index + 1] && new Date(messages[index + 1].created_at).getTime() - new Date(message.created_at).getTime() > 300000);
+          const isConsecutive = prevMessage && prevSenderKey === senderKey && 
+                               new Date(message.created_at).getTime() - new Date(prevMessage.created_at).getTime() < 300000;
           
           if (message.is_deleted) {
             return (
-              <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+              <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-2`}>
                 <div className="px-4 py-2 bg-gray-200 rounded-lg text-gray-500 italic text-sm">
                   This message was deleted
                 </div>
@@ -332,21 +363,24 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           return (
             <div
               key={message.id}
-              className={`flex ${isMine ? 'justify-end' : 'justify-start'} group`}
+              className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-0.5 group w-full`}
             >
-              <div className={`flex items-end space-x-2 max-w-[70%] ${isMine ? 'flex-row-reverse space-x-reverse' : ''}`}>
+              <div className={`flex items-end space-x-2 max-w-[70%] ${isMine ? 'flex-row-reverse space-x-reverse' : ''} w-full`}>
                 {!isMine && showAvatar && (
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mb-0.5">
                     {getDisplayName(message)[0]?.toUpperCase() || 'U'}
                   </div>
                 )}
+                {!isMine && !showAvatar && (
+                  <div className="w-8 flex-shrink-0"></div>
+                )}
                 <div className="relative">
                   <div
-                    className={`px-4 py-2 rounded-lg shadow-sm ${
+                    className={`px-3 py-1.5 rounded-lg shadow-sm ${
                       isMine
-                        ? 'bg-green-500 text-white'
-                        : actualTheme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'
-                    }`}
+                        ? 'bg-green-500 text-white rounded-br-sm'
+                        : actualTheme === 'dark' ? 'bg-gray-800 text-white rounded-bl-sm' : 'bg-white text-gray-800 rounded-bl-sm'
+                    } ${isConsecutive && !isMine ? 'rounded-tl-sm' : ''} ${isConsecutive && isMine ? 'rounded-tr-sm' : ''} break-words`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setSelectedMessage(message);
@@ -477,7 +511,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             </div>
           );
         })}
-        <div ref={messagesEndRef} />
+        </div>
+        <div ref={messagesEndRef} style={{ height: '1px' }} />
       </div>
 
       {/* Emoji Picker */}
