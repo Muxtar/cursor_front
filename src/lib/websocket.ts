@@ -56,11 +56,17 @@ export class WebSocketClient {
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
+  /** Queue for messages sent before connection is open; flushed on open */
+  private sendQueue: any[] = [];
 
   constructor(wsUrl?: string, token?: string) {
     // Runtime'da URL'i dinamik olarak al (build-time'da set edilmemişse)
     this.wsUrl = wsUrl || getWsUrlRuntime();
     this.token = token || null;
+  }
+
+  isConnected(): boolean {
+    return !!(this.ws && this.ws.readyState === WebSocket.OPEN);
   }
 
   connect(): Promise<void> {
@@ -72,6 +78,7 @@ export class WebSocketClient {
         this.ws.onopen = () => {
           console.log('WebSocket connected');
           this.reconnectAttempts = 0;
+          this.flushSendQueue();
           resolve();
         };
 
@@ -97,6 +104,14 @@ export class WebSocketClient {
         reject(error);
       }
     });
+  }
+
+  private flushSendQueue() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    while (this.sendQueue.length > 0) {
+      const data = this.sendQueue.shift();
+      if (data) this.ws.send(JSON.stringify(data));
+    }
   }
 
   private attemptReconnect() {
@@ -136,7 +151,7 @@ export class WebSocketClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {
-      console.error('WebSocket is not connected');
+      this.sendQueue.push(data);
     }
   }
 

@@ -32,7 +32,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [chats, setChats] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'chats' | 'contacts'>('chats');
+  const [activeTab, setActiveTab] = useState<'chats' | 'contacts' | 'requests'>('chats');
+  const [incomingProposals, setIncomingProposals] = useState<any[]>([]);
+  const [acceptingProposalId, setAcceptingProposalId] = useState<string | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProposalsDropdown, setShowProposalsDropdown] = useState(false);
   const [incomingProposalsCount, setIncomingProposalsCount] = useState(0);
@@ -57,15 +59,62 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user && activeTab === 'requests') {
+      loadIncomingProposals();
+    }
+  }, [user, activeTab]);
+
+  const myId = user?.id || (user as any)?._id;
+
   const loadProposalsCount = async () => {
     try {
       const data: any = await proposalApi.getProposals();
       const list = Array.isArray(data) ? data : data?.proposals ?? data?.data ?? [];
-      const myId = user?.id || (user as any)?._id;
-      const received = list.filter((p: any) => (p.receiver_id || p.receiver?._id || p.receiver) === myId && (p.status === 'pending' || !p.status));
+      const received = list.filter((p: any) => String(p.receiver_id || p.receiver?._id || p.receiver) === String(myId) && (p.status === 'pending' || !p.status));
       setIncomingProposalsCount(received.length);
     } catch {
       setIncomingProposalsCount(0);
+    }
+  };
+
+  const loadIncomingProposals = async () => {
+    if (!myId) return;
+    try {
+      const data: any = await proposalApi.getProposals();
+      const list = Array.isArray(data) ? data : data?.proposals ?? data?.data ?? [];
+      const received = list.filter((p: any) => String(p.receiver_id || p.receiver?._id || p.receiver) === String(myId) && (p.status === 'pending' || !p.status));
+      setIncomingProposals(received);
+    } catch {
+      setIncomingProposals([]);
+    }
+  };
+
+  const handleAcceptProposal = async (proposalId: string) => {
+    setAcceptingProposalId(proposalId);
+    try {
+      const res: any = await proposalApi.acceptProposal(proposalId);
+      const chatId = res?.chat_id ?? res?.data?.chat_id;
+      setIncomingProposals((prev) => prev.filter((p: any) => String(p.id || p._id) !== String(proposalId)));
+      loadProposalsCount();
+      if (chatId && onChatSelect) {
+        onChatSelect(chatId);
+        router.push('/chat');
+      }
+    } catch (e) {
+      console.error('Accept proposal failed:', e);
+    } finally {
+      setAcceptingProposalId(null);
+    }
+  };
+
+  const handleRejectProposal = async (proposalId: string) => {
+    try {
+      await proposalApi.rejectProposal(proposalId);
+      setIncomingProposals((prev) => prev.filter((p: any) => String(p.id || p._id) !== String(proposalId)));
+      loadProposalsCount();
+    } catch (e) {
+      console.error('Reject proposal failed:', e);
     }
   };
 
@@ -469,7 +518,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           <div className="flex space-x-1">
             <button
               onClick={() => setActiveTab('chats')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition ${
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm ${
                 activeTab === 'chats'
                   ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
@@ -479,13 +528,28 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             </button>
             <button
               onClick={() => setActiveTab('contacts')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition ${
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm ${
                 activeTab === 'contacts'
                   ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               {t('contactsTab')}
+            </button>
+            <button
+              onClick={() => setActiveTab('requests')}
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm relative ${
+                activeTab === 'requests'
+                  ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
+                  : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {t('requestsTab')}
+              {incomingProposalsCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -536,6 +600,54 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   </div>
                 </button>
               ))}
+            </div>
+          ) : activeTab === 'requests' ? (
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {incomingProposals.length === 0 ? (
+                <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {t('noRequestsYet')}
+                </div>
+              ) : (
+                incomingProposals.map((p: any) => (
+                  <div
+                    key={p.id || p._id}
+                    className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
+                  >
+                    <p className={`font-medium text-sm ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                      {p.title || t('newProposal')}
+                    </p>
+                    <p className={`mt-1 text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'} line-clamp-3`}>
+                      {p.content}
+                    </p>
+                    <p className={`text-xs mt-1 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => handleAcceptProposal(p.id || p._id)}
+                        disabled={acceptingProposalId === (p.id || p._id)}
+                        className="p-2 rounded-full bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition"
+                        title={t('accept')}
+                        aria-label={t('accept')}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleRejectProposal(p.id || p._id)}
+                        className="p-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+                        title={t('reject')}
+                        aria-label={t('reject')}
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           ) : activeTab === 'chats' ? (
             <div className="divide-y divide-gray-200 dark:divide-gray-700">

@@ -21,38 +21,30 @@ function ChatContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    let client: WebSocketClient | null = null;
     if (user) {
-      connectWebSocket();
+      connectWebSocket().then(() => {});
+      // Store ref for cleanup: ws state updates async, so we disconnect in next effect
     }
-
     return () => {
-      if (ws) {
-        ws.disconnect();
-      }
+      setWs((current) => {
+        if (current) {
+          current.disconnect();
+        }
+        return null;
+      });
     };
   }, [user]);
 
-  const connectWebSocket = () => {
+  const connectWebSocket = async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return;
 
       const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
       const client = new WebSocketClient(wsUrl, token);
-      
-      client.on('connect', () => {
-        console.log('WebSocket connected');
-      });
 
-      client.on('message', (data: any) => {
-        console.log('Message received:', data);
-        // Handle incoming messages
-      });
-
-      client.on('error', (error: any) => {
-        console.error('WebSocket error:', error);
-      });
-
+      await client.connect();
       setWs(client);
     } catch (error) {
       console.error('Failed to connect WebSocket:', error);
