@@ -298,6 +298,7 @@ export const proposalApi = {
   getProposals: () => api.get('/proposals'),
   acceptProposal: (proposalId: string) => api.put(`/proposals/${proposalId}/accept`),
   rejectProposal: (proposalId: string) => api.put(`/proposals/${proposalId}/reject`),
+  deleteProposal: (proposalId: string) => api.delete(`/proposals/${proposalId}`),
 };
 
 // Call API

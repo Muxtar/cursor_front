@@ -189,9 +189,17 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   const handleFileUpload = async (file: File) => {
     try {
+      setLoading(true);
       const response = await fileApi.uploadFile(file);
-      const messageType = file.type.startsWith('image/') ? 'image' : 
-                         file.type.startsWith('audio/') || file.type.startsWith('video/') ? 'audio' : 'file';
+      
+      let messageType = 'file';
+      if (file.type.startsWith('image/')) {
+        messageType = 'image';
+      } else if (file.type.startsWith('audio/')) {
+        messageType = 'audio';
+      } else if (file.type.startsWith('video/')) {
+        messageType = 'video';
+      }
       
       await chatApi.sendMessage(chatId, {
         content: file.name,
@@ -200,11 +208,19 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         file_name: file.name,
         file_size: file.size,
         is_anonymous: false,
+        reply_to_id: replyingTo?.id,
       });
       
-      loadMessages();
+      setReplyingTo(null);
+      await loadMessages();
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
     } catch (error) {
       console.error('Failed to upload file:', error);
+      alert('Dosya yüklenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -402,16 +418,50 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
                     {/* Message Content */}
                     {message.message_type === 'image' && message.file_url && (
-                      <img
-                        src={`${getBaseUrl()}${message.file_url}`}
-                        alt="Shared image"
-                        className="max-w-full rounded-lg mb-2"
-                      />
+                      <div className="mb-2">
+                        <img
+                          src={`${getBaseUrl()}${message.file_url}`}
+                          alt="Shared image"
+                          className="max-w-full max-h-96 rounded-lg cursor-pointer"
+                          onClick={() => window.open(`${getBaseUrl()}${message.file_url}`, '_blank')}
+                        />
+                      </div>
+                    )}
+                    {message.message_type === 'video' && message.file_url && (
+                      <div className="mb-2">
+                        <video controls src={`${getBaseUrl()}${message.file_url}`} className="max-w-full max-h-96 rounded-lg" />
+                      </div>
                     )}
                     {message.message_type === 'audio' && message.file_url && (
-                      <audio controls src={`${getBaseUrl()}${message.file_url}`} className="w-full mb-2" />
+                      <div className="mb-2">
+                        <audio controls src={`${getBaseUrl()}${message.file_url}`} className="w-full" />
+                      </div>
                     )}
-                    {message.content && (
+                    {message.message_type === 'file' && message.file_url && (
+                      <div className="mb-2 p-2 bg-gray-200 dark:bg-gray-700 rounded flex items-center space-x-2">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{message.file_name || message.content}</p>
+                          {message.file_size && (
+                            <p className="text-xs text-gray-500">
+                              {(message.file_size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          )}
+                        </div>
+                        <a
+                          href={`${getBaseUrl()}${message.file_url}`}
+                          download
+                          className="p-1 hover:bg-gray-300 dark:hover:bg-gray-600 rounded"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+                    {message.content && message.message_type !== 'file' && (
                       <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                     )}
                     
@@ -548,10 +598,17 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept="image/*,audio/*,video/*"
+            accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.txt"
+            multiple
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileUpload(file);
+              const files = e.target.files;
+              if (files && files.length > 0) {
+                Array.from(files).forEach((file) => {
+                  handleFileUpload(file);
+                });
+              }
+              // Reset input so same file can be selected again
+              e.target.value = '';
             }}
           />
           <div className={`flex-1 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'} rounded-full px-4 py-2 flex items-center`}>
