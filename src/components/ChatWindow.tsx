@@ -290,23 +290,36 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   return (
     <div className={`flex flex-col h-full ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Chat Header - WhatsApp Style */}
-      <div className="bg-green-500 p-4 text-white flex items-center justify-between shadow-md">
-        <div className="flex items-center space-x-3">
+      <div className="bg-green-500 p-3 md:p-4 text-white flex items-center justify-between shadow-md">
+        <div className="flex items-center space-x-2 md:space-x-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 hover:bg-white/20 rounded-full transition"
+              className="p-2 md:p-2 hover:bg-white/20 rounded-full transition active:bg-white/30 md:hidden"
+              aria-label="Back to chats"
+            >
+              <svg className="w-6 h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          {/* Desktop back button */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="hidden md:block p-2 hover:bg-white/20 rounded-full transition"
+              aria-label="Back to chats"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
           )}
-          <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-semibold">
+          <div className="w-9 h-9 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center font-semibold text-sm md:text-base flex-shrink-0">
             {(chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
           </div>
-          <div>
-            <h2 className="text-lg font-semibold">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base md:text-lg font-semibold truncate">
               {chatInfo?.other_party_anonymous ? 'Anonymous' : (chatInfo?.group_name || 'Chat')}
             </h2>
             {isTyping && (
@@ -352,7 +365,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       )}
 
       {/* Messages */}
-      <div className={`flex-1 overflow-y-auto p-4 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
+      <div className={`flex-1 overflow-y-auto p-2 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
         <div className="flex flex-col">
         {messages.map((message, index) => {
           const isMine = isMyMessage(message);
@@ -381,18 +394,18 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               key={message.id}
               className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-0.5 group w-full`}
             >
-              <div className={`flex items-end space-x-2 max-w-[70%] ${isMine ? 'flex-row-reverse space-x-reverse' : ''} w-full`}>
+              <div className={`flex items-end space-x-2 max-w-[85%] md:max-w-[70%] ${isMine ? 'flex-row-reverse space-x-reverse' : ''} w-full`}>
                 {!isMine && showAvatar && (
-                  <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mb-0.5">
+                  <div className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mb-0.5">
                     {getDisplayName(message)[0]?.toUpperCase() || 'U'}
                   </div>
                 )}
                 {!isMine && !showAvatar && (
-                  <div className="w-8 flex-shrink-0"></div>
+                  <div className="w-7 md:w-8 flex-shrink-0"></div>
                 )}
                 <div className="relative">
                   <div
-                    className={`px-3 py-1.5 rounded-lg shadow-sm ${
+                    className={`px-2.5 py-1.5 md:px-3 md:py-1.5 rounded-lg shadow-sm text-sm md:text-base ${
                       isMine
                         ? 'bg-green-500 text-white rounded-br-sm'
                         : actualTheme === 'dark' ? 'bg-gray-800 text-white rounded-bl-sm' : 'bg-white text-gray-800 rounded-bl-sm'
@@ -583,14 +596,14 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       )}
 
       {/* Message Input - WhatsApp Style */}
-      <div className={`p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-        <form onSubmit={handleSendMessage} className="flex items-end space-x-2">
+      <div className={`p-2 md:p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+        <form onSubmit={handleSendMessage} className="flex items-end space-x-1 md:space-x-2">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-gray-500 hover:text-gray-700 transition"
+            className="p-2 md:p-2 text-gray-500 hover:text-gray-700 transition active:bg-gray-100 rounded-full"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
             </svg>
           </button>
@@ -611,7 +624,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               e.target.value = '';
             }}
           />
-          <div className={`flex-1 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'} rounded-full px-4 py-2 flex items-center`}>
+          <div className={`flex-1 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'} rounded-full px-3 md:px-4 py-2 flex items-center min-w-0`}>
             <input
               ref={inputRef}
               type="text"
@@ -621,12 +634,12 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                 handleTypingIndicator();
               }}
               placeholder="Type a message"
-              className={`flex-1 bg-transparent outline-none text-sm ${actualTheme === 'dark' ? 'text-white placeholder-gray-400' : ''}`}
+              className={`flex-1 bg-transparent outline-none text-sm md:text-base min-w-0 ${actualTheme === 'dark' ? 'text-white placeholder-gray-400' : ''}`}
             />
             <button
               type="button"
               onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="p-1 text-gray-500 hover:text-gray-700"
+              className="p-1 text-gray-500 hover:text-gray-700 active:bg-gray-200 rounded-full flex-shrink-0"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -636,9 +649,9 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           <button
             type="submit"
             disabled={loading || !newMessage.trim()}
-            className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 md:p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed active:bg-green-600 flex-shrink-0"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
           </button>

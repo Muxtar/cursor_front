@@ -398,10 +398,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
   return (
     <>
-      <div className={`w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen`}>
+      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen overflow-hidden`}>
         {/* Header */}
-        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
-          <div className="flex items-center justify-between mb-4">
+        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-3 md:p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className="flex items-center justify-between mb-3 md:mb-4">
             <div className="flex items-center space-x-3 relative" ref={profileMenuRef}>
               <div className="relative">
                 <button
@@ -568,7 +568,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           <div className="flex space-x-1">
             <button
               onClick={() => setActiveTab('chats')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm ${
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm ${
                 activeTab === 'chats'
                   ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
@@ -578,7 +578,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             </button>
             <button
               onClick={() => setActiveTab('contacts')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm ${
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm ${
                 activeTab === 'contacts'
                   ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
@@ -588,13 +588,14 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             </button>
             <button
               onClick={() => setActiveTab('requests')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-sm relative ${
+              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm relative ${
                 activeTab === 'requests'
                   ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {t('requestsTab')}
+              <span className="hidden sm:inline">{t('requestsTab')}</span>
+              <span className="sm:hidden">İstek</span>
               {incomingProposalsCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
                   {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
@@ -615,7 +616,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 setSearchQuery(e.target.value);
                 handleSearchUsers(e.target.value);
               }}
-              className={`w-full pl-10 pr-4 py-2 ${actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white'} rounded-lg border ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-300'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+              className={`w-full pl-10 pr-4 py-2 text-sm md:text-base ${actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-white'} rounded-lg border ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-300'} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
             />
             <svg className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -634,29 +635,29 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 <button
                   key={result.id || result._id}
                   onClick={() => openChatWithContact(result.id || result._id)}
-                  className={`w-full p-4 text-left transition-colors ${
+                  className={`w-full p-3 md:p-4 text-left transition-colors active:bg-gray-200 dark:active:bg-gray-600 ${
                     actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center space-x-3">
-                    <div className="relative">
+                  <div className="flex items-center space-x-2 md:space-x-3">
+                    <div className="relative flex-shrink-0">
                       {result.avatar ? (
                         <img
                           src={result.avatar}
                           alt={result.username || result.phone_number}
-                          className="w-12 h-12 rounded-full object-cover"
+                          className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover"
                         />
                       ) : (
-                        <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                        <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
                           {result.username?.[0]?.toUpperCase() || result.phone_number?.[0] || 'U'}
                         </div>
                       )}
                       {isOnline && (
-                        <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                        <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                      <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                         {result.username || result.phone_number}
                       </p>
                       <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -876,23 +877,23 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                       if (onChatSelect) onChatSelect(chatId);
                       router.push('/chat');
                     }}
-                    className={`w-full p-4 text-left transition-colors ${
+                    className={`w-full p-3 md:p-4 text-left transition-colors active:bg-gray-200 dark:active:bg-gray-600 ${
                       selectedChat === chatId
                         ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
                         : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                    <div className="flex items-center space-x-2 md:space-x-3">
+                      <div className="relative flex-shrink-0">
+                        <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
                           {chatTitle?.[0]?.toUpperCase() || 'C'}
                         </div>
                         {isOtherMemberOnline && !isAnonymous && (
-                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                          <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                        <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                           {chatTitle}
                         </p>
                         {chat.last_message && (
@@ -922,29 +923,29 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   return (
                   <div
                     key={contact.contact?.id || contact.id || contact._id}
-                    className={`w-full p-4 flex items-center justify-between transition-colors ${
+                    className={`w-full p-3 md:p-4 flex items-center justify-between transition-colors active:bg-gray-200 dark:active:bg-gray-600 ${
                       actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                      <div className="relative">
+                    <div className="flex items-center space-x-2 md:space-x-3 flex-1 min-w-0">
+                      <div className="relative flex-shrink-0">
                         {contact.user?.avatar ? (
                           <img
                             src={contact.user.avatar}
                             alt={displayName}
-                            className="w-12 h-12 rounded-full object-cover"
+                            className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover"
                           />
                         ) : (
-                          <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold`}>
+                          <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
                             {displayName?.[0]?.toUpperCase() || displaySub?.[0] || 'U'}
                           </div>
                         )}
                         {isOnline && (
-                          <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                          <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                        <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                           {displayName}
                         </p>
                         <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -952,7 +953,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-shrink-0">
                       {contactUserId && (
                         <button
                           onClick={() => openChatWithContact(contactUserId)}
