@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
@@ -12,6 +13,7 @@ import { api } from '@/lib/api';
 function ChatContent() {
   const { user } = useAuth();
   const { actualTheme } = useTheme();
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocketClient | null>(null);
@@ -125,10 +127,10 @@ function ChatContent() {
                 </svg>
               </div>
               <h2 className={`text-2xl font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
-                Welcome to Chat App
+                {t('welcomeToChatApp')}
               </h2>
               <p className={`mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                Select a chat to start messaging
+                {t('selectChat')}
               </p>
             </div>
           </div>

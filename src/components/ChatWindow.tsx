@@ -323,7 +323,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               {chatInfo?.other_party_anonymous ? 'Anonymous' : (chatInfo?.group_name || 'Chat')}
             </h2>
             {isTyping && (
-              <p className="text-xs text-green-100">typing...</p>
+              <p className="text-xs text-green-100">{t('typing')}</p>
             )}
           </div>
         </div>
@@ -383,7 +383,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             return (
               <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-2`}>
                 <div className="px-4 py-2 bg-gray-200 rounded-lg text-gray-500 italic text-sm">
-                  This message was deleted
+                  {t('messageDeleted')}
                 </div>
               </div>
             );
@@ -633,7 +633,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                 setNewMessage(e.target.value);
                 handleTypingIndicator();
               }}
-              placeholder="Type a message"
+              placeholder={t('typeMessage')}
               className={`flex-1 bg-transparent outline-none text-sm md:text-base min-w-0 ${actualTheme === 'dark' ? 'text-white placeholder-gray-400' : ''}`}
             />
             <button
