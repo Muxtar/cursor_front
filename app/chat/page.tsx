@@ -7,6 +7,7 @@ import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
+import { api } from '@/lib/api';
 
 function ChatContent() {
   const { user } = useAuth();
@@ -39,15 +40,56 @@ function ChatContent() {
   const connectWebSocket = async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        console.warn('No token found, skipping WebSocket connection');
+        return;
+      }
 
-      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
-      const client = new WebSocketClient(wsUrl, token);
+      // First, check if backend is reachable via health check
+      try {
+        await api.get('/health');
+        console.log('✅ Backend health check passed');
+      } catch (healthError) {
+        console.error('❌ Backend health check failed:', healthError);
+        console.error('💡 Make sure the backend server is running!');
+        console.error('   For localhost: Run `cd back-end && go run main.go`');
+        console.error('   Backend should be listening on port 8080');
+        // Continue anyway - maybe health endpoint is not available
+      }
 
-      await client.connect();
-      setWs(client);
+      // WebSocketClient constructor will use getWsUrlRuntime() if no URL provided
+      // This handles both build-time env vars and runtime detection
+      const client = new WebSocketClient(undefined, token);
+
+      // Set a timeout for connection (10 seconds)
+      const connectionTimeout = setTimeout(() => {
+        console.error('⏱️ WebSocket connection timeout after 10 seconds');
+        console.error('💡 TROUBLESHOOTING:');
+        console.error('   1. Make sure the backend server is running');
+        console.error('   2. Check if the WebSocket URL is correct');
+        console.error('   3. For localhost: Backend should be on port 8080');
+        console.error('   4. For production: Set NEXT_PUBLIC_WS_URL environment variable');
+        console.error('   5. Check browser console for CORS or network errors');
+      }, 10000);
+
+      try {
+        await client.connect();
+        clearTimeout(connectionTimeout);
+        setWs(client);
+      } catch (error: any) {
+        clearTimeout(connectionTimeout);
+        console.error('Failed to connect WebSocket:', error);
+        console.error('💡 TROUBLESHOOTING:');
+        console.error('   1. Make sure the backend server is running');
+        console.error('   2. Check if the WebSocket URL is correct');
+        console.error('   3. For localhost: Backend should be on port 8080');
+        console.error('   4. For production: Set NEXT_PUBLIC_WS_URL environment variable');
+        console.error('   5. Check browser console for CORS or network errors');
+        // Don't set ws on error, so UI can show connection failed state
+        // But don't throw - let the reconnect mechanism handle it
+      }
     } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
+      console.error('Failed to initialize WebSocket client:', error);
     }
   };
 
