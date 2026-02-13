@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { chatApi, contactApi, userApi, fileApi, proposalApi } from '@/lib/api';
 
 interface SidebarProps {
-  onChatSelect?: (chatId: string) => void;
+  onChatSelect?: (chatId: string | null) => void;
   selectedChat?: string | null;
 }
 
