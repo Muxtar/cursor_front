@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'next/navigation';
 import { userApi } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
@@ -11,6 +12,7 @@ import Link from 'next/link';
 export default function LocationPage() {
   const { user } = useAuth();
   const { actualTheme } = useTheme();
+  const { t } = useLanguage();
   const router = useRouter();
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ export default function LocationPage() {
         (error) => {
           console.error('Error getting location:', error);
           setLocationPermission('denied');
-          setError('Location access denied. Please enable location services.');
+          setError(t('locationAccessDenied'));
           setLoading(false);
           // Try to load nearby users anyway (if user has location in profile)
           loadNearbyUsersWithoutLocation();
@@ -48,7 +50,7 @@ export default function LocationPage() {
         }
       );
     } else {
-      setError('Geolocation is not supported by your browser.');
+      setError(t('geolocationNotSupported'));
       setLoading(false);
       loadNearbyUsersWithoutLocation();
     }
@@ -97,7 +99,7 @@ export default function LocationPage() {
         (error) => {
           console.error('Error getting location:', error);
           setLocationPermission('denied');
-          setError('Location access denied. Please enable location services in your browser settings.');
+          setError(t('locationAccessDenied'));
           setLoading(false);
         },
         {
@@ -121,7 +123,7 @@ export default function LocationPage() {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
             <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-              Getting your location...
+              {t('gettingLocation')}
             </p>
           </div>
         </div>
@@ -147,10 +149,10 @@ export default function LocationPage() {
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                <span>Back</span>
+                <span>{t('backToChat')}</span>
               </Link>
               <h1 className={`text-xl font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-                Nearby Users
+                {t('nearbyUsers')}
               </h1>
               <div className="w-12"></div>
             </div>
@@ -167,7 +169,7 @@ export default function LocationPage() {
             {userLocation ? (
               <div>
                 <p className={`${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'} font-medium`}>
-                  Your Location
+                  {t('location')}
                 </p>
                 <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                   {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
@@ -176,14 +178,14 @@ export default function LocationPage() {
             ) : (
               <div>
                 <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Location not available
+                  {t('location')} {t('loading').toLowerCase()}
                 </p>
                 {locationPermission === 'denied' && (
                   <button
                     onClick={requestLocationAgain}
                     className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
                   >
-                    Request Location Again
+                    {t('requestLocationAgain')}
                   </button>
                 )}
               </div>
@@ -211,7 +213,7 @@ export default function LocationPage() {
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-              Users Nearby ({nearbyUsers.length})
+              {t('usersNearby')} ({nearbyUsers.length})
             </h2>
             {!userLocation && (
               <button
@@ -222,7 +224,7 @@ export default function LocationPage() {
                     : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
-                Enable Location
+                {t('enableLocation')}
               </button>
             )}
           </div>
@@ -234,12 +236,12 @@ export default function LocationPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               <p className={`text-lg mb-2 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
-                No users found nearby
+                {t('noUsersNearby')}
               </p>
               <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                 {!userLocation 
-                  ? 'Enable location services to find users near you'
-                  : 'Try increasing the search radius or check back later'}
+                  ? t('enableLocationServices')
+                  : t('selectChat')}
               </p>
             </div>
           ) : (
@@ -260,9 +262,9 @@ export default function LocationPage() {
                       <p className={`font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                         {nearbyUser.username || nearbyUser.phone_number || 'User'}
                       </p>
-                      {nearbyUser.distance !== undefined && (
+                        {nearbyUser.distance !== undefined && (
                         <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {nearbyUser.distance.toFixed(1)} km away
+                          {nearbyUser.distance.toFixed(1)} {t('kmAway')}
                         </p>
                       )}
                       {nearbyUser.location && (

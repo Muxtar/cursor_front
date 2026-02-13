@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { chatApi, fileApi, messageApi, typingApi } from '@/lib/api';
+import { chatApi, fileApi, messageApi, typingApi, contactApi } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,6 +41,16 @@ interface Message {
   reply_to_id?: string;
   reply_to?: Message;
   created_at: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+    address?: string;
+  };
+  contact?: {
+    name: string;
+    phone_number: string;
+    user_id?: string;
+  };
   sender?: {
     username?: string;
     phone_number?: string;
@@ -67,6 +77,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [chatInfo, setChatInfo] = useState<any>(null);
+  const [showContactPicker, setShowContactPicker] = useState(false);
+  const [contacts, setContacts] = useState<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +87,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   useEffect(() => {
     loadChatInfo();
     loadMessages();
+    loadContacts();
     if (ws) {
       ws.joinChat(chatId);
       ws.on('message', handleNewMessage);
@@ -89,6 +102,23 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       }
     };
   }, [chatId, ws]);
+
+  const loadContacts = async () => {
+    try {
+      const data: any = await contactApi.getContacts();
+      let contactsData: any[] = [];
+      if (Array.isArray(data)) {
+        contactsData = data;
+      } else if (data && Array.isArray(data.contacts)) {
+        contactsData = data.contacts;
+      } else if (data && Array.isArray(data.data)) {
+        contactsData = data.data;
+      }
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    }
+  };
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -218,7 +248,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       }, 100);
     } catch (error) {
       console.error('Failed to upload file:', error);
-      alert('Dosya yüklenirken bir hata oluştu');
+      alert(t('sendFailed'));
     } finally {
       setLoading(false);
     }
@@ -237,7 +267,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   };
 
   const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
-    if (!confirm(deleteForEveryone ? 'Delete for everyone?' : 'Delete for me?')) return;
+    if (!confirm(deleteForEveryone ? t('deleteForEveryone') + '?' : t('deleteForMe') + '?')) return;
     
     try {
       await messageApi.deleteMessage(messageId, deleteForEveryone);
@@ -245,16 +275,19 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       setSelectedMessage(null);
     } catch (error) {
       console.error('Failed to delete message:', error);
+      alert(t('sendFailed'));
     }
   };
 
   const handleEditMessage = async (messageId: string, newContent: string) => {
+    if (!newContent || !newContent.trim()) return;
     try {
-      await messageApi.editMessage(messageId, newContent);
+      await messageApi.editMessage(messageId, newContent.trim());
       loadMessages();
       setSelectedMessage(null);
     } catch (error) {
       console.error('Failed to edit message:', error);
+      alert(t('sendFailed'));
     }
   };
 
@@ -270,7 +303,91 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   const handleForwardMessage = async (messageId: string) => {
     // This would open a modal to select chats
-    alert('Forward feature - select chats to forward to');
+    alert(t('forward') + ' - ' + t('selectChat'));
+  };
+
+  const handleShareContact = async (contactId: string) => {
+    try {
+      // Get contact details
+      const contacts: any = await contactApi.getContacts();
+      const contact = Array.isArray(contacts) 
+        ? contacts.find((c: any) => (c.contact?.id || c.id || c._id) === contactId)
+        : contacts?.contacts?.find((c: any) => (c.contact?.id || c.id || c._id) === contactId);
+      
+      if (!contact) {
+        alert(t('noContactsYet'));
+        return;
+      }
+
+      const contactUser = contact.user || contact.contact;
+      await chatApi.sendMessage(chatId, {
+        content: contactUser?.username || contactUser?.phone_number || '',
+        message_type: 'contact',
+        contact: {
+          name: contactUser?.username || contactUser?.display_name || contactUser?.phone_number || '',
+          phone_number: contactUser?.phone_number || '',
+          user_id: contactUser?.id || contactUser?._id || null,
+        },
+        is_anonymous: false,
+      });
+      
+      await loadMessages();
+      setTimeout(() => {
+        scrollToBottom();
+      }, 100);
+      alert(t('contactShared'));
+    } catch (error) {
+      console.error('Failed to share contact:', error);
+      alert(t('failedToShareContact'));
+    }
+  };
+
+  const handleShareLocation = async () => {
+    if (!navigator.geolocation) {
+      alert(t('geolocationNotSupported'));
+      return;
+    }
+
+    try {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          
+          // Note: Address lookup can be added later using a geocoding service
+          // For now, we'll just send coordinates
+          const coordinates = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+
+          await chatApi.sendMessage(chatId, {
+            content: coordinates,
+            message_type: 'location',
+            location: {
+              latitude,
+              longitude,
+              is_live: false,
+            },
+            is_anonymous: false,
+          });
+          
+          await loadMessages();
+          setTimeout(() => {
+            scrollToBottom();
+          }, 100);
+          alert(t('locationShared'));
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          alert(t('locationAccessDenied'));
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        }
+      );
+    } catch (error) {
+      console.error('Failed to share location:', error);
+      alert(t('failedToShareLocation'));
+    }
   };
 
   const formatTime = (dateString: string) => {
@@ -283,8 +400,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   };
 
   const getDisplayName = (message: Message) => {
-    if (message.is_anonymous) return 'Anonymous';
-    return message.sender?.username || message.sender?.phone_number || 'User';
+    if (message.is_anonymous) return t('anonymous');
+    return message.sender?.username || message.sender?.phone_number || t('profile');
   };
 
   return (
@@ -320,7 +437,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-base md:text-lg font-semibold truncate">
-              {chatInfo?.other_party_anonymous ? 'Anonymous' : (chatInfo?.group_name || 'Chat')}
+              {chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats'))}
             </h2>
             {isTyping && (
               <p className="text-xs text-green-100">{t('typing')}</p>
@@ -350,8 +467,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       {replyingTo && (
         <div className="bg-green-100 p-3 border-l-4 border-green-500 flex items-center justify-between">
           <div className="flex-1">
-            <p className="text-xs text-green-700 font-semibold">Replying to {getDisplayName(replyingTo)}</p>
-            <p className="text-sm text-gray-700 truncate">{replyingTo.content || 'Media'}</p>
+            <p className="text-xs text-green-700 font-semibold">{t('reply')} {getDisplayName(replyingTo)}</p>
+            <p className="text-sm text-gray-700 truncate">{replyingTo.content || t('image')}</p>
           </div>
           <button
             onClick={() => setReplyingTo(null)}
@@ -450,6 +567,45 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                         <audio controls src={`${getBaseUrl()}${message.file_url}`} className="w-full" />
                       </div>
                     )}
+                    {message.message_type === 'location' && message.location && (
+                      <div className="mb-2 p-3 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                        <div className="flex items-start space-x-3">
+                          <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{t('location')}</p>
+                            {message.location.address && (
+                              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{message.location.address}</p>
+                            )}
+                            <a
+                              href={`https://www.google.com/maps?q=${message.location.latitude},${message.location.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-500 hover:underline mt-1 inline-block"
+                            >
+                              {message.location.latitude.toFixed(6)}, {message.location.longitude.toFixed(6)}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {message.message_type === 'contact' && message.contact && (
+                      <div className="mb-2 p-3 bg-gray-200 dark:bg-gray-700 rounded-lg">
+                        <div className="flex items-start space-x-3">
+                          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
+                            {message.contact.name?.[0]?.toUpperCase() || 'C'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{message.contact.name}</p>
+                            {message.contact.phone_number && (
+                              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">{message.contact.phone_number}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {message.message_type === 'file' && message.file_url && (
                       <div className="mb-2 p-2 bg-gray-200 dark:bg-gray-700 rounded flex items-center space-x-2">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -483,7 +639,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                       isMine ? 'text-white/70' : 'text-gray-500'
                     }`}>
                       {message.is_edited && (
-                        <span className="text-xs italic">edited</span>
+                        <span className="text-xs italic">{t('edit').toLowerCase()}</span>
                       )}
                       <span className="text-xs">{formatTime(message.created_at)}</span>
                       {isMine && (
@@ -514,7 +670,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
                       >
                         <span>💬</span>
-                        <span>Reply</span>
+                        <span>{t('reply')}</span>
                       </button>
                       <button
                         onClick={() => {
@@ -524,40 +680,40 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
                       >
                         <span>😊</span>
-                        <span>React</span>
+                        <span>{t('react')}</span>
                       </button>
                       <button
                         onClick={() => handleForwardMessage(message.id)}
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
                       >
                         <span>↪️</span>
-                        <span>Forward</span>
+                        <span>{t('forward')}</span>
                       </button>
                       {isMine && (
                         <>
                           <button
                             onClick={() => {
-                              const newContent = prompt('Edit message:', message.content);
-                              if (newContent) handleEditMessage(message.id, newContent);
+                              const newContent = prompt(t('edit') + ' ' + t('typeMessage').toLowerCase() + ':', message.content);
+                              if (newContent && newContent.trim()) handleEditMessage(message.id, newContent);
                             }}
                             className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
                           >
                             <span>✏️</span>
-                            <span>Edit</span>
+                            <span>{t('edit')}</span>
                           </button>
                           <button
                             onClick={() => handleDeleteMessage(message.id, false)}
                             className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
                           >
                             <span>🗑️</span>
-                            <span>Delete for me</span>
+                            <span>{t('deleteForMe')}</span>
                           </button>
                           <button
                             onClick={() => handleDeleteMessage(message.id, true)}
                             className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 flex items-center space-x-2"
                           >
                             <span>🗑️</span>
-                            <span>Delete for everyone</span>
+                            <span>{t('deleteForEveryone')}</span>
                           </button>
                         </>
                       )}
@@ -565,7 +721,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                         onClick={() => setSelectedMessage(null)}
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
                       >
-                        Cancel
+                        {t('cancel')}
                       </button>
                     </div>
                   )}
@@ -598,13 +754,75 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       {/* Message Input - WhatsApp Style */}
       <div className={`p-2 md:p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         <form onSubmit={handleSendMessage} className="flex items-end space-x-1 md:space-x-2">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 md:p-2 text-gray-500 hover:text-gray-700 transition active:bg-gray-100 rounded-full"
+              title={t('image')}
+            >
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            {showContactPicker && (
+              <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto z-50">
+                <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-semibold">{t('selectContact')}</p>
+                </div>
+                <div className="p-2">
+                  {contacts.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-4">{t('noContactsYet')}</p>
+                  ) : (
+                    contacts.map((contact: any) => {
+                      const contactUser = contact.user || contact.contact;
+                      const contactId = contact.contact?.id || contact.id || contact._id;
+                      return (
+                        <button
+                          key={contactId}
+                          type="button"
+                          onClick={() => {
+                            handleShareContact(contactId);
+                            setShowContactPicker(false);
+                          }}
+                          className="w-full p-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center space-x-2"
+                        >
+                          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                            {(contactUser?.username || contactUser?.phone_number || 'C')[0]?.toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{contactUser?.username || contactUser?.display_name || contactUser?.phone_number}</p>
+                            {contactUser?.phone_number && (
+                              <p className="text-xs text-gray-500 truncate">{contactUser.phone_number}</p>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setShowContactPicker(!showContactPicker)}
             className="p-2 md:p-2 text-gray-500 hover:text-gray-700 transition active:bg-gray-100 rounded-full"
+            title={t('shareContact')}
           >
             <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleShareLocation}
+            className="p-2 md:p-2 text-gray-500 hover:text-gray-700 transition active:bg-gray-100 rounded-full"
+            title={t('shareLocation')}
+          >
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
           <input
@@ -659,12 +877,13 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       </div>
 
       {/* Click outside to close menus */}
-      {(selectedMessage || showEmojiPicker) && (
+      {(selectedMessage || showEmojiPicker || showContactPicker) && (
         <div
           className="fixed inset-0 z-0"
           onClick={() => {
             setSelectedMessage(null);
             setShowEmojiPicker(false);
+            setShowContactPicker(false);
           }}
         />
       )}

@@ -159,7 +159,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadProposalsCount();
     } catch (e) {
       console.error('Delete proposal failed:', e);
-      alert('Teklif silinirken bir hata oluştu');
+      alert(t('deleteProposalError'));
     }
   };
 
@@ -397,7 +397,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
   return (
     <>
-      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen overflow-hidden`}>
+      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen overflow-hidden`} style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-3 md:p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -593,8 +593,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
-              <span className="hidden sm:inline">{t('requestsTab')}</span>
-              <span className="sm:hidden">İstek</span>
+              <span>{t('requestsTab')}</span>
               {incomingProposalsCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
                   {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
@@ -624,7 +623,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {searchQuery && searchResults.length > 0 ? (
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {searchResults.map((result) => {
@@ -982,8 +981,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           )}
         </div>
 
-        {/* Bottom Navigation - Always Visible */}
-        <div className={`p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+        {/* Bottom Navigation - Always Visible - Fixed at Bottom */}
+        <div className={`p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} flex-shrink-0`}>
           <div className="flex items-center justify-around">
             <Link
               href="/story/create"
