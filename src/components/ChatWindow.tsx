@@ -643,8 +643,17 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                       )}
                       <span className="text-xs">{formatTime(message.created_at)}</span>
                       {isMine && (
-                        <span className="text-xs">
-                          {message.status === 'read' ? '✓✓' : message.status === 'delivered' ? '✓✓' : '✓'}
+                        <span className="text-xs flex items-center space-x-0.5">
+                          {message.status === 'read' ? (
+                            // Read: double blue check
+                            <span className="text-blue-300">✓✓</span>
+                          ) : message.status === 'delivered' ? (
+                            // Delivered: double grey check
+                            <span>✓✓</span>
+                          ) : (
+                            // Sent: single check
+                            <span>✓</span>
+                          )}
                         </span>
                       )}
                     </div>
