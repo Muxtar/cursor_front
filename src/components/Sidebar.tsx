@@ -329,6 +329,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      await chatApi.deleteChat(chatId);
+      loadChats();
+      if (selectedChat === chatId) {
+        if (onChatSelect) onChatSelect(null);
+      }
+    } catch (error: any) {
+      console.error('Failed to delete chat:', error);
+      alert(t('sendFailed') + ': ' + (error?.message || ''));
+    }
+  };
+
   const handleProposalSearch = async (query: string) => {
     setProposalSearchQuery(query);
     if (!query.trim()) {
@@ -863,25 +876,27 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 chats.map((chat) => {
                   const chatId = chat.id || chat._id;
                   const isAnonymous = chat.other_party_anonymous === true;
-                  const chatTitle = isAnonymous ? 'Anonymous' : (chat.group_name || chat.members?.[0]?.username || 'Chat');
+                  const chatTitle = isAnonymous ? t('anonymous') : (chat.group_name || chat.members?.[0]?.username || t('chats'));
                   // Get other member's ID for online status (for direct chats)
                   const otherMemberId = chat.type === 'direct' && chat.members ? 
                     chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
                   const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
                   return (
-                  <button
+                  <div
                     key={chatId}
-                    onClick={() => {
-                      if (onChatSelect) onChatSelect(chatId);
-                      router.push('/chat');
-                    }}
-                    className={`w-full p-3 md:p-4 text-left transition-colors active:bg-gray-200 dark:active:bg-gray-600 ${
+                    className={`group w-full p-3 md:p-4 flex items-center justify-between transition-colors ${
                       selectedChat === chatId
                         ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
                         : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
-                    <div className="flex items-center space-x-2 md:space-x-3">
+                    <button
+                      onClick={() => {
+                        if (onChatSelect) onChatSelect(chatId);
+                        router.push('/chat');
+                      }}
+                      className="flex-1 flex items-center space-x-2 md:space-x-3 text-left min-w-0"
+                    >
                       <div className="relative flex-shrink-0">
                         <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
                           {chatTitle?.[0]?.toUpperCase() || 'C'}
@@ -900,8 +915,22 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                           </p>
                         )}
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(t('delete') + ' ' + t('chats') + '?')) {
+                          handleDeleteChat(chatId);
+                        }
+                      }}
+                      className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
+                      title={t('delete')}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                   );
                 })
               )}

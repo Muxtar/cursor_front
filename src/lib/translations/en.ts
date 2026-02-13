@@ -368,7 +368,6 @@ export const en = {
   startTypingToSearch: 'Start typing to search users',
   photoUpdateFailed: 'Failed to update photo',
   deleteProposalError: 'An error occurred while deleting the proposal',
-  normal: 'Normal',
   reply: 'Reply',
   react: 'React',
   forward: 'Forward',

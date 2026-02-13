@@ -368,7 +368,6 @@ export const tr = {
   startTypingToSearch: 'Aramak için yazmaya başlayın',
   photoUpdateFailed: 'Profil fotoğrafı güncellenemedi',
   deleteProposalError: 'Teklif silinirken bir hata oluştu',
-  normal: 'Normal',
   reply: 'Yanıtla',
   react: 'Tepki Ver',
   forward: 'İlet',

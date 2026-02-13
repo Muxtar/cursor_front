@@ -235,6 +235,7 @@ export const chatApi = {
   getChat: (chatId: string) => api.get(`/chats/${chatId}`),
   getMessages: (chatId: string) => api.get(`/chats/${chatId}/messages`),
   sendMessage: (chatId: string, data: any) => api.post(`/chats/${chatId}/messages`, data),
+  deleteChat: (chatId: string) => api.delete(`/chats/${chatId}`),
 };
 
 // Profile comments (anonymous comments about a user; profile owner can reply to commenter)
