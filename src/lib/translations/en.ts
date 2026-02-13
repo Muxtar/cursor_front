@@ -392,5 +392,13 @@ export const en = {
   requestLocationAgain: 'Request Location Again',
   enableLocationServices: 'Enable location services to find users near you',
   backToChat: 'Back',
+  wallet: 'Wallet',
+  searchRadius: 'Search Radius',
+  selectRadius: 'Select search radius',
+  km: 'km',
+  locationPermissionDenied: 'Location permission denied. You can still search for users manually.',
+  mapView: 'Map View',
+  listView: 'List View',
+  noLocationPermission: 'Location permission is required to show nearby users on map.',
 };
 

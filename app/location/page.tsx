@@ -19,6 +19,8 @@ export default function LocationPage() {
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt' | null>(null);
+  const [searchRadius, setSearchRadius] = useState<number>(5000); // Default 5km
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
 
   useEffect(() => {
     if (!user) {
@@ -36,12 +38,19 @@ export default function LocationPage() {
           loadNearbyUsers(latitude, longitude);
         },
         (error) => {
-          console.error('Error getting location:', error);
-          setLocationPermission('denied');
-          setError(t('locationAccessDenied'));
-          setLoading(false);
-          // Try to load nearby users anyway (if user has location in profile)
-          loadNearbyUsersWithoutLocation();
+          // Don't show error if user denied permission - just load without location
+          if (error.code === 1) {
+            // User denied permission
+            setLocationPermission('denied');
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          } else {
+            console.error('Error getting location:', error);
+            setLocationPermission('denied');
+            setError(t('locationAccessDenied'));
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          }
         },
         {
           enableHighAccuracy: true,
@@ -56,13 +65,13 @@ export default function LocationPage() {
     }
   }, [user]);
 
-  const loadNearbyUsers = async (lat: number, lng: number) => {
+  const loadNearbyUsers = async (lat: number, lng: number, radius?: number) => {
     try {
       // Update user location
       await userApi.updateLocation({ latitude: lat, longitude: lng });
       
-      // Get nearby users
-      const users: any = await userApi.getNearbyUsers(5000); // 5km radius
+      // Get nearby users with selected radius
+      const users: any = await userApi.getNearbyUsers(radius || searchRadius);
       setNearbyUsers(Array.isArray(users) ? users : users?.users || []);
     } catch (error: any) {
       console.error('Failed to load nearby users:', error);
@@ -72,16 +81,25 @@ export default function LocationPage() {
     }
   };
 
-  const loadNearbyUsersWithoutLocation = async () => {
+  const loadNearbyUsersWithoutLocation = async (radius?: number) => {
     try {
       // Try to get nearby users without updating location
-      const users: any = await userApi.getNearbyUsers(5000);
+      const users: any = await userApi.getNearbyUsers(radius || searchRadius);
       setNearbyUsers(Array.isArray(users) ? users : users?.users || []);
     } catch (error: any) {
       console.error('Failed to load nearby users:', error);
       setError('Failed to load nearby users. ' + (error.message || ''));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRadiusChange = (newRadius: number) => {
+    setSearchRadius(newRadius);
+    if (userLocation) {
+      loadNearbyUsers(userLocation.lat, userLocation.lng, newRadius);
+    } else {
+      loadNearbyUsersWithoutLocation(newRadius);
     }
   };
 
@@ -159,39 +177,91 @@ export default function LocationPage() {
           </div>
         </div>
 
-        {/* Map Area - Placeholder */}
-        <div className={`h-64 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'} flex items-center justify-center`}>
-          <div className="text-center">
-            <svg className={`w-16 h-16 mx-auto mb-2 ${actualTheme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+        {/* Map Area */}
+        {viewMode === 'map' && (
+          <div className={`h-96 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'} relative`}>
             {userLocation ? (
-              <div>
-                <p className={`${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'} font-medium`}>
-                  {t('location')}
-                </p>
-                <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}
-                </p>
+              <div className="w-full h-full relative">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${userLocation.lng - 0.05},${userLocation.lat - 0.05},${userLocation.lng + 0.05},${userLocation.lat + 0.05}&layer=mapnik&marker=${userLocation.lat},${userLocation.lng}`}
+                />
+                {/* User location marker */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-lg"></div>
+                </div>
+                {/* Nearby users markers */}
+                {nearbyUsers.map((user, index) => {
+                  if (!user.location || !user.location.latitude || !user.location.longitude) return null;
+                  const lat = user.location.latitude;
+                  const lng = user.location.longitude;
+                  // Calculate relative position (simplified - would need proper projection for accurate positioning)
+                  const latDiff = lat - userLocation.lat;
+                  const lngDiff = lng - userLocation.lng;
+                  const topPercent = 50 - (latDiff * 1000); // Rough approximation
+                  const leftPercent = 50 + (lngDiff * 1000);
+                  
+                  return (
+                    <div
+                      key={user.id || user._id}
+                      className="absolute pointer-events-none"
+                      style={{
+                        top: `${Math.max(5, Math.min(95, topPercent))}%`,
+                        left: `${Math.max(5, Math.min(95, leftPercent))}%`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    >
+                      <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div>
-                <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t('location')} {t('loading').toLowerCase()}
-                </p>
-                {locationPermission === 'denied' && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <svg className={`w-16 h-16 mx-auto mb-2 ${actualTheme === 'dark' ? 'text-gray-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {t('noLocationPermission')}
+                  </p>
                   <button
                     onClick={requestLocationAgain}
                     className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
                   >
                     {t('requestLocationAgain')}
                   </button>
-                )}
+                </div>
+              </div>
+            )}
+            {/* User markers on map */}
+            {userLocation && nearbyUsers.length > 0 && (
+              <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 max-h-64 overflow-y-auto">
+                <p className={`text-xs font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                  {nearbyUsers.length} {t('usersNearby')}
+                </p>
+                {nearbyUsers.slice(0, 5).map((user) => (
+                  <div key={user.id || user._id} className="text-xs py-1">
+                    <span className={actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                      {user.username || user.phone_number}
+                    </span>
+                    {user.distance !== undefined && (
+                      <span className={`ml-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {user.distance.toFixed(1)} {t('km')}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
-        </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -208,6 +278,57 @@ export default function LocationPage() {
             </div>
           </div>
         )}
+
+        {/* Search Radius Selector */}
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg border ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-4`}>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center space-x-4">
+                <label className={`text-sm font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                  {t('searchRadius')}:
+                </label>
+                <select
+                  value={searchRadius}
+                  onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                  className={`px-3 py-2 rounded-lg border text-sm ${
+                    actualTheme === 'dark'
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-800'
+                  }`}
+                >
+                  <option value={1000}>1 {t('km')}</option>
+                  <option value={2000}>2 {t('km')}</option>
+                  <option value={5000}>5 {t('km')}</option>
+                  <option value={10000}>10 {t('km')}</option>
+                  <option value={20000}>20 {t('km')}</option>
+                  <option value={50000}>50 {t('km')}</option>
+                </select>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                    viewMode === 'list'
+                      ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                      : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {t('listView')}
+                </button>
+                <button
+                  onClick={() => setViewMode('map')}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                    viewMode === 'map'
+                      ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                      : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {t('mapView')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Nearby Users List */}
         <div className="max-w-7xl mx-auto px-4 py-6">

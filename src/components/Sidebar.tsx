@@ -1054,6 +1054,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               <span className="text-xs">{t('location')}</span>
             </Link>
             <Link
+              href="/wallet"
+              className={`flex flex-col items-center space-y-1 p-2 rounded-lg transition ${
+                pathname === '/wallet'
+                  ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
+                  : actualTheme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'
+              }`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              <span className="text-xs">{t('wallet')}</span>
+            </Link>
+            <Link
               href={`/profile/${user?.id || user?._id}`}
               className={`flex flex-col items-center space-y-1 p-2 rounded-lg transition ${
                 pathname?.startsWith('/profile')

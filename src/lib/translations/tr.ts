@@ -392,5 +392,13 @@ export const tr = {
   requestLocationAgain: 'Konumu Tekrar İste',
   enableLocationServices: 'Yakınındaki kullanıcıları bulmak için konum hizmetlerini etkinleştir',
   backToChat: 'Geri',
+  wallet: 'Cüzdan',
+  searchRadius: 'Arama Yarıçapı',
+  selectRadius: 'Arama yarıçapı seçin',
+  km: 'km',
+  locationPermissionDenied: 'Konum izni reddedildi. Kullanıcıları manuel olarak arayabilirsiniz.',
+  mapView: 'Harita Görünümü',
+  listView: 'Liste Görünümü',
+  noLocationPermission: 'Haritada yakındaki kullanıcıları göstermek için konum izni gereklidir.',
 };
 

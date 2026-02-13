@@ -392,6 +392,14 @@ export const az = {
   requestLocationAgain: 'Məkanı Yenidən İstə',
   enableLocationServices: 'Yaxınlıqdakı istifadəçiləri tapmaq üçün məkan xidmətlərini aktivləşdirin',
   backToChat: 'Geri',
+  wallet: 'Cüzdan',
+  searchRadius: 'Axtarış Radiusu',
+  selectRadius: 'Axtarış radiusu seçin',
+  km: 'km',
+  locationPermissionDenied: 'Məkan icazəsi rədd edildi. İstifadəçiləri əl ilə axtara bilərsiniz.',
+  mapView: 'Xəritə Görünüşü',
+  listView: 'Siyahı Görünüşü',
+  noLocationPermission: 'Xəritədə yaxınlıqdakı istifadəçiləri göstərmək üçün məkan icazəsi tələb olunur.',
 };
 
 
