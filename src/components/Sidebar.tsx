@@ -14,7 +14,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { actualTheme } = useTheme();
   const { t } = useLanguage();
   const router = useRouter();
@@ -381,8 +381,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/v1\/?$/, '')
           : 'http://localhost:8080';
         const avatarUrl = fileUrl.startsWith('http') ? fileUrl : `${base}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
-        await userApi.updateMe({ avatar: avatarUrl });
-        window.location.reload(); // refresh to show new avatar
+        await updateUser({ avatar: avatarUrl });
       }
     } catch (err: any) {
       alert(t('photoUpdateFailed') + ': ' + (err?.message || ''));

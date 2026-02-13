@@ -7,6 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { settingsApi } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import LanguageSelector from '@/components/LanguageSelector';
 import AccountSettings from '@/components/settings/AccountSettings';
 import PrivacySettings from '@/components/settings/PrivacySettings';
@@ -37,6 +38,7 @@ export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { t } = useLanguage();
   const { actualTheme } = useTheme();
+  const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('account');
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -111,7 +113,7 @@ export default function SettingsPage() {
                 if (isMobile) {
                   setShowSettingsSidebar(false);
                 } else {
-                  window.location.href = '/chat';
+                  router.push('/chat');
                 }
               }}
               className={`text-sm ${actualTheme === 'dark' ? 'text-green-400' : 'text-green-600'} hover:underline flex items-center space-x-2 active:opacity-70`}
