@@ -1023,14 +1023,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                                   {t('chats')}
                                 </span>
                               )}
-                              {isMuted && (
-                                <span className="text-[11px] text-gray-400 ml-auto" title={t('mute')}>
-                                  🔕
-                                </span>
-                              )}
                               {isArchived && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                  {t('archived') || 'Archived'}
+                                  Archived
                                 </span>
                               )}
                             </div>
@@ -1075,7 +1070,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     }}
                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {mutedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? t('unmute') || 'Unmute' : t('mute') || 'Mute'}
+                    {mutedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unmute group' : 'Mute group'}
                   </button>
                   <button
                     type="button"
@@ -1086,7 +1081,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     }}
                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
-                    {archivedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? t('unarchive') || 'Unarchive' : t('archive') || 'Archive'}
+                    {archivedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unarchive group' : 'Archive group'}
                   </button>
                   <button
                     type="button"
