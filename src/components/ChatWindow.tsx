@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi } from '@/lib/api';
+import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi, callApi } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -80,6 +80,12 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const [showContactPicker, setShowContactPicker] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -131,6 +137,152 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       setOnlineUsers(new Set(onlineList));
     } catch (error) {
       console.error('Failed to load online users:', error);
+    }
+  };
+
+  // Sesli arama başlat
+  const handleVoiceCall = async () => {
+    try {
+      await callApi.initiateCall({
+        type: 'voice',
+        chat_id: chatId,
+      });
+      alert('Voice call initiated');
+    } catch (error) {
+      console.error('Failed to initiate voice call:', error);
+      alert('Failed to initiate voice call');
+    }
+  };
+
+  // Video görüntülü arama başlat
+  const handleVideoCall = async () => {
+    try {
+      await callApi.initiateCall({
+        type: 'video',
+        chat_id: chatId,
+      });
+      alert('Video call initiated');
+    } catch (error) {
+      console.error('Failed to initiate video call:', error);
+      alert('Failed to initiate video call');
+    }
+  };
+
+  // Ses kaydı başlat
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+        mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioFile = new File([audioBlob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        // Ses dosyasını gönder (voice_message tipi ile)
+        try {
+          setLoading(true);
+          const response = await fileApi.uploadFile(audioFile);
+          
+          await chatApi.sendMessage(chatId, {
+            content: 'Voice message',
+            message_type: 'voice_message',
+            file_url: response.file_url || response.url,
+            file_name: audioFile.name,
+            file_size: audioFile.size,
+            duration: recordingTime,
+            is_anonymous: false,
+            reply_to_id: replyingTo?.id,
+          });
+          
+          setReplyingTo(null);
+          await loadMessages();
+          setTimeout(() => {
+            scrollToBottom();
+          }, 100);
+        } catch (error) {
+          console.error('Failed to send voice message:', error);
+          alert('Failed to send voice message');
+        } finally {
+          setLoading(false);
+        }
+        
+        // Stream'i durdur
+        stream.getTracks().forEach(track => track.stop());
+        setIsRecording(false);
+        setRecordingTime(0);
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      // Kayıt süresini say
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+
+      // Typing indicator gönder
+      if (ws) {
+        ws.sendTyping(chatId, 'recording_voice');
+      }
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      alert('Microphone access denied');
+    }
+  };
+
+  // Ses kaydını durdur
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  // Attachment menü seçenekleri
+  const handleAttachmentSelect = (type: string) => {
+    setShowAttachmentMenu(false);
+    switch (type) {
+      case 'document':
+        fileInputRef.current?.click();
+        break;
+      case 'picture':
+        const imageInput = document.createElement('input');
+        imageInput.type = 'file';
+        imageInput.accept = 'image/*';
+        imageInput.onchange = (e) => {
+          const files = (e.target as HTMLInputElement).files;
+          if (files && files.length > 0) {
+            handleFileUpload(files[0]);
+          }
+        };
+        imageInput.click();
+        break;
+      case 'video':
+        const videoInput = document.createElement('input');
+        videoInput.type = 'file';
+        videoInput.accept = 'video/*';
+        videoInput.onchange = (e) => {
+          const files = (e.target as HTMLInputElement).files;
+          if (files && files.length > 0) {
+            handleFileUpload(files[0]);
+          }
+        };
+        videoInput.click();
+        break;
+      case 'location':
+        handleShareLocation();
+        break;
     }
   };
 
@@ -453,7 +605,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   return (
     <div className={`flex flex-col h-full ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Chat Header - WhatsApp Style */}
+      {/* Chat Header - WhatsApp Style (Sidebar yeşil rengi ile aynı) */}
       <div className="bg-green-500 p-3 md:p-4 text-white flex items-center justify-between shadow-md">
         <div className="flex items-center space-x-2 md:space-x-3">
           {onBack && (
@@ -495,6 +647,28 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               <p className="text-xs text-green-100">{t('typing')}</p>
             )}
           </div>
+        </div>
+        <div className="flex items-center space-x-2">
+          {/* Sesli Arama Butonu */}
+          <button
+            onClick={handleVoiceCall}
+            className="p-2 hover:bg-white/20 rounded-full transition"
+            title="Voice Call"
+          >
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          </button>
+          {/* Video Görüntülü Arama Butonu */}
+          <button
+            onClick={handleVideoCall}
+            className="p-2 hover:bg-white/20 rounded-full transition"
+            title="Video Call"
+          >
+            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
         </div>
         <div className="flex items-center space-x-2">
           <button className="p-2 hover:bg-white/20 rounded-full transition">
@@ -825,18 +999,72 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
       {/* Message Input - WhatsApp Style */}
       <div className={`p-2 md:p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+        {/* Ses kaydı göstergesi */}
+        {isRecording && (
+          <div className="mb-2 flex items-center justify-center space-x-2 p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-red-600 dark:text-red-400">
+              Recording... {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+            </span>
+            <button
+              onClick={stopRecording}
+              className="px-3 py-1 bg-red-500 text-white rounded-full text-sm hover:bg-red-600"
+            >
+              Stop & Send
+            </button>
+          </div>
+        )}
         <form onSubmit={handleSendMessage} className="flex items-end space-x-1 md:space-x-2">
           <div className="relative">
+            {/* Attachment Menu Button */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
               className="p-2 md:p-2 text-gray-500 hover:text-gray-700 transition active:bg-gray-100 rounded-full"
-              title={t('image')}
+              title="Attach"
             >
               <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
             </button>
+            {/* Attachment Menu Dropdown */}
+            {showAttachmentMenu && (
+              <div className={`absolute bottom-full left-0 mb-2 w-56 rounded-lg shadow-xl border z-50 ${
+                actualTheme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              }`}>
+                <button
+                  type="button"
+                  onClick={() => handleAttachmentSelect('document')}
+                  className="w-full px-4 py-3 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3 rounded-t-lg"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Document</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAttachmentSelect('picture')}
+                  className="w-full px-4 py-3 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>Photo & Video</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAttachmentSelect('location')}
+                  className="w-full px-4 py-3 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3 rounded-b-lg"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Location</span>
+                </button>
+              </div>
+            )}
             {showContactPicker && (
               <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto z-50">
                 <div className="p-2 border-b border-gray-200 dark:border-gray-700">
@@ -915,47 +1143,114 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             }}
           />
           <div className={`flex-1 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'} rounded-full px-3 md:px-4 py-2 flex items-center min-w-0`}>
-            <input
-              ref={inputRef}
-              type="text"
-              value={newMessage}
-              onChange={(e) => {
-                setNewMessage(e.target.value);
-                handleTypingIndicator();
-              }}
-              placeholder={t('typeMessage')}
-              className={`flex-1 bg-transparent outline-none text-sm md:text-base min-w-0 ${actualTheme === 'dark' ? 'text-white placeholder-gray-400' : ''}`}
-            />
+            {/* Ses kaydı butonu veya input */}
+            {isRecording ? (
+              <div className="flex-1 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={stopRecording}
+                  className="text-red-500 hover:text-red-600"
+                >
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => {
+                    setNewMessage(e.target.value);
+                    handleTypingIndicator();
+                  }}
+                  placeholder={t('typeMessage')}
+                  className={`flex-1 bg-transparent outline-none text-sm md:text-base min-w-0 ${actualTheme === 'dark' ? 'text-white placeholder-gray-400' : ''}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="p-1 text-gray-500 hover:text-gray-700 active:bg-gray-200 rounded-full flex-shrink-0"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+          {/* Gönder butonu veya ses kaydı butonu */}
+          {isRecording ? (
             <button
               type="button"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              className="p-1 text-gray-500 hover:text-gray-700 active:bg-gray-200 rounded-full flex-shrink-0"
+              onClick={stopRecording}
+              className="p-2 md:p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition active:bg-red-600 flex-shrink-0"
+              title="Stop recording"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
               </svg>
             </button>
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !newMessage.trim()}
-            className="p-2 md:p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed active:bg-green-600 flex-shrink-0"
-          >
-            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+          ) : newMessage.trim() ? (
+            <button
+              type="submit"
+              disabled={loading}
+              className="p-2 md:p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition disabled:opacity-50 disabled:cursor-not-allowed active:bg-green-600 flex-shrink-0"
+            >
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                startRecording();
+              }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                if (isRecording && recordingTime > 0) {
+                  stopRecording();
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (isRecording && recordingTime > 0) {
+                  stopRecording();
+                }
+              }}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                startRecording();
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                if (isRecording && recordingTime > 0) {
+                  stopRecording();
+                }
+              }}
+              className="p-2 md:p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition active:bg-green-600 flex-shrink-0"
+              title="Hold to record voice"
+            >
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+              </svg>
+            </button>
+          )}
         </form>
       </div>
 
       {/* Click outside to close menus */}
-      {(selectedMessage || showEmojiPicker || showContactPicker) && (
+      {(selectedMessage || showEmojiPicker || showContactPicker || showAttachmentMenu) && (
         <div
           className="fixed inset-0 z-0"
           onClick={() => {
             setSelectedMessage(null);
             setShowEmojiPicker(false);
             setShowContactPicker(false);
+            setShowAttachmentMenu(false);
           }}
         />
       )}
