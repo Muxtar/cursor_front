@@ -50,6 +50,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [proposalContent, setProposalContent] = useState('');
   const [proposalChatAnonymous, setProposalChatAnonymous] = useState(false);
   const [sendingProposal, setSendingProposal] = useState(false);
+  // Grup / sohbet özel durumları
+  const [mutedChatIds, setMutedChatIds] = useState<Set<string>>(new Set());
+  const [archivedChatIds, setArchivedChatIds] = useState<Set<string>>(new Set());
+  const [groupContextChat, setGroupContextChat] = useState<any | null>(null);
+  const [groupContextMenuPos, setGroupContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const proposalsDropdownRef = useRef<HTMLDivElement>(null);
@@ -60,6 +65,18 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadChats();
       loadProposalsCount();
       loadOnlineUsers();
+      // Kullanıcı bazlı mute / archive durumlarını yükle
+      if (typeof window !== 'undefined') {
+        try {
+          const muted = JSON.parse(localStorage.getItem('chat_muted') || '[]');
+          const archived = JSON.parse(localStorage.getItem('chat_archived') || '[]');
+          setMutedChatIds(new Set((muted || []).map((id: any) => String(id))));
+          setArchivedChatIds(new Set((archived || []).map((id: any) => String(id))));
+        } catch {
+          setMutedChatIds(new Set());
+          setArchivedChatIds(new Set());
+        }
+      }
       // Refresh online status every 10 seconds
       const interval = setInterval(() => {
         loadOnlineUsers();
@@ -181,6 +198,45 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
+  const persistMutedArchived = (nextMuted: Set<string>, nextArchived: Set<string>) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('chat_muted', JSON.stringify(Array.from(nextMuted)));
+    localStorage.setItem('chat_archived', JSON.stringify(Array.from(nextArchived)));
+  };
+
+  const toggleMuteChat = (chatId: string) => {
+    setMutedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      persistMutedArchived(next, archivedChatIds);
+      return next;
+    });
+  };
+
+  const toggleArchiveChat = (chatId: string) => {
+    setArchivedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      persistMutedArchived(mutedChatIds, next);
+      return next;
+    });
+  };
+
+  const handleOpenGroupContextMenu = (e: React.MouseEvent, chat: any) => {
+    if (chat.type !== 'group') return;
+    e.preventDefault();
+    setGroupContextChat(chat);
+    setGroupContextMenuPos({ x: e.clientX, y: e.clientY });
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -192,6 +248,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       }
       if (proposalsDropdownRef.current && !proposalsDropdownRef.current.contains(target) && !target.closest('.proposals-bell-button')) {
         setShowProposalsDropdown(false);
+      }
+      if (groupContextMenuPos && !target.closest('.group-context-menu')) {
+        setGroupContextChat(null);
+        setGroupContextMenuPos(null);
       }
     };
 
@@ -885,93 +945,163 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               )}
             </div>
           ) : activeTab === 'chats' ? (
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            <div className="divide-y divide-gray-200 dark:divide-gray-700 relative">
               {chats.length === 0 ? (
                 <div className={`p-4 text-center ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                   {t('noChatsYet')}
                 </div>
               ) : (
-                chats.map((chat) => {
-                  const chatId = chat.id || chat._id;
-                  const isAnonymous = chat.other_party_anonymous === true;
-                  const chatTitle = isAnonymous ? t('anonymous') : (chat.group_name || chat.members?.[0]?.username || t('chats'));
-                  // Get other member's ID for online status (for direct chats)
-                  const otherMemberId = chat.type === 'direct' && chat.members ? 
-                    chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
-                  const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
-                  const lastMessage = chat.last_message;
-                  const unreadCount = chat.unread_count || 0;
-                  const lastTime =
-                    lastMessage?.created_at ||
-                    lastMessage?.createdAt ||
-                    chat.last_message_at ||
-                    chat.lastMessageAt ||
-                    chat.updated_at;
+                <>
+                  {chats.map((chat) => {
+                    const chatId = chat.id || chat._id;
+                    const isAnonymous = chat.other_party_anonymous === true;
+                    const chatTitle = isAnonymous ? t('anonymous') : (chat.group_name || chat.members?.[0]?.username || t('chats'));
+                    const isMuted = mutedChatIds.has(String(chatId));
+                    const isArchived = archivedChatIds.has(String(chatId));
+                    // Get other member's ID for online status (for direct chats)
+                    const otherMemberId = chat.type === 'direct' && chat.members ?
+                      chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
+                    const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
+                    const lastMessage = chat.last_message;
+                    const unreadCount = chat.unread_count || 0;
+                    const lastTime =
+                      lastMessage?.created_at ||
+                      lastMessage?.createdAt ||
+                      chat.last_message_at ||
+                      chat.lastMessageAt ||
+                      chat.updated_at;
 
-                  return (
-                  <div
-                    key={chatId}
-                    className={`group w-full p-3 md:p-4 flex items-center justify-between transition-colors ${
-                      selectedChat === chatId
-                        ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
-                        : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <button
-                      onClick={() => {
-                        if (onChatSelect) onChatSelect(chatId);
-                        router.push('/chat');
-                      }}
-                      className="flex-1 flex items-center space-x-2 md:space-x-3 text-left min-w-0"
-                    >
-                      <div className="relative flex-shrink-0">
-                        <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
-                          {chatTitle?.[0]?.toUpperCase() || 'C'}
-                        </div>
-                        {isOtherMemberOnline && !isAnonymous && (
-                          <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
-                        )}
-                        {unreadCount > 0 && (
-                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                            {unreadCount > 9 ? '9+' : unreadCount}
+                    return (
+                      <div
+                        key={chatId}
+                        onContextMenu={(e) => chat.type === 'group' && handleOpenGroupContextMenu(e, chat)}
+                        className={`group w-full p-3 md:p-4 flex items-center justify-between transition-colors ${
+                          selectedChat === chatId
+                            ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
+                            : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                        } ${isArchived ? 'opacity-70' : ''}`}
+                      >
+                        <button
+                          onClick={() => {
+                            if (onChatSelect) onChatSelect(chatId);
+                            router.push('/chat');
+                          }}
+                          className="flex-1 flex items-center space-x-2 md:space-x-3 text-left min-w-0"
+                        >
+                          <div className="relative flex-shrink-0">
+                            <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
+                              {chatTitle?.[0]?.toUpperCase() || 'C'}
+                            </div>
+                            {isOtherMemberOnline && !isAnonymous && (
+                              <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                            )}
+                            {unreadCount > 0 && !isArchived && (
+                              <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                              </div>
+                            )}
                           </div>
-                        )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between space-x-2">
+                              <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                {chatTitle}
+                              </p>
+                              {lastTime && (
+                                <span className={`text-[11px] flex-shrink-0 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {formatChatTime(lastTime)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {lastMessage && (
+                                <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                  {lastMessage.content || 'Media'}
+                                </p>
+                              )}
+                              {chat.type === 'group' && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                  {t('chats')}
+                                </span>
+                              )}
+                              {isMuted && (
+                                <span className="text-[11px] text-gray-400 ml-auto" title={t('mute')}>
+                                  🔕
+                                </span>
+                              )}
+                              {isArchived && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                                  {t('archived') || 'Archived'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(t('delete') + ' ' + t('chats') + '?')) {
+                              handleDeleteChat(chatId);
+                            }
+                          }}
+                          className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
+                          title={t('delete')}
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between space-x-2">
-                          <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {chatTitle}
-                          </p>
-                          {lastTime && (
-                            <span className={`text-[11px] flex-shrink-0 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {formatChatTime(lastTime)}
-                            </span>
-                          )}
-                        </div>
-                        {lastMessage && (
-                          <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {lastMessage.content || 'Media'}
-                          </p>
-                        )}
-                      </div>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(t('delete') + ' ' + t('chats') + '?')) {
-                          handleDeleteChat(chatId);
-                        }
-                      }}
-                      className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
-                      title={t('delete')}
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    );
+                  })}
+                </>
+              )}
+              {/* Grup için sağ tık menüsü */}
+              {groupContextChat && groupContextMenuPos && (
+                <div
+                  className={`group-context-menu absolute z-50 w-56 rounded-lg shadow-lg border ${
+                    actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
+                  }`}
+                  style={{ top: groupContextMenuPos.y - 80, left: groupContextMenuPos.x - 20 }}
+                >
+                  <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wide opacity-70">
+                    {groupContextChat.group_name || t('chats')}
                   </div>
-                  );
-                })
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleMuteChat(groupContextChat.id || groupContextChat._id);
+                      setGroupContextChat(null);
+                      setGroupContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    {mutedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? t('unmute') || 'Unmute' : t('mute') || 'Mute'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleArchiveChat(groupContextChat.id || groupContextChat._id);
+                      setGroupContextChat(null);
+                      setGroupContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    {archivedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? t('unarchive') || 'Unarchive' : t('archive') || 'Archive'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(t('delete') + ' ' + t('chats') + '?')) {
+                        handleDeleteChat(groupContextChat.id || groupContextChat._id);
+                      }
+                      setGroupContextChat(null);
+                      setGroupContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    {t('delete')}
+                  </button>
+                </div>
               )}
             </div>
           ) : (

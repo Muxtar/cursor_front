@@ -439,6 +439,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             <h2 className="text-base md:text-lg font-semibold truncate">
               {chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats'))}
             </h2>
+            {chatInfo?.type === 'group' && Array.isArray(chatInfo?.members) && (
+              <p className="text-[11px] text-green-100">
+                {chatInfo.members.length} {t('contactsTab').toLowerCase()}
+              </p>
+            )}
             {isTyping && (
               <p className="text-xs text-green-100">{t('typing')}</p>
             )}
