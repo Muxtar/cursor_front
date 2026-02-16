@@ -35,19 +35,34 @@ export default function LocationPage() {
           const { latitude, longitude } = position.coords;
           setUserLocation({ lat: latitude, lng: longitude });
           setLocationPermission('granted');
+          setError(null); // Clear any previous errors
           loadNearbyUsers(latitude, longitude);
         },
         (error) => {
-          // Don't show error if user denied permission - just load without location
+          // Handle different error codes gracefully
           if (error.code === 1) {
-            // User denied permission
+            // User denied permission - this is expected, don't show as error
             setLocationPermission('denied');
+            setError(null); // Don't show error for user denial
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          } else if (error.code === 2) {
+            // Position unavailable
+            setLocationPermission('denied');
+            setError(null); // Don't show error, just work without location
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          } else if (error.code === 3) {
+            // Timeout
+            setLocationPermission('denied');
+            setError(null); // Don't show error, just work without location
             setLoading(false);
             loadNearbyUsersWithoutLocation();
           } else {
-            console.error('Error getting location:', error);
+            // Other errors - log but don't show to user
+            console.warn('Location error (non-critical):', error.message);
             setLocationPermission('denied');
-            setError(t('locationAccessDenied'));
+            setError(null);
             setLoading(false);
             loadNearbyUsersWithoutLocation();
           }
@@ -59,7 +74,9 @@ export default function LocationPage() {
         }
       );
     } else {
-      setError(t('geolocationNotSupported'));
+      // Geolocation not supported - don't show as error, just work without it
+      setLocationPermission('denied');
+      setError(null);
       setLoading(false);
       loadNearbyUsersWithoutLocation();
     }
@@ -115,13 +132,25 @@ export default function LocationPage() {
           const { latitude, longitude } = position.coords;
           setUserLocation({ lat: latitude, lng: longitude });
           setLocationPermission('granted');
+          setError(null);
           loadNearbyUsers(latitude, longitude);
         },
         (error) => {
-          console.error('Error getting location:', error);
-          setLocationPermission('denied');
-          setError(t('locationAccessDenied'));
-          setLoading(false);
+          // Handle errors gracefully without showing error messages
+          if (error.code === 1) {
+            // User denied permission
+            setLocationPermission('denied');
+            setError(null);
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          } else {
+            // Other errors - log but don't show
+            console.warn('Location request failed:', error.message);
+            setLocationPermission('denied');
+            setError(null);
+            setLoading(false);
+            loadNearbyUsersWithoutLocation();
+          }
         },
         {
           enableHighAccuracy: true,
@@ -129,6 +158,11 @@ export default function LocationPage() {
           maximumAge: 0
         }
       );
+    } else {
+      setLocationPermission('denied');
+      setError(null);
+      setLoading(false);
+      loadNearbyUsersWithoutLocation();
     }
   };
 
@@ -252,12 +286,15 @@ export default function LocationPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <p className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} mb-2`}>
                     {t('noLocationPermission')}
+                  </p>
+                  <p className={`text-xs mb-4 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                    You can still view nearby users in the list below
                   </p>
                   <button
                     onClick={requestLocationAgain}
-                    className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm transition"
                   >
                     {t('requestLocationAgain')}
                   </button>
