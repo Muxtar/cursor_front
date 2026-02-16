@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { chatApi, contactApi, userApi, fileApi, proposalApi } from '@/lib/api';
+import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi } from '@/lib/api';
 
 interface SidebarProps {
   onChatSelect?: (chatId: string | null) => void;
@@ -45,6 +45,12 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showNewProposalModal, setShowNewProposalModal] = useState(false);
   const [proposalSearchQuery, setProposalSearchQuery] = useState('');
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentTargetUserId, setCommentTargetUserId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
+  const [showProposalFromContactModal, setShowProposalFromContactModal] = useState(false);
+  const [proposalTargetUserId, setProposalTargetUserId] = useState<string | null>(null);
   const [proposalSearchResults, setProposalSearchResults] = useState<any[]>([]);
   const [proposalTargetUser, setProposalTargetUser] = useState<any>(null);
   const [proposalContent, setProposalContent] = useState('');
@@ -478,6 +484,44 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadContacts();
     } catch (error: any) {
       alert(t('removeContactFailed') + ': ' + (error?.message || ''));
+    }
+  };
+
+  const handleSendComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentTargetUserId || !commentText.trim()) return;
+    try {
+      setSendingComment(true);
+      await profileCommentApi.create(commentTargetUserId, commentText.trim());
+      alert('Comment posted successfully (anonymous)');
+      setShowCommentModal(false);
+      setCommentText('');
+      setCommentTargetUserId(null);
+    } catch (error: any) {
+      alert('Failed to post comment: ' + (error?.message || ''));
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const handleSendProposalFromContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!proposalTargetUserId) return;
+    try {
+      const title = (e.target as any).title?.value || 'New Proposal';
+      const content = (e.target as any).content?.value || '';
+      await proposalApi.createProposal({
+        receiver_id: proposalTargetUserId,
+        title: title,
+        content: content,
+        chat_anonymous: false,
+      });
+      alert('Proposal sent successfully');
+      setShowProposalFromContactModal(false);
+      setProposalTargetUserId(null);
+      loadProposalsCount();
+    } catch (error: any) {
+      alert('Failed to send proposal: ' + (error?.message || ''));
     }
   };
 
@@ -1431,15 +1475,41 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {contactUserId && (
-                        <button
-                          onClick={() => openChatWithContact(contactUserId)}
-                          className={`p-2 ${actualTheme === 'dark' ? 'text-blue-400 hover:bg-gray-600' : 'text-blue-600 hover:bg-blue-50'} rounded transition`}
-                          title="Message"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setCommentTargetUserId(contactUserId);
+                              setShowCommentModal(true);
+                            }}
+                            className={`p-2 ${actualTheme === 'dark' ? 'text-green-400 hover:bg-gray-600' : 'text-green-600 hover:bg-green-50'} rounded transition`}
+                            title="Write Comment"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setProposalTargetUserId(contactUserId);
+                              setShowProposalFromContactModal(true);
+                            }}
+                            className={`p-2 ${actualTheme === 'dark' ? 'text-purple-400 hover:bg-gray-600' : 'text-purple-600 hover:bg-purple-50'} rounded transition`}
+                            title="Send Proposal"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => openChatWithContact(contactUserId)}
+                            className={`p-2 ${actualTheme === 'dark' ? 'text-blue-400 hover:bg-gray-600' : 'text-blue-600 hover:bg-blue-50'} rounded transition`}
+                            title="Message"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                          </button>
+                        </>
                       )}
                       <button
                         onClick={() => handleRemoveContact(contact.contact?.id || contact.id || contact._id)}

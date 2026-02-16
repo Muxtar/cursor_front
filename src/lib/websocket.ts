@@ -90,7 +90,23 @@ export class WebSocketClient {
 
         this.ws.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
+            let data: any;
+            // Try to parse as JSON first
+            if (typeof event.data === 'string') {
+              try {
+                data = JSON.parse(event.data);
+              } catch {
+                // If parsing fails, check if it's a call notification JSON string
+                if (event.data.includes('"type":"call"')) {
+                  data = JSON.parse(event.data);
+                } else {
+                  // Fallback: treat as plain text message
+                  data = { type: 'message', content: event.data };
+                }
+              }
+            } else {
+              data = event.data;
+            }
             this.handleMessage(data);
           } catch (error) {
             console.error('Error parsing WebSocket message:', error);

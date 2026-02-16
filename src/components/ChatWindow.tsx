@@ -113,6 +113,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       ws.joinChat(chatId);
       ws.on('message', handleNewMessage);
       ws.on('typing', handleTyping);
+      ws.on('call', handleIncomingCall);
     }
 
     // Refresh online status every 10 seconds
@@ -125,10 +126,22 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         ws.leaveChat(chatId);
         ws.off('message', handleNewMessage);
         ws.off('typing', handleTyping);
+        ws.off('call', handleIncomingCall);
       }
       clearInterval(interval);
     };
   }, [chatId, ws]);
+
+  const handleIncomingCall = (data: any) => {
+    try {
+      const callData = typeof data === 'string' ? JSON.parse(data) : data;
+      if (callData.type === 'call' && callData.chat_id === chatId) {
+        setIncomingCall(callData);
+      }
+    } catch (error) {
+      console.error('Failed to parse call data:', error);
+    }
+  };
 
   const loadOnlineUsers = async () => {
     try {
@@ -143,11 +156,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   // Sesli arama başlat
   const handleVoiceCall = async () => {
     try {
-      await callApi.initiateCall({
+      const response = await callApi.initiateCall({
         type: 'voice',
         chat_id: chatId,
       });
-      alert('Voice call initiated');
+      setActiveCall(response);
     } catch (error) {
       console.error('Failed to initiate voice call:', error);
       alert('Failed to initiate voice call');
@@ -157,14 +170,40 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   // Video görüntülü arama başlat
   const handleVideoCall = async () => {
     try {
-      await callApi.initiateCall({
+      const response = await callApi.initiateCall({
         type: 'video',
         chat_id: chatId,
       });
-      alert('Video call initiated');
+      setActiveCall(response);
     } catch (error) {
       console.error('Failed to initiate video call:', error);
       alert('Failed to initiate video call');
+    }
+  };
+
+  // Gelen çağrıyı kabul et
+  const handleAnswerCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await callApi.answerCall(incomingCall.call_id);
+      setActiveCall(incomingCall);
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Failed to answer call:', error);
+      alert('Failed to answer call');
+    }
+  };
+
+  // Çağrıyı reddet veya sonlandır
+  const handleEndCall = async () => {
+    const callId = activeCall?.call_id || incomingCall?.call_id;
+    if (!callId) return;
+    try {
+      await callApi.endCall(callId);
+      setActiveCall(null);
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Failed to end call:', error);
     }
   };
 
@@ -607,7 +646,78 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   return (
     <div className={`flex flex-col h-full ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Chat Header - WhatsApp Style (Sidebar yeşil rengi ile aynı) */}
+      {/* Gelen Çağrı Modal */}
+      {incomingCall && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full mx-4 shadow-xl`}>
+            <div className="text-center mb-4">
+              <div className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                {incomingCall.call_type === 'video' ? (
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                ) : (
+                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                )}
+              </div>
+              <h3 className={`text-xl font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                {incomingCall.call_type === 'video' ? 'Video Call' : 'Voice Call'}
+              </h3>
+              <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+                Incoming call...
+              </p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleEndCall}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+              >
+                Decline
+              </button>
+              <button
+                onClick={handleAnswerCall}
+                className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Aktif Çağrı Göstergesi */}
+      {activeCall && (
+        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-3 flex items-center justify-between`}>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+              {activeCall.type === 'video' ? (
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+              )}
+            </div>
+            <div>
+              <p className={`text-sm font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                {activeCall.type === 'video' ? 'Video Call' : 'Voice Call'} - Active
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleEndCall}
+            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
+          >
+            End Call
+          </button>
+        </div>
+      )}
+
+      {/* Chat Header - WhatsApp Style (Sidebar yeşil rengi ile aynı - bg-green-500) */}
       <div className="bg-green-500 p-3 md:p-4 text-white flex items-center justify-between shadow-md">
         <div className="flex items-center space-x-2 md:space-x-3">
           {onBack && (
