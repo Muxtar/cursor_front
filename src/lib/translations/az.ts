@@ -400,6 +400,7 @@ export const az = {
   mapView: 'Xəritə Görünüşü',
   listView: 'Siyahı Görünüşü',
   noLocationPermission: 'Xəritədə yaxınlıqdakı istifadəçiləri göstərmək üçün məkan icazəsi tələb olunur.',
+  yourLocation: 'Sizin Məkanınız',
 };
 
 

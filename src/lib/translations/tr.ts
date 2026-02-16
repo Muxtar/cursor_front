@@ -400,5 +400,6 @@ export const tr = {
   mapView: 'Harita Görünümü',
   listView: 'Liste Görünümü',
   noLocationPermission: 'Haritada yakındaki kullanıcıları göstermek için konum izni gereklidir.',
+  yourLocation: 'Konumunuz',
 };
 

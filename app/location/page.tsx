@@ -203,7 +203,7 @@ export default function LocationPage() {
                     <div className="absolute inset-0 w-8 h-8 bg-red-500 rounded-full border-4 border-white opacity-50 animate-ping"></div>
                   </div>
                   <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    {t('yourLocation') || 'Your Location'}
+                    {t('yourLocation')}
                   </div>
                 </div>
 

@@ -400,5 +400,6 @@ export const en = {
   mapView: 'Map View',
   listView: 'List View',
   noLocationPermission: 'Location permission is required to show nearby users on map.',
+  yourLocation: 'Your Location',
 };
 
