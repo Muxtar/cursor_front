@@ -719,13 +719,13 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         </div>
       )}
 
-      {/* Chat Header - WhatsApp Style (Sidebar yeşil rengi ile aynı - bg-green-500) */}
-      <div className="bg-green-500 p-3 md:p-4 text-white flex items-center justify-between shadow-md">
+      {/* Chat Header - WhatsApp Style */}
+      <div className={`p-3 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between shadow-sm`}>
         <div className="flex items-center space-x-2 md:space-x-3">
           {onBack && (
             <button
               onClick={onBack}
-              className="p-2 md:p-2 hover:bg-white/20 rounded-full transition active:bg-white/30 md:hidden"
+              className={`p-2 md:p-2 rounded-full transition md:hidden ${actualTheme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
               aria-label="Back to chats"
             >
               <svg className="w-6 h-6 md:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -737,7 +737,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           {onBack && (
             <button
               onClick={onBack}
-              className="hidden md:block p-2 hover:bg-white/20 rounded-full transition"
+              className={`hidden md:block p-2 rounded-full transition ${actualTheme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
               aria-label="Back to chats"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -745,20 +745,20 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               </svg>
             </button>
           )}
-          <div className="w-9 h-9 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center font-semibold text-sm md:text-base flex-shrink-0">
+          <div className={`w-9 h-9 md:w-10 md:h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center font-semibold text-sm md:text-base flex-shrink-0 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             {(chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base md:text-lg font-semibold truncate">
+            <h2 className={`text-base md:text-lg font-semibold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
               {chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats'))}
             </h2>
             {chatInfo?.type === 'group' && Array.isArray(chatInfo?.members) && (
-              <p className="text-[11px] text-green-100">
+              <p className={`text-[11px] ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                 {chatInfo.members.length} {t('contactsTab').toLowerCase()}
               </p>
             )}
             {isTyping && (
-              <p className="text-xs text-green-100">{t('typing')}</p>
+              <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('typing')}</p>
             )}
           </div>
         </div>
@@ -766,7 +766,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           {/* Sesli Arama Butonu */}
           <button
             onClick={handleVoiceCall}
-            className="p-2 hover:bg-white/20 rounded-full transition"
+            className={`p-2 rounded-full transition ${actualTheme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
             title="Voice Call"
           >
             <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -776,28 +776,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           {/* Video Görüntülü Arama Butonu */}
           <button
             onClick={handleVideoCall}
-            className="p-2 hover:bg-white/20 rounded-full transition"
+            className={`p-2 rounded-full transition ${actualTheme === 'dark' ? 'hover:bg-gray-700 text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}
             title="Video Call"
           >
             <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button className="p-2 hover:bg-white/20 rounded-full transition">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-          </button>
-          <button className="p-2 hover:bg-white/20 rounded-full transition">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </button>
-          <button className="p-2 hover:bg-white/20 rounded-full transition">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
           </button>
         </div>
