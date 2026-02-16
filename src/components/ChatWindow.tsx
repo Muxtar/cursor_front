@@ -181,11 +181,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   // Sesli arama başlat
   const handleVoiceCall = async () => {
     try {
-      const response = await callApi.initiateCall({
+      const response: any = await callApi.initiateCall({
         type: 'voice',
         chat_id: chatId,
       });
-      setActiveCall(response);
+      setActiveCall({ ...(response || {}), type: 'voice' });
     } catch (error) {
       console.error('Failed to initiate voice call:', error);
       alert('Failed to initiate voice call');
@@ -195,11 +195,11 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   // Video görüntülü arama başlat
   const handleVideoCall = async () => {
     try {
-      const response = await callApi.initiateCall({
+      const response: any = await callApi.initiateCall({
         type: 'video',
         chat_id: chatId,
       });
-      setActiveCall({ ...response, type: 'video' });
+      setActiveCall({ ...(response || {}), type: 'video' });
       // Video stream'i başlat
       await startVideoCall();
     } catch (error) {
@@ -243,10 +243,10 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   // Gelen çağrıyı kabul et
   const handleAnswerCall = async () => {
     if (!incomingCall) return;
-    const callType = incomingCall.call_type || incomingCall.type;
+    const callType = incomingCall.call_type || incomingCall.type || 'voice';
     try {
       await callApi.answerCall(incomingCall.call_id || incomingCall.id);
-      setActiveCall({ ...incomingCall, type: callType });
+      setActiveCall({ ...(incomingCall || {}), type: callType });
       setIncomingCall(null);
       // Video call ise stream başlat
       if (callType === 'video') {
@@ -287,7 +287,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
     if (!incomingCall) return;
     try {
       await callApi.answerCall(incomingCall.call_id || incomingCall.id);
-      setActiveCall({ ...incomingCall, type: incomingCall.call_type || 'video' });
+      setActiveCall({ ...(incomingCall || {}), type: incomingCall.call_type || 'video' });
       setIncomingCall(null);
       await startVideoCall();
     } catch (error) {
