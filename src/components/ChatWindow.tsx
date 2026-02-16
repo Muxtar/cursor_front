@@ -86,6 +86,8 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [incomingCall, setIncomingCall] = useState<any>(null);
+  const [activeCall, setActiveCall] = useState<any>(null);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
