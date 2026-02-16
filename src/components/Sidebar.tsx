@@ -452,13 +452,88 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
-  const openChatWithContact = (userId: string) => {
+  const openChatWithContact = async (userId: string) => {
+    if (!user) return;
+    
+    const currentUserId = String(user.id || user._id);
+    const targetUserId = String(userId);
+    
+    // Mevcut chat'leri kontrol et
+    const existingChats = chats.filter((chat: any) => {
+      if (chat.type !== 'direct') return false;
+      if (!Array.isArray(chat.members)) return false;
+      
+      const memberIds = chat.members.map((m: any) => String(m.id || m._id || m));
+      return memberIds.includes(currentUserId) && memberIds.includes(targetUserId) && memberIds.length === 2;
+    });
+    
+    // Normal chat var mı kontrol et (anonymous değil)
+    const normalChat = existingChats.find((chat: any) => !chat.other_party_anonymous);
+    // Anonim chat var mı kontrol et
+    const anonymousChat = existingChats.find((chat: any) => chat.other_party_anonymous);
+    
+    // Eğer normal chat varsa ve normal seçilirse, o chat'e git
+    // Eğer anonim chat varsa ve anonim seçilirse, o chat'e git
+    // Diğer durumlarda modal göster
+    
     setPendingChatUserId(userId);
+    
+    // Eğer sadece normal chat varsa, direkt o chat'e git
+    if (normalChat && !anonymousChat) {
+      const chatId = String(normalChat.id || normalChat._id);
+      if (onChatSelect) onChatSelect(chatId);
+      router.push('/chat');
+      return;
+    }
+    
+    // Eğer sadece anonim chat varsa, modal göster (kullanıcı normal seçebilir)
+    // Eğer her ikisi de varsa veya hiçbiri yoksa, modal göster
     setShowChatModeModal(true);
   };
 
   const handleCreateChatWithMode = async (isAnonymous: boolean) => {
-    if (!pendingChatUserId) return;
+    if (!pendingChatUserId || !user) return;
+    
+    const currentUserId = String(user.id || user._id);
+    const targetUserId = String(pendingChatUserId);
+    
+    // Mevcut chat'leri tekrar kontrol et
+    const existingChats = chats.filter((chat: any) => {
+      if (chat.type !== 'direct') return false;
+      if (!Array.isArray(chat.members)) return false;
+      
+      const memberIds = chat.members.map((m: any) => String(m.id || m._id || m));
+      return memberIds.includes(currentUserId) && memberIds.includes(targetUserId) && memberIds.length === 2;
+    });
+    
+    // Normal chat var mı kontrol et
+    const normalChat = existingChats.find((chat: any) => !chat.other_party_anonymous);
+    // Anonim chat var mı kontrol et
+    const anonymousChat = existingChats.find((chat: any) => chat.other_party_anonymous);
+    
+    // Eğer normal chat varsa ve normal seçilirse, o chat'e git
+    if (!isAnonymous && normalChat) {
+      const chatId = String(normalChat.id || normalChat._id);
+      setShowChatModeModal(false);
+      setPendingChatUserId(null);
+      if (onChatSelect) onChatSelect(chatId);
+      loadChats();
+      router.push('/chat');
+      return;
+    }
+    
+    // Eğer anonim chat varsa ve anonim seçilirse, o chat'e git
+    if (isAnonymous && anonymousChat) {
+      const chatId = String(anonymousChat.id || anonymousChat._id);
+      setShowChatModeModal(false);
+      setPendingChatUserId(null);
+      if (onChatSelect) onChatSelect(chatId);
+      loadChats();
+      router.push('/chat');
+      return;
+    }
+    
+    // Yeni chat oluştur
     try {
       const chat: any = await chatApi.createChat({
         type: 'direct',
@@ -508,13 +583,16 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     e.preventDefault();
     if (!proposalTargetUserId) return;
     try {
-      const title = (e.target as any).title?.value || 'New Proposal';
-      const content = (e.target as any).content?.value || '';
+      const formData = new FormData(e.target as HTMLFormElement);
+      const title = formData.get('title') as string || 'New Proposal';
+      const content = formData.get('content') as string || '';
+      const chatAnonymous = formData.get('chat_anonymous') === 'true';
+      
       await proposalApi.createProposal({
         receiver_id: proposalTargetUserId,
         title: title,
         content: content,
-        chat_anonymous: false,
+        chat_anonymous: chatAnonymous,
       });
       alert('Proposal sent successfully');
       setShowProposalFromContactModal(false);
@@ -1956,6 +2034,99 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Comment Modal */}
+      {showCommentModal && commentTargetUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowCommentModal(false); setCommentText(''); setCommentTargetUserId(null); }}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-96 shadow-xl`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Write Comment</h3>
+            <form onSubmit={handleSendComment} className="space-y-4">
+              <textarea
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Write your comment..."
+                rows={4}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                }`}
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowCommentModal(false); setCommentText(''); setCommentTargetUserId(null); }}
+                  className={`flex-1 py-2 rounded-lg font-medium ${actualTheme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={!commentText.trim() || sendingComment}
+                  className="flex-1 py-2 rounded-lg font-medium bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingComment ? 'Sending...' : 'Send Comment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Proposal from Contact Modal */}
+      {showProposalFromContactModal && proposalTargetUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowProposalFromContactModal(false); setProposalTargetUserId(null); }}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-96 shadow-xl`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Send Proposal</h3>
+            <form onSubmit={handleSendProposalFromContact} className="space-y-4">
+              <input
+                type="text"
+                name="title"
+                placeholder="Proposal Title"
+                defaultValue="New Proposal"
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                }`}
+                autoFocus
+              />
+              <textarea
+                name="content"
+                placeholder="Proposal Content"
+                rows={4}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                }`}
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="chat_anonymous"
+                  id="chat_anonymous"
+                  value="true"
+                  className="w-4 h-4"
+                />
+                <label htmlFor="chat_anonymous" className={`text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Anonymous Chat
+                </label>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowProposalFromContactModal(false); setProposalTargetUserId(null); }}
+                  className={`flex-1 py-2 rounded-lg font-medium ${actualTheme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-lg font-medium bg-purple-500 hover:bg-purple-600 text-white"
+                >
+                  Send Proposal
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
