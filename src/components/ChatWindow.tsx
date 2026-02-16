@@ -88,6 +88,14 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall, setActiveCall] = useState<any>(null);
+  const [otherPartyInfo, setOtherPartyInfo] = useState<any>(null);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -107,9 +115,12 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    loadChatInfo();
+    const initializeChat = async () => {
+      await loadContacts();
+      await loadChatInfo();
+    };
+    initializeChat();
     loadMessages();
-    loadContacts();
     loadOnlineUsers();
     if (ws) {
       ws.joinChat(chatId);
@@ -133,6 +144,18 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       clearInterval(interval);
     };
   }, [chatId, ws]);
+
+  // Video stream cleanup
+  useEffect(() => {
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      if (remoteStream) {
+        remoteStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [localStream, remoteStream]);
 
   const handleIncomingCall = (data: any) => {
     try {
@@ -176,20 +199,59 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         type: 'video',
         chat_id: chatId,
       });
-      setActiveCall(response);
+      setActiveCall({ ...response, type: 'video' });
+      // Video stream'i başlat
+      await startVideoCall();
     } catch (error) {
       console.error('Failed to initiate video call:', error);
       alert('Failed to initiate video call');
     }
   };
 
+  // Video call stream'lerini başlat
+  const startVideoCall = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalStream(stream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Failed to start video call:', error);
+      alert('Camera/microphone access denied');
+    }
+  };
+
+  // Video call'u durdur
+  const stopVideoCall = () => {
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+      setLocalStream(null);
+    }
+    if (remoteStream) {
+      remoteStream.getTracks().forEach(track => track.stop());
+      setRemoteStream(null);
+    }
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  };
+
   // Gelen çağrıyı kabul et
   const handleAnswerCall = async () => {
     if (!incomingCall) return;
+    const callType = incomingCall.call_type || incomingCall.type;
     try {
-      await callApi.answerCall(incomingCall.call_id);
-      setActiveCall(incomingCall);
+      await callApi.answerCall(incomingCall.call_id || incomingCall.id);
+      setActiveCall({ ...incomingCall, type: callType });
       setIncomingCall(null);
+      // Video call ise stream başlat
+      if (callType === 'video') {
+        await startVideoCall();
+      }
     } catch (error) {
       console.error('Failed to answer call:', error);
       alert('Failed to answer call');
@@ -198,14 +260,39 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   // Çağrıyı reddet veya sonlandır
   const handleEndCall = async () => {
-    const callId = activeCall?.call_id || incomingCall?.call_id;
-    if (!callId) return;
+    const callId = activeCall?.call_id || activeCall?.id || incomingCall?.call_id || incomingCall?.id;
+    if (!callId) {
+      // Eğer call ID yoksa sadece UI'ı temizle
+      setActiveCall(null);
+      setIncomingCall(null);
+      stopVideoCall();
+      return;
+    }
     try {
       await callApi.endCall(callId);
       setActiveCall(null);
       setIncomingCall(null);
+      stopVideoCall();
     } catch (error) {
       console.error('Failed to end call:', error);
+      // Hata olsa bile UI'ı temizle
+      setActiveCall(null);
+      setIncomingCall(null);
+      stopVideoCall();
+    }
+  };
+
+  // Gelen video çağrıyı kabul et
+  const handleAnswerVideoCall = async () => {
+    if (!incomingCall) return;
+    try {
+      await callApi.answerCall(incomingCall.call_id || incomingCall.id);
+      setActiveCall({ ...incomingCall, type: incomingCall.call_type || 'video' });
+      setIncomingCall(null);
+      await startVideoCall();
+    } catch (error) {
+      console.error('Failed to answer video call:', error);
+      alert('Failed to answer video call');
     }
   };
 
@@ -358,6 +445,45 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
     try {
       const data = await chatApi.getChat(chatId);
       setChatInfo(data);
+      
+      // Direct chat'lerde karşı tarafın bilgilerini al
+      if (data?.type === 'direct' && Array.isArray(data.members)) {
+        const otherMemberId = data.members.find((m: any) => {
+          const memberId = String(m.id || m._id || m);
+          return memberId !== String(user?.id || user?._id);
+        });
+        
+        if (otherMemberId) {
+          const otherMemberIdStr = String(otherMemberId.id || otherMemberId._id || otherMemberId);
+          // Contact listesinden karşı tarafın bilgilerini bul
+          const contact = contacts.find((c: any) => {
+            const contactUserId = c.user?.id || c.user?._id || c.contact?.contact_id;
+            return contactUserId && String(contactUserId) === otherMemberIdStr;
+          });
+          
+          if (contact) {
+            setOtherPartyInfo({
+              id: otherMemberIdStr,
+              username: contact.user?.username || contact.user?.display_name || contact.user?.phone_number,
+              avatar: contact.user?.avatar || null,
+              phone_number: contact.user?.phone_number,
+            });
+          } else {
+            // Contact listesinde yoksa user API'den al
+            try {
+              const userData = await userApi.getUser(otherMemberIdStr);
+              setOtherPartyInfo({
+                id: otherMemberIdStr,
+                username: userData?.username || userData?.phone_number,
+                avatar: userData?.avatar || null,
+                phone_number: userData?.phone_number,
+              });
+            } catch (err) {
+              console.error('Failed to load other party info:', err);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error('Failed to load chat info:', error);
     }
@@ -689,33 +815,177 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         </div>
       )}
 
-      {/* Aktif Çağrı Göstergesi */}
-      {activeCall && (
-        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-3 flex items-center justify-between`}>
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-              {activeCall.type === 'video' ? (
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Video Call UI - Full Screen */}
+      {activeCall && activeCall.type === 'video' && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+          {/* Remote Video (Karşı Taraf) */}
+          <div className="flex-1 relative bg-gray-900">
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover"
+            />
+            {!remoteStream && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                    {otherPartyInfo?.avatar ? (
+                      <img src={otherPartyInfo.avatar} alt={otherPartyInfo.username} className="w-full h-full rounded-full object-cover" />
+                    ) : (
+                      <span className="text-4xl text-white font-semibold">
+                        {otherPartyInfo?.username?.[0]?.toUpperCase() || 'U'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-white text-lg font-semibold">{otherPartyInfo?.username || 'Connecting...'}</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Local Video (Küçük Pencere) */}
+            {localStream && (
+              <div className="absolute bottom-20 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden border-2 border-white">
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Call Controls */}
+          <div className="bg-gray-900/90 p-4 flex items-center justify-center space-x-4">
+            <button
+              onClick={() => {
+                setIsMuted(!isMuted);
+                if (localStream) {
+                  localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMuted;
+                  });
+                }
+              }}
+              className={`p-3 rounded-full transition ${isMuted ? 'bg-red-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMuted ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0a11 11 0 01-11-11m11 11a11 11 0 0011-11M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                )}
+              </svg>
+            </button>
+            
+            <button
+              onClick={() => {
+                setIsVideoOff(!isVideoOff);
+                if (localStream) {
+                  localStream.getVideoTracks().forEach(track => {
+                    track.enabled = isVideoOff;
+                  });
+                }
+              }}
+              className={`p-3 rounded-full transition ${isVideoOff ? 'bg-red-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
+              title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isVideoOff ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                ) : (
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
+                )}
+              </svg>
+            </button>
+
+            <button
+              onClick={() => {
+                // Switch camera (front/back)
+                if (localStream) {
+                  const videoTrack = localStream.getVideoTracks()[0];
+                  if (videoTrack && 'getCapabilities' in videoTrack) {
+                    const capabilities = videoTrack.getCapabilities();
+                    if (capabilities.facingMode) {
+                      const facingMode = videoTrack.getSettings().facingMode === 'user' ? 'environment' : 'user';
+                      videoTrack.applyConstraints({ facingMode });
+                    }
+                  }
+                }
+              }}
+              className="p-3 rounded-full bg-gray-700 text-white hover:bg-gray-600 transition"
+              title="Switch camera"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+
+            <button
+              onClick={handleEndCall}
+              className="p-4 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+              title="End call"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Voice Call UI */}
+      {activeCall && activeCall.type === 'voice' && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
+          <div className="text-center mb-8">
+            <div className={`w-32 h-32 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
+              {otherPartyInfo?.avatar ? (
+                <img src={otherPartyInfo.avatar} alt={otherPartyInfo.username} className="w-full h-full rounded-full object-cover" />
               ) : (
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
+                <span className="text-6xl text-white font-semibold">
+                  {otherPartyInfo?.username?.[0]?.toUpperCase() || 'U'}
+                </span>
               )}
             </div>
-            <div>
-              <p className={`text-sm font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                {activeCall.type === 'video' ? 'Video Call' : 'Voice Call'} - Active
-              </p>
-            </div>
+            <h3 className="text-2xl font-semibold text-white mb-2">{otherPartyInfo?.username || 'Voice Call'}</h3>
+            <p className="text-gray-400">Calling...</p>
           </div>
-          <button
-            onClick={handleEndCall}
-            className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition text-sm"
-          >
-            End Call
-          </button>
+          
+          {/* Voice Call Controls */}
+          <div className="flex items-center justify-center space-x-4">
+            <button
+              onClick={() => {
+                setIsMuted(!isMuted);
+                if (localStream) {
+                  localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMuted;
+                  });
+                }
+              }}
+              className={`p-4 rounded-full transition ${isMuted ? 'bg-red-500 text-white' : 'bg-gray-700 text-white hover:bg-gray-600'}`}
+              title={isMuted ? 'Unmute' : 'Mute'}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMuted ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0a11 11 0 01-11-11m11 11a11 11 0 0011-11M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                )}
+              </svg>
+            </button>
+
+            <button
+              onClick={handleEndCall}
+              className="p-4 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+              title="End call"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -745,12 +1015,33 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
               </svg>
             </button>
           )}
-          <div className={`w-9 h-9 md:w-10 md:h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center font-semibold text-sm md:text-base flex-shrink-0 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
-            {(chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
-          </div>
+          <button
+            onClick={() => {
+              if (chatInfo?.type === 'direct' && otherPartyInfo?.avatar) {
+                setShowAvatarModal(true);
+              }
+            }}
+            className="flex-shrink-0"
+          >
+            {chatInfo?.type === 'direct' && otherPartyInfo?.avatar ? (
+              <img
+                src={otherPartyInfo.avatar}
+                alt={otherPartyInfo.username || 'User'}
+                className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover cursor-pointer"
+              />
+            ) : (
+              <div className={`w-9 h-9 md:w-10 md:h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center font-semibold text-sm md:text-base ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+                {chatInfo?.type === 'direct' && otherPartyInfo?.username
+                  ? otherPartyInfo.username[0]?.toUpperCase()
+                  : (chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
+              </div>
+            )}
+          </button>
           <div className="min-w-0 flex-1">
             <h2 className={`text-base md:text-lg font-semibold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-              {chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats'))}
+              {chatInfo?.type === 'direct' && otherPartyInfo?.username
+                ? otherPartyInfo.username
+                : (chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats')))}
             </h2>
             {chatInfo?.type === 'group' && Array.isArray(chatInfo?.members) && (
               <p className={`text-[11px] ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1338,6 +1629,27 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           )}
         </form>
       </div>
+
+      {/* Avatar Modal - Resme tıklayınca büyük gösterim */}
+      {showAvatarModal && otherPartyInfo?.avatar && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center" onClick={() => setShowAvatarModal(false)}>
+          <div className="max-w-4xl max-h-[90vh] p-4" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={otherPartyInfo.avatar}
+              alt={otherPartyInfo.username || 'User'}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              onClick={() => setShowAvatarModal(false)}
+              className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Click outside to close menus */}
       {(selectedMessage || showEmojiPicker || showContactPicker || showAttachmentMenu) && (
