@@ -20,7 +20,7 @@ export default function LocationPage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt' | null>(null);
   const [searchRadius, setSearchRadius] = useState<number>(5000); // Default 5km
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('map'); // Default map view
 
   useEffect(() => {
     if (!user) {
@@ -72,7 +72,9 @@ export default function LocationPage() {
       
       // Get nearby users with selected radius
       const users: any = await userApi.getNearbyUsers(radius || searchRadius);
-      setNearbyUsers(Array.isArray(users) ? users : users?.users || []);
+      const usersList = Array.isArray(users) ? users : users?.users || [];
+      
+      setNearbyUsers(usersList);
     } catch (error: any) {
       console.error('Failed to load nearby users:', error);
       setError('Failed to load nearby users. ' + (error.message || ''));
@@ -85,7 +87,8 @@ export default function LocationPage() {
     try {
       // Try to get nearby users without updating location
       const users: any = await userApi.getNearbyUsers(radius || searchRadius);
-      setNearbyUsers(Array.isArray(users) ? users : users?.users || []);
+      const usersList = Array.isArray(users) ? users : users?.users || [];
+      setNearbyUsers(usersList);
     } catch (error: any) {
       console.error('Failed to load nearby users:', error);
       setError('Failed to load nearby users. ' + (error.message || ''));
@@ -179,9 +182,10 @@ export default function LocationPage() {
 
         {/* Map Area */}
         {viewMode === 'map' && (
-          <div className={`h-96 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'} relative`}>
+          <div className={`h-[calc(100vh-200px)] min-h-[500px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-gray-200'} relative`}>
             {userLocation ? (
               <div className="w-full h-full relative">
+                {/* Google Maps - İnteraktif harita */}
                 <iframe
                   width="100%"
                   height="100%"
@@ -189,37 +193,57 @@ export default function LocationPage() {
                   loading="lazy"
                   allowFullScreen
                   referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${userLocation.lng - 0.05},${userLocation.lat - 0.05},${userLocation.lng + 0.05},${userLocation.lat + 0.05}&layer=mapnik&marker=${userLocation.lat},${userLocation.lng}`}
+                  src={`https://www.google.com/maps?q=${userLocation.lat},${userLocation.lng}&z=13&output=embed`}
                 />
-                {/* User location marker */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                  <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-lg"></div>
+                
+                {/* Kullanıcının konumu marker overlay */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
+                  <div className="relative">
+                    <div className="w-8 h-8 bg-red-500 rounded-full border-4 border-white shadow-xl animate-pulse"></div>
+                    <div className="absolute inset-0 w-8 h-8 bg-red-500 rounded-full border-4 border-white opacity-50 animate-ping"></div>
+                  </div>
+                  <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    {t('yourLocation') || 'Your Location'}
+                  </div>
                 </div>
-                {/* Nearby users markers */}
-                {nearbyUsers.map((user, index) => {
-                  if (!user.location || !user.location.latitude || !user.location.longitude) return null;
-                  const lat = user.location.latitude;
-                  const lng = user.location.longitude;
-                  // Calculate relative position (simplified - would need proper projection for accurate positioning)
-                  const latDiff = lat - userLocation.lat;
-                  const lngDiff = lng - userLocation.lng;
-                  const topPercent = 50 - (latDiff * 1000); // Rough approximation
-                  const leftPercent = 50 + (lngDiff * 1000);
-                  
-                  return (
-                    <div
-                      key={user.id || user._id}
-                      className="absolute pointer-events-none"
-                      style={{
-                        top: `${Math.max(5, Math.min(95, topPercent))}%`,
-                        left: `${Math.max(5, Math.min(95, leftPercent))}%`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    >
-                      <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
-                    </div>
-                  );
-                })}
+
+                {/* Yakındaki kullanıcılar için marker overlay'ler */}
+                {nearbyUsers
+                  .filter((u: any) => u.location && u.location.latitude && u.location.longitude)
+                  .map((nearbyUser: any) => {
+                    const lat = nearbyUser.location.latitude;
+                    const lng = nearbyUser.location.longitude;
+                    
+                    // Harita merkezinden mesafe hesaplama (basit yaklaşım)
+                    // Not: Bu overlay'ler iframe içindeki harita ile tam senkronize olmayabilir
+                    // Daha doğru sonuç için Leaflet veya Google Maps JavaScript API kullanılmalı
+                    const latDiff = lat - userLocation.lat;
+                    const lngDiff = lng - userLocation.lng;
+                    
+                    // Yaklaşık pixel pozisyonu (zoom level 13 için)
+                    // 1 derece ≈ 111 km, zoom 13'te 1 pixel ≈ 19.1 metre
+                    const pixelsPerDegree = 111000 / 19.1; // zoom 13 için
+                    const topOffset = -latDiff * pixelsPerDegree;
+                    const leftOffset = lngDiff * pixelsPerDegree;
+                    
+                    return (
+                      <div
+                        key={nearbyUser.id || nearbyUser._id}
+                        className="absolute pointer-events-auto z-10 cursor-pointer group"
+                        style={{
+                          top: `calc(50% + ${topOffset}px)`,
+                          left: `calc(50% + ${leftOffset}px)`,
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                        title={`${nearbyUser.username || nearbyUser.phone_number}${nearbyUser.distance !== undefined ? ` - ${nearbyUser.distance.toFixed(1)} km` : ''}`}
+                      >
+                        <div className="w-6 h-6 bg-blue-500 rounded-full border-3 border-white shadow-lg group-hover:scale-110 transition-transform"></div>
+                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          {nearbyUser.username || nearbyUser.phone_number}
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -240,14 +264,15 @@ export default function LocationPage() {
                 </div>
               </div>
             )}
-            {/* User markers on map */}
+            
+            {/* Yakındaki kullanıcılar listesi overlay */}
             {userLocation && nearbyUsers.length > 0 && (
-              <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-3 max-h-64 overflow-y-auto">
+              <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl p-3 max-h-64 overflow-y-auto z-20 border dark:border-gray-700">
                 <p className={`text-xs font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                   {nearbyUsers.length} {t('usersNearby')}
                 </p>
                 {nearbyUsers.slice(0, 5).map((user) => (
-                  <div key={user.id || user._id} className="text-xs py-1">
+                  <div key={user.id || user._id} className="text-xs py-1 border-b dark:border-gray-700 last:border-0">
                     <span className={actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
                       {user.username || user.phone_number}
                     </span>

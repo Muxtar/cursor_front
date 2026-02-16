@@ -443,7 +443,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
 
   const loadChatInfo = async () => {
     try {
-      const data = await chatApi.getChat(chatId);
+      const data: any = await chatApi.getChat(chatId);
       setChatInfo(data);
       
       // Direct chat'lerde karşı tarafın bilgilerini al
