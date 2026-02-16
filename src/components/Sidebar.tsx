@@ -54,8 +54,10 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   const [mutedChatIds, setMutedChatIds] = useState<Set<string>>(new Set());
   const [archivedChatIds, setArchivedChatIds] = useState<Set<string>>(new Set());
   const [blockedChatIds, setBlockedChatIds] = useState<Set<string>>(new Set());
-  const [groupContextChat, setGroupContextChat] = useState<any | null>(null);
-  const [groupContextMenuPos, setGroupContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [pinnedChatIds, setPinnedChatIds] = useState<Set<string>>(new Set());
+  const [favoriteChatIds, setFavoriteChatIds] = useState<Set<string>>(new Set());
+  const [contextChat, setContextChat] = useState<any | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const proposalsDropdownRef = useRef<HTMLDivElement>(null);
@@ -72,13 +74,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           const muted = JSON.parse(localStorage.getItem('chat_muted') || '[]');
           const archived = JSON.parse(localStorage.getItem('chat_archived') || '[]');
           const blocked = JSON.parse(localStorage.getItem('chat_blocked') || '[]');
+          const pinned = JSON.parse(localStorage.getItem('chat_pinned') || '[]');
+          const favorites = JSON.parse(localStorage.getItem('chat_favorites') || '[]');
           setMutedChatIds(new Set((muted || []).map((id: any) => String(id))));
           setArchivedChatIds(new Set((archived || []).map((id: any) => String(id))));
           setBlockedChatIds(new Set((blocked || []).map((id: any) => String(id))));
+          setPinnedChatIds(new Set((pinned || []).map((id: any) => String(id))));
+          setFavoriteChatIds(new Set((favorites || []).map((id: any) => String(id))));
         } catch {
           setMutedChatIds(new Set());
           setArchivedChatIds(new Set());
           setBlockedChatIds(new Set());
+          setPinnedChatIds(new Set());
+          setFavoriteChatIds(new Set());
         }
       }
       // Refresh online status every 10 seconds
@@ -202,11 +210,13 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
-  const persistChatPrefs = (nextMuted: Set<string>, nextArchived: Set<string>, nextBlocked: Set<string>) => {
+  const persistChatPrefs = (nextMuted: Set<string>, nextArchived: Set<string>, nextBlocked: Set<string>, nextPinned?: Set<string>, nextFavorites?: Set<string>) => {
     if (typeof window === 'undefined') return;
     localStorage.setItem('chat_muted', JSON.stringify(Array.from(nextMuted)));
     localStorage.setItem('chat_archived', JSON.stringify(Array.from(nextArchived)));
     localStorage.setItem('chat_blocked', JSON.stringify(Array.from(nextBlocked)));
+    if (nextPinned) localStorage.setItem('chat_pinned', JSON.stringify(Array.from(nextPinned)));
+    if (nextFavorites) localStorage.setItem('chat_favorites', JSON.stringify(Array.from(nextFavorites)));
   };
 
   const toggleMuteChat = (chatId: string) => {
@@ -217,7 +227,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       } else {
         next.add(chatId);
       }
-      persistChatPrefs(next, archivedChatIds, blockedChatIds);
+      persistChatPrefs(next, archivedChatIds, blockedChatIds, pinnedChatIds, favoriteChatIds);
       return next;
     });
   };
@@ -230,7 +240,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       } else {
         next.add(chatId);
       }
-      persistChatPrefs(mutedChatIds, next, blockedChatIds);
+      persistChatPrefs(mutedChatIds, next, blockedChatIds, pinnedChatIds, favoriteChatIds);
       return next;
     });
   };
@@ -256,16 +266,41 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       }
       setMutedChatIds(mutedNext);
       setArchivedChatIds(archivedNext);
-      persistChatPrefs(mutedNext, archivedNext, next);
+      persistChatPrefs(mutedNext, archivedNext, next, pinnedChatIds, favoriteChatIds);
       return next;
     });
   };
 
-  const handleOpenGroupContextMenu = (e: React.MouseEvent, chat: any) => {
-    if (chat.type !== 'group') return;
+  const togglePinChat = (chatId: string) => {
+    setPinnedChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      persistChatPrefs(mutedChatIds, archivedChatIds, blockedChatIds, next, favoriteChatIds);
+      return next;
+    });
+  };
+
+  const toggleFavoriteChat = (chatId: string) => {
+    setFavoriteChatIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(chatId)) {
+        next.delete(chatId);
+      } else {
+        next.add(chatId);
+      }
+      persistChatPrefs(mutedChatIds, archivedChatIds, blockedChatIds, pinnedChatIds, next);
+      return next;
+    });
+  };
+
+  const handleOpenContextMenu = (e: React.MouseEvent, chat: any) => {
     e.preventDefault();
-    setGroupContextChat(chat);
-    setGroupContextMenuPos({ x: e.clientX, y: e.clientY });
+    setContextChat(chat);
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
 
   useEffect(() => {
@@ -280,9 +315,9 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       if (proposalsDropdownRef.current && !proposalsDropdownRef.current.contains(target) && !target.closest('.proposals-bell-button')) {
         setShowProposalsDropdown(false);
       }
-      if (groupContextMenuPos && !target.closest('.group-context-menu')) {
-        setGroupContextChat(null);
-        setGroupContextMenuPos(null);
+      if (contextMenuPos && !target.closest('.chat-context-menu')) {
+        setContextChat(null);
+        setContextMenuPos(null);
       }
     };
 
@@ -983,183 +1018,283 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 </div>
               ) : (
                 <>
-                  {chats.map((chat) => {
-                    const chatId = chat.id || chat._id;
-                    const isAnonymous = chat.other_party_anonymous === true;
-                    const chatTitle = isAnonymous ? t('anonymous') : (chat.group_name || chat.members?.[0]?.username || t('chats'));
-                    const isMuted = mutedChatIds.has(String(chatId));
-                    const isArchived = archivedChatIds.has(String(chatId));
-                    const isBlocked = blockedChatIds.has(String(chatId));
-                    // Get other member's ID for online status (for direct chats)
-                    const otherMemberId = chat.type === 'direct' && chat.members ?
-                      chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
-                    const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
-                    const lastMessage = chat.last_message;
-                    const unreadCount = chat.unread_count || 0;
-                    const lastTime =
-                      lastMessage?.created_at ||
-                      lastMessage?.createdAt ||
-                      chat.last_message_at ||
-                      chat.lastMessageAt ||
-                      chat.updated_at;
+                  {(() => {
+                    // Pin'lenmiş chat'leri önce göster, sonra diğerleri
+                    const sortedChats = [...chats].sort((a, b) => {
+                      const aId = String(a.id || a._id);
+                      const bId = String(b.id || b._id);
+                      const aPinned = pinnedChatIds.has(aId);
+                      const bPinned = pinnedChatIds.has(bId);
+                      if (aPinned && !bPinned) return -1;
+                      if (!aPinned && bPinned) return 1;
+                      return 0;
+                    });
 
-                    return (
-                      <div
-                        key={chatId}
-                        onContextMenu={(e) => chat.type === 'group' && handleOpenGroupContextMenu(e, chat)}
-                        className={`group w-full p-3 md:p-4 flex items-center justify-between transition-colors ${
-                          selectedChat === chatId
-                            ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
-                            : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                        } ${isArchived ? 'opacity-70' : ''}`}
-                      >
-                        <button
-                          onClick={() => {
-                            if (onChatSelect) onChatSelect(chatId);
-                            router.push('/chat');
-                          }}
-                          className="flex-1 flex items-center space-x-2 md:space-x-3 text-left min-w-0"
+                    return sortedChats.map((chat) => {
+                      const chatId = chat.id || chat._id;
+                      const isAnonymous = chat.other_party_anonymous === true;
+                      
+                      // Chat ismini düzelt: Direct chat'lerde contact ismini kullan, grup'larda sadece grup adı (chats prefix'i yok)
+                      let chatTitle: string;
+                      let chatAvatar: string | null = null;
+                      
+                      if (chat.type === 'group') {
+                        // Grup ismini direkt göster, "chats" prefix'i ekleme
+                        chatTitle = chat.group_name || 'Group';
+                      } else {
+                        // Direct chat: contact listesinden bul
+                        // Members array'inde ObjectID'ler var, bunları string'e çevirip karşılaştır
+                        const otherMemberIdObj = Array.isArray(chat.members) ? chat.members.find((m: any) => {
+                          const memberId = String(m.id || m._id || m);
+                          return memberId !== String(user?.id || user?._id);
+                        }) : null;
+                        
+                        const otherMemberIdStr = otherMemberIdObj ? String(otherMemberIdObj.id || otherMemberIdObj._id || otherMemberIdObj) : null;
+                        
+                        if (otherMemberIdStr) {
+                          // Contact listesinde ara
+                          const contact = contacts.find((c: any) => {
+                            const contactUserId = c.user?.id || c.user?._id || c.contact?.contact_id;
+                            return contactUserId && String(contactUserId) === otherMemberIdStr;
+                          });
+                          
+                          if (contact) {
+                            chatTitle = contact.user?.username || contact.user?.display_name || contact.user?.phone_number || 'Contact';
+                            chatAvatar = contact.user?.avatar || null;
+                          } else {
+                            // Contact listesinde yoksa, group_name varsa onu kullan (proposal'dan gelen chat)
+                            // Yoksa "Unknown" veya anonymous göster
+                            chatTitle = chat.group_name || (isAnonymous ? t('anonymous') : 'Unknown');
+                          }
+                        } else {
+                          // GroupName varsa (proposal'dan gelen chat), onu kullan
+                          chatTitle = chat.group_name || (isAnonymous ? t('anonymous') : 'Unknown');
+                        }
+                      }
+                      
+                      const isMuted = mutedChatIds.has(String(chatId));
+                      const isArchived = archivedChatIds.has(String(chatId));
+                      const isBlocked = blockedChatIds.has(String(chatId));
+                      const isPinned = pinnedChatIds.has(String(chatId));
+                      const isFavorite = favoriteChatIds.has(String(chatId));
+                      
+                      // Get other member's ID for online status (for direct chats)
+                      const otherMemberId = chat.type === 'direct' && chat.members ?
+                        chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
+                      const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
+                      const lastMessage = chat.last_message;
+                      const unreadCount = chat.unread_count || 0;
+                      const lastTime =
+                        lastMessage?.created_at ||
+                        lastMessage?.createdAt ||
+                        chat.last_message_at ||
+                        chat.lastMessageAt ||
+                        chat.updated_at;
+                      
+                      // Read receipt göster (sadece direct chat'lerde ve mesaj gönderen ben değilsem)
+                      const showReadReceipt = chat.type === 'direct' && lastMessage && 
+                        lastMessage.sender_id && String(lastMessage.sender_id) !== String(user?.id || user?._id) &&
+                        lastMessage.status === 'read';
+
+                      return (
+                        <div
+                          key={chatId}
+                          onContextMenu={(e) => handleOpenContextMenu(e, chat)}
+                          className={`group w-full px-3 py-2.5 flex items-center transition-colors cursor-pointer ${
+                            selectedChat === chatId
+                              ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
+                              : actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'
+                          } ${isArchived ? 'opacity-70' : ''} ${isPinned ? 'border-l-3 border-green-500' : ''}`}
                         >
-                          <div className="relative flex-shrink-0">
-                            <div className={`w-10 h-10 md:w-12 md:h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-sm md:text-base`}>
-                              {chatTitle?.[0]?.toUpperCase() || 'C'}
-                            </div>
-                            {isOtherMemberOnline && !isAnonymous && (
-                              <div className="absolute bottom-0 right-0 w-3 h-3 md:w-3.5 md:h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
-                            )}
-                            {unreadCount > 0 && !isArchived && (
-                              <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between space-x-2">
-                              <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                                {chatTitle}
-                              </p>
-                              {lastTime && (
-                                <span className={`text-[11px] flex-shrink-0 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  {formatChatTime(lastTime)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {lastMessage && (
-                                <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  {lastMessage.content || 'Media'}
-                                </p>
-                              )}
-                              {chat.type === 'group' && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                                  {t('chats')}
-                                </span>
-                              )}
-                              {isBlocked && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
-                                  Blocked
-                                </span>
-                              )}
-                              {isArchived && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                  Archived
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                        {chat.type !== 'group' && (
                           <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (confirm(t('delete') + ' ' + t('chats') + '?')) {
-                                handleDeleteChat(chatId);
-                              }
+                            onClick={() => {
+                              if (onChatSelect) onChatSelect(chatId);
+                              router.push('/chat');
                             }}
-                            className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
-                            title={t('delete')}
+                            className="flex-1 flex items-center space-x-3 text-left min-w-0"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
+                            <div className="relative flex-shrink-0">
+                              {chatAvatar ? (
+                                <img
+                                  src={chatAvatar}
+                                  alt={chatTitle}
+                                  className="w-12 h-12 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className={`w-12 h-12 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center text-white font-semibold text-base`}>
+                                  {chatTitle?.[0]?.toUpperCase() || 'C'}
+                                </div>
+                              )}
+                              {isOtherMemberOnline && !isAnonymous && chat.type === 'direct' && (
+                                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                              )}
+                              {unreadCount > 0 && !isArchived && (
+                                <div className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold px-1">
+                                  {unreadCount > 9 ? '9+' : unreadCount}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <p className={`text-sm font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                                  {chatTitle}
+                                </p>
+                                {lastTime && (
+                                  <span className={`text-xs flex-shrink-0 ml-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {formatChatTime(lastTime)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-1.5">
+                                {lastMessage && (
+                                  <>
+                                    {showReadReceipt && (
+                                      <span className="text-xs text-blue-400 flex-shrink-0">✓✓</span>
+                                    )}
+                                    <p className={`text-xs truncate flex-1 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      {lastMessage.content || 'Media'}
+                                    </p>
+                                  </>
+                                )}
+                                {!lastMessage && (
+                                  <p className={`text-xs italic ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    No messages yet
+                                  </p>
+                                )}
+                              </div>
+                            </div>
                           </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                        </div>
+                      );
+                    });
+                  })()}
                 </>
               )}
-              {/* Grup için sağ tık menüsü */}
-              {groupContextChat && groupContextMenuPos && (
+              {/* Tüm chat'ler için sağ tık menüsü - WhatsApp benzeri */}
+              {contextChat && contextMenuPos && (
                 <div
-                  className={`group-context-menu absolute z-50 w-56 rounded-lg shadow-lg border ${
+                  className={`chat-context-menu fixed z-50 w-56 rounded-lg shadow-xl border ${
                     actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
                   }`}
-                  style={{ top: groupContextMenuPos.y - 80, left: groupContextMenuPos.x - 20 }}
+                  style={{ top: contextMenuPos.y - 20, left: Math.min(contextMenuPos.x - 20, window.innerWidth - 240) }}
                 >
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wide opacity-70">
-                    {groupContextChat.group_name || t('chats')}
+                    {contextChat.type === 'group' ? (contextChat.group_name || 'Group') : (contextChat.group_name || 'Chat')}
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      if (onChatSelect) {
-                        const id = groupContextChat.id || groupContextChat._id;
-                        onChatSelect(id);
-                        router.push('/chat');
-                      }
-                      setGroupContextChat(null);
-                      setGroupContextMenuPos(null);
+                      toggleArchiveChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >
-                    Open group
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    <span>{archivedChatIds.has(String(contextChat.id || contextChat._id)) ? 'Unarchive chat' : 'Archive chat'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      toggleMuteChat(groupContextChat.id || groupContextChat._id);
-                      setGroupContextChat(null);
-                      setGroupContextMenuPos(null);
+                      toggleFavoriteChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >
-                    {mutedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unmute group' : 'Mute group'}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span>{favoriteChatIds.has(String(contextChat.id || contextChat._id)) ? 'Unlock chat' : 'Lock chat'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      toggleArchiveChat(groupContextChat.id || groupContextChat._id);
-                      setGroupContextChat(null);
-                      setGroupContextMenuPos(null);
+                      toggleMuteChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >
-                    {archivedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unarchive group' : 'Archive group'}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    <span>{mutedChatIds.has(String(contextChat.id || contextChat._id)) ? 'Unmute notifications' : 'Mute notifications'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      toggleBlockChat(groupContextChat.id || groupContextChat._id);
-                      setGroupContextChat(null);
-                      setGroupContextMenuPos(null);
+                      togglePinChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >
-                    {blockedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unblock group' : 'Block group'}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                    </svg>
+                    <span>{pinnedChatIds.has(String(contextChat.id || contextChat._id)) ? 'Unpin chat' : 'Pin chat'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Mark as unread - unread count'u artır (frontend only)
+                      setContextChat(null);
+                      setContextMenuPos(null);
+                      alert('Marked as unread');
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span>Mark as unread</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleFavoriteChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                  >
+                    <svg className="w-5 h-5" fill={favoriteChatIds.has(String(contextChat.id || contextChat._id)) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    <span>{favoriteChatIds.has(String(contextChat.id || contextChat._id)) ? 'Remove from favourites' : 'Add to favourites'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleBlockChat(contextChat.id || contextChat._id);
+                      setContextChat(null);
+                      setContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <span>{blockedChatIds.has(String(contextChat.id || contextChat._id)) ? 'Unblock' : 'Block'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       if (confirm(t('delete') + ' ' + t('chats') + '?')) {
-                        handleDeleteChat(groupContextChat.id || groupContextChat._id);
+                        handleDeleteChat(contextChat.id || contextChat._id);
                       }
-                      setGroupContextChat(null);
-                      setGroupContextMenuPos(null);
+                      setContextChat(null);
+                      setContextMenuPos(null);
                     }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >
-                    {t('delete')}
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    <span>Delete chat</span>
                   </button>
                 </div>
               )}
