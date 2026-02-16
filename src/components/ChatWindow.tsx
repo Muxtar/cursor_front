@@ -471,7 +471,7 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
           } else {
             // Contact listesinde yoksa user API'den al
             try {
-              const userData = await userApi.getUser(otherMemberIdStr);
+              const userData: any = await userApi.getUserById(otherMemberIdStr);
               setOtherPartyInfo({
                 id: otherMemberIdStr,
                 username: userData?.username || userData?.phone_number,
