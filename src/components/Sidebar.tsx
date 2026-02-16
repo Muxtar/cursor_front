@@ -53,6 +53,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   // Grup / sohbet özel durumları
   const [mutedChatIds, setMutedChatIds] = useState<Set<string>>(new Set());
   const [archivedChatIds, setArchivedChatIds] = useState<Set<string>>(new Set());
+  const [blockedChatIds, setBlockedChatIds] = useState<Set<string>>(new Set());
   const [groupContextChat, setGroupContextChat] = useState<any | null>(null);
   const [groupContextMenuPos, setGroupContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -65,16 +66,19 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       loadChats();
       loadProposalsCount();
       loadOnlineUsers();
-      // Kullanıcı bazlı mute / archive durumlarını yükle
+      // Kullanıcı bazlı mute / archive / block durumlarını yükle
       if (typeof window !== 'undefined') {
         try {
           const muted = JSON.parse(localStorage.getItem('chat_muted') || '[]');
           const archived = JSON.parse(localStorage.getItem('chat_archived') || '[]');
+          const blocked = JSON.parse(localStorage.getItem('chat_blocked') || '[]');
           setMutedChatIds(new Set((muted || []).map((id: any) => String(id))));
           setArchivedChatIds(new Set((archived || []).map((id: any) => String(id))));
+          setBlockedChatIds(new Set((blocked || []).map((id: any) => String(id))));
         } catch {
           setMutedChatIds(new Set());
           setArchivedChatIds(new Set());
+          setBlockedChatIds(new Set());
         }
       }
       // Refresh online status every 10 seconds
@@ -198,10 +202,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     }
   };
 
-  const persistMutedArchived = (nextMuted: Set<string>, nextArchived: Set<string>) => {
+  const persistChatPrefs = (nextMuted: Set<string>, nextArchived: Set<string>, nextBlocked: Set<string>) => {
     if (typeof window === 'undefined') return;
     localStorage.setItem('chat_muted', JSON.stringify(Array.from(nextMuted)));
     localStorage.setItem('chat_archived', JSON.stringify(Array.from(nextArchived)));
+    localStorage.setItem('chat_blocked', JSON.stringify(Array.from(nextBlocked)));
   };
 
   const toggleMuteChat = (chatId: string) => {
@@ -212,7 +217,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       } else {
         next.add(chatId);
       }
-      persistMutedArchived(next, archivedChatIds);
+      persistChatPrefs(next, archivedChatIds, blockedChatIds);
       return next;
     });
   };
@@ -225,7 +230,33 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       } else {
         next.add(chatId);
       }
-      persistMutedArchived(mutedChatIds, next);
+      persistChatPrefs(mutedChatIds, next, blockedChatIds);
+      return next;
+    });
+  };
+
+  const toggleBlockChat = (chatId: string) => {
+    setBlockedChatIds((prev) => {
+      const next = new Set(prev);
+      const id = String(chatId);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      // Bloklanan grupları otomatik olarak sessize al ve arşivle
+      const mutedNext = new Set(mutedChatIds);
+      const archivedNext = new Set(archivedChatIds);
+      if (next.has(id)) {
+        mutedNext.add(id);
+        archivedNext.add(id);
+      } else {
+        mutedNext.delete(id);
+        archivedNext.delete(id);
+      }
+      setMutedChatIds(mutedNext);
+      setArchivedChatIds(archivedNext);
+      persistChatPrefs(mutedNext, archivedNext, next);
       return next;
     });
   };
@@ -958,6 +989,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     const chatTitle = isAnonymous ? t('anonymous') : (chat.group_name || chat.members?.[0]?.username || t('chats'));
                     const isMuted = mutedChatIds.has(String(chatId));
                     const isArchived = archivedChatIds.has(String(chatId));
+                    const isBlocked = blockedChatIds.has(String(chatId));
                     // Get other member's ID for online status (for direct chats)
                     const otherMemberId = chat.type === 'direct' && chat.members ?
                       chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
@@ -1023,6 +1055,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                                   {t('chats')}
                                 </span>
                               )}
+                              {isBlocked && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                                  Blocked
+                                </span>
+                              )}
                               {isArchived && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200">
                                   Archived
@@ -1031,20 +1068,22 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                             </div>
                           </div>
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(t('delete') + ' ' + t('chats') + '?')) {
-                              handleDeleteChat(chatId);
-                            }
-                          }}
-                          className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
-                          title={t('delete')}
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
+                        {chat.type !== 'group' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(t('delete') + ' ' + t('chats') + '?')) {
+                                handleDeleteChat(chatId);
+                              }
+                            }}
+                            className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition opacity-0 group-hover:opacity-100 flex-shrink-0`}
+                            title={t('delete')}
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -1061,6 +1100,21 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wide opacity-70">
                     {groupContextChat.group_name || t('chats')}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onChatSelect) {
+                        const id = groupContextChat.id || groupContextChat._id;
+                        onChatSelect(id);
+                        router.push('/chat');
+                      }
+                      setGroupContextChat(null);
+                      setGroupContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Open group
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -1082,6 +1136,17 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                   >
                     {archivedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unarchive group' : 'Archive group'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleBlockChat(groupContextChat.id || groupContextChat._id);
+                      setGroupContextChat(null);
+                      setGroupContextMenuPos(null);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    {blockedChatIds.has(String(groupContextChat.id || groupContextChat._id)) ? 'Unblock group' : 'Block group'}
                   </button>
                   <button
                     type="button"
