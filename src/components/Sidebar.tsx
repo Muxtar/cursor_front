@@ -312,7 +312,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
   };
 
   const handleOpenContextMenu = (e: React.MouseEvent, chat: any) => {
-    e.preventDefault();
+    // Her zaman yeni pozisyonla aç (aynı chat için bile)
     setContextChat(chat);
     setContextMenuPos({ x: e.clientX, y: e.clientY });
   };
@@ -329,24 +329,16 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       if (proposalsDropdownRef.current && !proposalsDropdownRef.current.contains(target) && !target.closest('.proposals-bell-button')) {
         setShowProposalsDropdown(false);
       }
-      // Sağ tık menüsünü kapat (menü dışına tıklanınca)
-      if (contextMenuPos && !target.closest('.chat-context-menu')) {
+      // Sağ tık menüsünü kapat (menü dışına sol tık yapıldığında)
+      if (contextMenuPos && !target.closest('.chat-context-menu') && !target.closest('[oncontextmenu]')) {
         setContextChat(null);
         setContextMenuPos(null);
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('contextmenu', () => {
-      // Sağ tık yapıldığında menüyü kapat
-      if (contextMenuPos) {
-        setContextChat(null);
-        setContextMenuPos(null);
-      }
-    });
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('contextmenu', () => {});
     };
   }, [contextMenuPos]);
 
@@ -1160,7 +1152,11 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                       return (
                         <div
                           key={chatId}
-                          onContextMenu={(e) => handleOpenContextMenu(e, chat)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleOpenContextMenu(e, chat);
+                          }}
                           className={`group w-full px-3 py-2.5 flex items-center transition-colors cursor-pointer ${
                             selectedChat === chatId
                               ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
@@ -1248,6 +1244,13 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                   <div
                     className="fixed inset-0 z-40"
                     onClick={() => {
+                      setContextChat(null);
+                      setContextMenuPos(null);
+                    }}
+                    onContextMenu={(e) => {
+                      // Backdrop'a sağ tık yapıldığında menüyü kapat
+                      e.preventDefault();
+                      e.stopPropagation();
                       setContextChat(null);
                       setContextMenuPos(null);
                     }}
