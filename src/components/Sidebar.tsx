@@ -116,6 +116,20 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
   const myId = user?.id || (user as any)?._id;
 
+  // Random isim generator (anonymous teklifler için)
+  const generateRandomName = (seed: string): string => {
+    const adjectives = ['Cool', 'Mysterious', 'Bright', 'Swift', 'Calm', 'Bold', 'Wise', 'Gentle', 'Brave', 'Clever'];
+    const nouns = ['Tiger', 'Eagle', 'Wolf', 'Phoenix', 'Dragon', 'Lion', 'Falcon', 'Bear', 'Fox', 'Hawk'];
+    // Seed'den hash oluştur
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const adjIndex = Math.abs(hash) % adjectives.length;
+    const nounIndex = Math.abs(hash >> 8) % nouns.length;
+    return `${adjectives[adjIndex]} ${nouns[nounIndex]}`;
+  };
+
   const loadProposalsCount = async () => {
     try {
       const data: any = await proposalApi.getProposals();
@@ -315,6 +329,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
       if (proposalsDropdownRef.current && !proposalsDropdownRef.current.contains(target) && !target.closest('.proposals-bell-button')) {
         setShowProposalsDropdown(false);
       }
+      // Sağ tık menüsünü kapat (menü dışına tıklanınca)
       if (contextMenuPos && !target.closest('.chat-context-menu')) {
         setContextChat(null);
         setContextMenuPos(null);
@@ -322,10 +337,18 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('contextmenu', () => {
+      // Sağ tık yapıldığında menüyü kapat
+      if (contextMenuPos) {
+        setContextChat(null);
+        setContextMenuPos(null);
+      }
+    });
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('contextmenu', () => {});
     };
-  }, []);
+  }, [contextMenuPos]);
 
   const loadContacts = async () => {
     try {
@@ -1041,6 +1064,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                       if (chat.type === 'group') {
                         // Grup ismini direkt göster, "chats" prefix'i ekleme
                         chatTitle = chat.group_name || 'Group';
+                        // Grup için avatar yoksa grup icon'u göster
                       } else {
                         // Direct chat: contact listesinden bul
                         // Members array'inde ObjectID'ler var, bunları string'e çevirip karşılaştır
@@ -1062,9 +1086,14 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                             chatTitle = contact.user?.username || contact.user?.display_name || contact.user?.phone_number || 'Contact';
                             chatAvatar = contact.user?.avatar || null;
                           } else {
-                            // Contact listesinde yoksa, group_name varsa onu kullan (proposal'dan gelen chat)
-                            // Yoksa "Unknown" veya anonymous göster
-                            chatTitle = chat.group_name || (isAnonymous ? t('anonymous') : 'Unknown');
+                            // Contact listesinde yoksa
+                            if (isAnonymous && chat.group_name) {
+                              // Anonymous tekliften gelen chat - random isim göster
+                              chatTitle = generateRandomName(String(chatId));
+                            } else {
+                              // GroupName varsa onu kullan (proposal'dan gelen chat)
+                              chatTitle = chat.group_name || (isAnonymous ? generateRandomName(String(chatId)) : 'Unknown');
+                            }
                           }
                         } else {
                           // GroupName varsa (proposal'dan gelen chat), onu kullan
@@ -1082,6 +1111,38 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                       const otherMemberId = chat.type === 'direct' && chat.members ?
                         chat.members.find((m: any) => String(m.id || m._id || m) !== String(user?.id || user?._id)) : null;
                       const isOtherMemberOnline = otherMemberId ? onlineUsers.has(String(otherMemberId)) : false;
+                      
+                      // Grup için online üye sayısını hesapla
+                      let groupOnlineCount = 0;
+                      let lastMessageSenderName = '';
+                      if (chat.type === 'group' && Array.isArray(chat.members)) {
+                        groupOnlineCount = chat.members.filter((m: any) => {
+                          const memberId = String(m.id || m._id || m);
+                          return memberId !== String(user?.id || user?._id) && onlineUsers.has(memberId);
+                        }).length;
+                        
+                        // Son mesaj gönderenin ismini bul
+                        if (chat.last_message && chat.last_message.sender_id) {
+                          const senderId = String(chat.last_message.sender_id);
+                          if (senderId === String(user?.id || user?._id)) {
+                            lastMessageSenderName = 'You';
+                          } else {
+                            const senderContact = contacts.find((c: any) => {
+                              const contactUserId = c.user?.id || c.user?._id || c.contact?.contact_id;
+                              return contactUserId && String(contactUserId) === senderId;
+                            });
+                            if (senderContact) {
+                              lastMessageSenderName = senderContact.user?.username || senderContact.user?.display_name || 'Someone';
+                            } else if (chat.last_message.is_anonymous) {
+                              // Anonymous mesaj için random isim
+                              lastMessageSenderName = generateRandomName(senderId);
+                            } else {
+                              lastMessageSenderName = 'Someone';
+                            }
+                          }
+                        }
+                      }
+                      
                       const lastMessage = chat.last_message;
                       const unreadCount = chat.unread_count || 0;
                       const lastTime =
@@ -1125,8 +1186,13 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                                   {chatTitle?.[0]?.toUpperCase() || 'C'}
                                 </div>
                               )}
-                              {isOtherMemberOnline && !isAnonymous && chat.type === 'direct' && (
+                              {chat.type === 'direct' && isOtherMemberOnline && !isAnonymous && (
                                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
+                              )}
+                              {chat.type === 'group' && groupOnlineCount > 0 && (
+                                <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full flex items-center justify-center">
+                                  <span className="text-[8px] text-white font-bold">{groupOnlineCount}</span>
+                                </div>
                               )}
                               {unreadCount > 0 && !isArchived && (
                                 <div className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold px-1">
@@ -1145,11 +1211,16 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center space-x-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0">
                                 {lastMessage && (
                                   <>
                                     {showReadReceipt && (
                                       <span className="text-xs text-blue-400 flex-shrink-0">✓✓</span>
+                                    )}
+                                    {chat.type === 'group' && lastMessageSenderName && (
+                                      <span className={`text-xs font-medium flex-shrink-0 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                                        {lastMessageSenderName}:
+                                      </span>
                                     )}
                                     <p className={`text-xs truncate flex-1 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                                       {lastMessage.content || 'Media'}
@@ -1172,12 +1243,22 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
               )}
               {/* Tüm chat'ler için sağ tık menüsü - WhatsApp benzeri */}
               {contextChat && contextMenuPos && (
-                <div
-                  className={`chat-context-menu fixed z-50 w-56 rounded-lg shadow-xl border ${
-                    actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
-                  }`}
-                  style={{ top: contextMenuPos.y - 20, left: Math.min(contextMenuPos.x - 20, window.innerWidth - 240) }}
-                >
+                <>
+                  {/* Backdrop - menüyü kapatmak için */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => {
+                      setContextChat(null);
+                      setContextMenuPos(null);
+                    }}
+                  />
+                  <div
+                    className={`chat-context-menu fixed z-50 w-56 rounded-lg shadow-xl border ${
+                      actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
+                    }`}
+                    style={{ top: contextMenuPos.y - 20, left: Math.min(contextMenuPos.x - 20, window.innerWidth - 240) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wide opacity-70">
                     {contextChat.type === 'group' ? (contextChat.group_name || 'Group') : (contextChat.group_name || 'Chat')}
                   </div>
@@ -1296,7 +1377,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                     </svg>
                     <span>Delete chat</span>
                   </button>
-                </div>
+                  </div>
+                </>
               )}
             </div>
           ) : (

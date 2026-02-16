@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { chatApi, fileApi, messageApi, typingApi, contactApi } from '@/lib/api';
+import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -79,6 +79,20 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const [chatInfo, setChatInfo] = useState<any>(null);
   const [showContactPicker, setShowContactPicker] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  // Random isim generator (anonymous mesajlar için)
+  const generateRandomName = (seed: string): string => {
+    const adjectives = ['Cool', 'Mysterious', 'Bright', 'Swift', 'Calm', 'Bold', 'Wise', 'Gentle', 'Brave', 'Clever'];
+    const nouns = ['Tiger', 'Eagle', 'Wolf', 'Phoenix', 'Dragon', 'Lion', 'Falcon', 'Bear', 'Fox', 'Hawk'];
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const adjIndex = Math.abs(hash) % adjectives.length;
+    const nounIndex = Math.abs(hash >> 8) % nouns.length;
+    return `${adjectives[adjIndex]} ${nouns[nounIndex]}`;
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -88,11 +102,17 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
     loadChatInfo();
     loadMessages();
     loadContacts();
+    loadOnlineUsers();
     if (ws) {
       ws.joinChat(chatId);
       ws.on('message', handleNewMessage);
       ws.on('typing', handleTyping);
     }
+
+    // Refresh online status every 10 seconds
+    const interval = setInterval(() => {
+      loadOnlineUsers();
+    }, 10000);
 
     return () => {
       if (ws) {
@@ -100,8 +120,19 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         ws.off('message', handleNewMessage);
         ws.off('typing', handleTyping);
       }
+      clearInterval(interval);
     };
   }, [chatId, ws]);
+
+  const loadOnlineUsers = async () => {
+    try {
+      const data: any = await userApi.getOnlineUsers();
+      const onlineList = data?.online_users || [];
+      setOnlineUsers(new Set(onlineList));
+    } catch (error) {
+      console.error('Failed to load online users:', error);
+    }
+  };
 
   const loadContacts = async () => {
     try {
@@ -400,7 +431,23 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   };
 
   const getDisplayName = (message: Message) => {
-    if (message.is_anonymous) return t('anonymous');
+    if (message.is_anonymous) {
+      // Anonymous mesaj için random isim üret (sender_id'ye göre)
+      if (message.sender_id) {
+        return generateRandomName(String(message.sender_id));
+      }
+      return t('anonymous');
+    }
+    // Contact listesinden gönderenin ismini bul
+    if (message.sender_id && chatInfo?.type === 'group') {
+      const senderContact = contacts.find((c: any) => {
+        const contactUserId = c.user?.id || c.user?._id || c.contact?.contact_id;
+        return contactUserId && String(contactUserId) === String(message.sender_id);
+      });
+      if (senderContact) {
+        return senderContact.user?.username || senderContact.user?.display_name || senderContact.user?.phone_number || 'Someone';
+      }
+    }
     return message.sender?.username || message.sender?.phone_number || t('profile');
   };
 
@@ -518,8 +565,13 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
             >
               <div className={`flex items-end space-x-2 max-w-[85%] md:max-w-[70%] ${isMine ? 'flex-row-reverse space-x-reverse' : ''} w-full`}>
                 {!isMine && showAvatar && (
-                  <div className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mb-0.5">
-                    {getDisplayName(message)[0]?.toUpperCase() || 'U'}
+                  <div className="relative flex-shrink-0 mb-0.5">
+                    <div className="w-7 h-7 md:w-8 md:h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                      {getDisplayName(message)[0]?.toUpperCase() || 'U'}
+                    </div>
+                    {chatInfo?.type === 'group' && message.sender_id && onlineUsers.has(String(message.sender_id)) && (
+                      <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border border-white dark:border-gray-800 rounded-full"></div>
+                    )}
                   </div>
                 )}
                 {!isMine && !showAvatar && (
@@ -537,6 +589,12 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                       setSelectedMessage(message);
                     }}
                   >
+                    {/* Grup mesajlarında gönderen ismini göster */}
+                    {chatInfo?.type === 'group' && !isMine && showAvatar && (
+                      <p className={`text-xs font-semibold mb-1 ${isMine ? 'text-white/90' : actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                        {getDisplayName(message)}
+                      </p>
+                    )}
                     {/* Reply Preview */}
                     {message.reply_to && (
                       <div className={`mb-2 pl-3 border-l-4 ${
