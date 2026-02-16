@@ -233,8 +233,10 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       }, 1000);
 
       // Typing indicator gönder
-      if (ws) {
-        ws.sendTyping(chatId, 'recording_voice');
+      try {
+        await typingApi.setTyping(chatId, 'recording_voice');
+      } catch (error) {
+        console.error('Failed to send typing indicator:', error);
       }
     } catch (error) {
       console.error('Failed to start recording:', error);
