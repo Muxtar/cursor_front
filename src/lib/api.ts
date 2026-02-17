@@ -204,6 +204,8 @@ export const authApi = {
 export const userApi = {
   getMe: () => api.get('/users/me'),
   getUserById: (id: string) => api.get(`/users/profile/${id}`),
+  getUserByPhoneNumber: (phoneNumber: string) =>
+    api.get(`/users/by-phone?phone_number=${encodeURIComponent(phoneNumber)}`),
   updateMe: (data: any) => api.put('/users/me', data),
   updateLocation: (data: { latitude: number; longitude: number; address?: string }) =>
     api.put('/users/location', data),
@@ -309,6 +311,8 @@ export const profileCommentApi = {
     api.post('/profile-comments', { target_user_id: targetUserId, text }),
   list: (targetUserId: string) =>
     api.get(`/profile-comments?target_user_id=${encodeURIComponent(targetUserId)}`),
+  listByPhoneNumber: (phoneNumber: string) =>
+    api.get(`/profile-comments?phone_number=${encodeURIComponent(phoneNumber)}`),
   reply: (commentId: string) => api.post(`/profile-comments/${commentId}/reply`),
 };
 

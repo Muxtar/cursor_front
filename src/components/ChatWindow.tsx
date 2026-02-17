@@ -61,11 +61,13 @@ interface ChatWindowProps {
   chatId: string;
   ws: WebSocketClient | null;
   onBack?: () => void;
+  /** If an incoming call arrives while this chat isn't mounted, parent can pass it here. */
+  prefilledIncomingCall?: any;
 }
 
 const EMOJI_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
+export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }: ChatWindowProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
   const { actualTheme } = useTheme();
@@ -96,6 +98,9 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const markedReadRef = useRef<Set<string>>(new Set());
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -127,6 +132,10 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       ws.on('message', handleNewMessage);
       ws.on('typing', handleTyping);
       ws.on('call', handleIncomingCall);
+      ws.on('message_read', handleMessageRead);
+      ws.on('webrtc_offer', handleWebRTCOffer);
+      ws.on('webrtc_answer', handleWebRTCAnswer);
+      ws.on('webrtc_ice', handleWebRTCICE);
     }
 
     // Refresh online status every 10 seconds
@@ -140,10 +149,27 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         ws.off('message', handleNewMessage);
         ws.off('typing', handleTyping);
         ws.off('call', handleIncomingCall);
+        ws.off('message_read', handleMessageRead);
+        ws.off('webrtc_offer', handleWebRTCOffer);
+        ws.off('webrtc_answer', handleWebRTCAnswer);
+        ws.off('webrtc_ice', handleWebRTCICE);
       }
       clearInterval(interval);
+      stopVideoCall();
     };
   }, [chatId, ws]);
+
+  // If parent provides an incoming call (received while this chat wasn't mounted),
+  // apply it once when it matches this chat.
+  useEffect(() => {
+    if (!prefilledIncomingCall) return;
+    const callData = typeof prefilledIncomingCall === 'string' ? JSON.parse(prefilledIncomingCall) : prefilledIncomingCall;
+    const callId = callData?.call_id || callData?.id;
+    const currentId = incomingCall?.call_id || incomingCall?.id;
+    if (callData?.type === 'call' && callData?.chat_id === chatId && callId && callId !== currentId) {
+      setIncomingCall(callData);
+    }
+  }, [prefilledIncomingCall, chatId, incomingCall]);
 
   // Video stream cleanup
   useEffect(() => {
@@ -168,6 +194,87 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
     }
   };
 
+  const handleMessageRead = (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.type === 'message_read' && evt?.chat_id === chatId) {
+        // Reload to update ✓ / ✓✓ status
+        loadMessages();
+      }
+    } catch (error) {
+      console.error('Failed to parse message_read event:', error);
+    }
+  };
+
+  // WebRTC handlers
+  const handleWebRTCOffer = async (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.chat_id !== chatId) return;
+
+      if (!peerConnectionRef.current) {
+        // Initialize peer connection if not already done
+        if (localStream) {
+          await initializePeerConnection(localStream);
+        } else {
+          // Start stream first
+          await startVideoCall();
+        }
+      }
+
+      const pc = peerConnectionRef.current;
+      if (!pc) return;
+
+      const offer = JSON.parse(evt.offer);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Create and send answer
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      if (ws) {
+        ws.send({
+          type: 'webrtc_answer',
+          chat_id: chatId,
+          call_id: evt.call_id,
+          answer: JSON.stringify(answer),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to handle WebRTC offer:', error);
+    }
+  };
+
+  const handleWebRTCAnswer = async (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.chat_id !== chatId) return;
+
+      const pc = peerConnectionRef.current;
+      if (!pc) return;
+
+      const answer = JSON.parse(evt.answer);
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (error) {
+      console.error('Failed to handle WebRTC answer:', error);
+    }
+  };
+
+  const handleWebRTCICE = async (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.chat_id !== chatId) return;
+
+      const pc = peerConnectionRef.current;
+      if (!pc || !evt.candidate) return;
+
+      const candidate = JSON.parse(evt.candidate);
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.error('Failed to handle WebRTC ICE candidate:', error);
+    }
+  };
+
   const loadOnlineUsers = async () => {
     try {
       const data: any = await userApi.getOnlineUsers();
@@ -186,6 +293,21 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
         chat_id: chatId,
       });
       setActiveCall({ ...(response || {}), type: 'voice' });
+      
+      // Start audio stream and WebRTC connection
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        });
+        setLocalStream(stream);
+        await initializePeerConnection(stream);
+      } catch (error) {
+        console.error('Failed to start voice call stream:', error);
+        alert('Microphone access denied or device not found');
+      }
     } catch (error) {
       console.error('Failed to initiate voice call:', error);
       alert('Failed to initiate voice call');
@@ -208,30 +330,163 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
     }
   };
 
+  // List available media devices
+  const loadMediaDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setAvailableDevices(devices.filter(d => d.kind === 'videoinput' || d.kind === 'audioinput'));
+    } catch (error) {
+      console.error('Failed to enumerate devices:', error);
+    }
+  };
+
   // Video call stream'lerini başlat
   const startVideoCall = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setLocalStream(stream);
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+      // First, enumerate devices to get permissions
+      await loadMediaDevices();
+      
+      // Try to get user media with fallback options
+      let stream: MediaStream | null = null;
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: 'user', // Prefer front camera
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (videoError: any) {
+        console.warn('Video failed, trying audio only:', videoError);
+        // Fallback: try audio only if video fails
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: false, 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+          });
+          alert('Video camera not available. Continuing with audio only.');
+        } catch (audioError) {
+          console.error('Both video and audio failed:', audioError);
+          throw new Error('Camera/microphone access denied or device not found');
+        }
+      }
+
+      if (stream) {
+        setLocalStream(stream);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+        
+        // Initialize WebRTC peer connection
+        await initializePeerConnection(stream);
+      }
+    } catch (error: any) {
+      console.error('Failed to start video call:', error);
+      alert(error.message || 'Camera/microphone access denied or device not found');
+    }
+  };
+
+  // Initialize WebRTC peer connection
+  const initializePeerConnection = async (localStream: MediaStream) => {
+    try {
+      // Create RTCPeerConnection with STUN servers
+      const configuration: RTCConfiguration = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
+      };
+
+      const pc = new RTCPeerConnection(configuration);
+      peerConnectionRef.current = pc;
+
+      // Add local stream tracks to peer connection
+      localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
+      });
+
+      // Handle remote stream
+      pc.ontrack = (event) => {
+        console.log('Received remote track:', event);
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = event.streams[0];
+          }
+        }
+      };
+
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate && ws) {
+          ws.send({
+            type: 'webrtc_ice',
+            chat_id: chatId,
+            call_id: activeCall?.call_id || activeCall?.id,
+            candidate: JSON.stringify(event.candidate),
+          });
+        }
+      };
+
+      // Handle connection state changes
+      pc.onconnectionstatechange = () => {
+        console.log('Peer connection state:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          console.log('✅ WebRTC connected!');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.warn('⚠️ WebRTC connection failed or disconnected');
+        }
+      };
+
+      // Create and send offer if we're the caller
+      if (activeCall && !incomingCall) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        if (ws) {
+          ws.send({
+            type: 'webrtc_offer',
+            chat_id: chatId,
+            call_id: activeCall?.call_id || activeCall?.id,
+            offer: JSON.stringify(offer),
+          });
+        }
       }
     } catch (error) {
-      console.error('Failed to start video call:', error);
-      alert('Camera/microphone access denied');
+      console.error('Failed to initialize peer connection:', error);
     }
   };
 
   // Video call'u durdur
   const stopVideoCall = () => {
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    
+    // Stop local stream
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       setLocalStream(null);
     }
+    
+    // Stop remote stream
     if (remoteStream) {
       remoteStream.getTracks().forEach(track => track.stop());
       setRemoteStream(null);
     }
+    
+    // Clear video refs
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
     }
@@ -248,9 +503,23 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       await callApi.answerCall(incomingCall.call_id || incomingCall.id);
       setActiveCall({ ...(incomingCall || {}), type: callType });
       setIncomingCall(null);
-      // Video call ise stream başlat
+      // Video call ise stream başlat ve WebRTC bağlantısı kur
       if (callType === 'video') {
         await startVideoCall();
+      } else if (callType === 'voice') {
+        // Voice call için de audio stream başlat
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+          });
+          setLocalStream(stream);
+          await initializePeerConnection(stream);
+        } catch (error) {
+          console.error('Failed to start voice call stream:', error);
+        }
       }
     } catch (error) {
       console.error('Failed to answer call:', error);
@@ -514,6 +783,32 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
       console.error('Failed to load messages:', error);
     }
   };
+
+  // Mark incoming messages as read when they are loaded/displayed
+  useEffect(() => {
+    const myId = String(user?.id || user?._id || '');
+    if (!myId || messages.length === 0) return;
+
+    const toMark = messages
+      .filter((m) => {
+        const senderId = String(m.sender_id || '');
+        if (!senderId || senderId === myId) return false;
+        if (m.is_deleted) return false;
+        if (m.status === 'read') return false;
+        if (markedReadRef.current.has(m.id)) return false;
+        return true;
+      })
+      .map((m) => m.id);
+
+    if (toMark.length === 0) return;
+    toMark.forEach((id) => markedReadRef.current.add(id));
+
+    messageApi.markAsRead(chatId, toMark).catch((err) => {
+      console.error('Failed to mark messages as read:', err);
+      // allow retry if it failed
+      toMark.forEach((id) => markedReadRef.current.delete(id));
+    });
+  }, [messages, chatId, user?.id, user?._id]);
 
   const handleNewMessage = (data: any) => {
     if (data.chat_id === chatId) {
@@ -1269,15 +1564,20 @@ export default function ChatWindow({ chatId, ws, onBack }: ChatWindowProps) {
                       <span className="text-xs">{formatTime(message.created_at)}</span>
                       {isMine && (
                         <span className="text-xs flex items-center space-x-0.5">
+                          {/* Read: blue double check, Unread: grey single check */}
                           {message.status === 'read' ? (
-                            // Read: double blue check
-                            <span className="text-blue-300">✓✓</span>
-                          ) : message.status === 'delivered' ? (
-                            // Delivered: double grey check
-                            <span>✓✓</span>
+                            <span className="text-blue-400" title="Read">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" transform="translate(2 2)" />
+                              </svg>
+                            </span>
                           ) : (
-                            // Sent: single check
-                            <span>✓</span>
+                            <span className="text-gray-400" title="Unread">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </span>
                           )}
                         </span>
                       )}

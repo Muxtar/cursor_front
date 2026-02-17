@@ -17,6 +17,7 @@ function ChatContent() {
   const searchParams = useSearchParams();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocketClient | null>(null);
+  const [prefilledIncomingCall, setPrefilledIncomingCall] = useState<any>(null);
 
   useEffect(() => {
     const openChatId = searchParams.get('open');
@@ -38,6 +39,28 @@ function ChatContent() {
       });
     };
   }, [user]);
+
+  // Global call listener: ensure incoming calls are visible even if the user isn't inside that chat yet.
+  useEffect(() => {
+    if (!ws) return;
+
+    const onCall = (data: any) => {
+      try {
+        const callData = typeof data === 'string' ? JSON.parse(data) : data;
+        if (callData?.type === 'call' && callData?.chat_id) {
+          setPrefilledIncomingCall(callData);
+          setSelectedChat(String(callData.chat_id));
+        }
+      } catch (e) {
+        console.error('Failed to handle incoming call event:', e);
+      }
+    };
+
+    ws.on('call', onCall);
+    return () => {
+      ws.off('call', onCall);
+    };
+  }, [ws]);
 
   const connectWebSocket = async () => {
     try {
@@ -117,7 +140,12 @@ function ChatContent() {
           : 'hidden md:flex' // Hide on mobile when no chat, show on desktop
       } flex-1 flex flex-col ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'} min-w-0`}>
         {selectedChat ? (
-          <ChatWindow chatId={selectedChat} ws={ws} onBack={() => setSelectedChat(null)} />
+          <ChatWindow
+            chatId={selectedChat}
+            ws={ws}
+            onBack={() => setSelectedChat(null)}
+            prefilledIncomingCall={prefilledIncomingCall}
+          />
         ) : (
           <div className={`hidden md:flex flex-1 items-center justify-center ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
             <div className="text-center">
