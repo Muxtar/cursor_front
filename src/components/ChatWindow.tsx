@@ -515,7 +515,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       if (!hasVideo) {
         console.warn('⚠️ Video not available, continuing with audio only');
-        // Don't show alert here, just log - user might be okay with audio-only
+        // Keep video call type but show video UI anyway (it will show avatar/placeholder)
+        // This allows user to see the call UI even without video
       }
 
       setLocalStream(stream);
@@ -523,8 +524,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         localVideoRef.current.srcObject = stream;
       }
       
-      // Initialize WebRTC peer connection
-      await initializePeerConnection(stream, activeCall?.type || activeCall?.call_type || 'video');
+      // Initialize WebRTC peer connection (use 'voice' if no video, otherwise 'video')
+      const finalCallType = hasVideo ? 'video' : 'voice';
+      await initializePeerConnection(stream, finalCallType);
     } catch (error: any) {
       console.error('Failed to start video call:', error);
       
@@ -543,9 +545,31 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         errorMessage += 'Please check your device permissions and try again.';
       }
       
+      // Show error but don't reset call - let user decide
+      // If it's a NotFoundError, try to continue with audio-only
+      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        // Try audio-only as last resort
+        try {
+          console.log('Attempting audio-only fallback...');
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (audioStream && audioStream.getAudioTracks().length > 0) {
+            setLocalStream(audioStream);
+            await initializePeerConnection(audioStream, 'voice');
+            // Update call type to voice but keep UI open
+            if (activeCall) {
+              setActiveCall({ ...activeCall, type: 'voice' });
+            }
+            alert('Video camera not available. Continuing with audio only.');
+            return; // Success with audio-only
+          }
+        } catch (audioError) {
+          console.error('Audio-only fallback also failed:', audioError);
+        }
+      }
+      
       alert(errorMessage);
       
-      // Reset call state on error
+      // Only reset call state if we truly can't continue
       setActiveCall(null);
       setLocalStream(null);
     }
@@ -750,24 +774,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Çağrıyı reddet veya sonlandır
   const handleEndCall = async () => {
     const callId = activeCall?.call_id || activeCall?.id || incomingCall?.call_id || incomingCall?.id;
-    if (!callId) {
-      // Eğer call ID yoksa sadece UI'ı temizle
-      setActiveCall(null);
-      setIncomingCall(null);
-      stopVideoCall();
-      return;
-    }
-    try {
-      await callApi.endCall(callId);
-      setActiveCall(null);
-      setIncomingCall(null);
-      stopVideoCall();
-    } catch (error) {
-      console.error('Failed to end call:', error);
-      // Hata olsa bile UI'ı temizle
-      setActiveCall(null);
-      setIncomingCall(null);
-      stopVideoCall();
+    
+    // Always clean up UI first
+    setActiveCall(null);
+    setIncomingCall(null);
+    stopVideoCall();
+    
+    // Then try to end call on server (but don't block on error)
+    if (callId) {
+      try {
+        await callApi.endCall(callId);
+      } catch (error) {
+        console.error('Failed to end call on server:', error);
+        // Silently fail - UI is already cleaned up
+      }
     }
   };
 
@@ -1330,7 +1350,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       )}
 
-      {/* Video Call UI - Full Screen */}
+      {/* Video Call UI - Full Screen - Show for video calls or if we have video tracks */}
       {activeCall && activeCall.type === 'video' && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           {/* Remote Video (Karşı Taraf) */}
@@ -1349,17 +1369,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                       <img src={otherPartyInfo.avatar} alt={otherPartyInfo.username} className="w-full h-full rounded-full object-cover" />
                     ) : (
                       <span className="text-4xl text-white font-semibold">
-                        {otherPartyInfo?.username?.[0]?.toUpperCase() || 'U'}
+                        {otherPartyInfo?.username?.[0]?.toUpperCase() || chatInfo?.name?.[0]?.toUpperCase() || 'U'}
                       </span>
                     )}
                   </div>
-                  <p className="text-white text-lg font-semibold">{otherPartyInfo?.username || 'Connecting...'}</p>
+                  <p className="text-white text-lg font-semibold">{otherPartyInfo?.username || chatInfo?.name || 'Connecting...'}</p>
+                  <p className="text-gray-400 text-sm mt-2">Waiting for video connection...</p>
                 </div>
               </div>
             )}
             
-            {/* Local Video (Küçük Pencere) */}
-            {localStream && (
+            {/* Local Video (Küçük Pencere) - Only show if we have video */}
+            {localStream && localStream.getVideoTracks().length > 0 && (
               <div className="absolute bottom-20 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden border-2 border-white">
                 <video
                   ref={localVideoRef}
