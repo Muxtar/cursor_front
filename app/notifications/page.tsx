@@ -35,6 +35,7 @@ export default function NotificationsPage() {
     if (!user?.id && !user?._id) return;
     try {
       const userId = user.id || user._id;
+      if (!userId) return;
       const comments = await profileCommentApi.list(userId);
       setProfileComments(Array.isArray(comments) ? comments : []);
       setShowComments(true);
