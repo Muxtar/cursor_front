@@ -334,21 +334,69 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       // Start audio stream and WebRTC connection
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
+        // Try with enhanced audio first
+        let stream: MediaStream | null = null;
+        const audioStrategies = [
+          {
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
           },
-        });
+          {
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+          },
+          {
+            audio: true,
+          },
+        ];
+
+        for (const constraints of audioStrategies) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            break;
+          } catch (error: any) {
+            console.warn('Audio strategy failed:', error.name);
+            if (constraints === audioStrategies[audioStrategies.length - 1]) {
+              throw error;
+            }
+          }
+        }
+
+        if (!stream || stream.getAudioTracks().length === 0) {
+          throw new Error('No audio track available');
+        }
+
         setLocalStream(stream);
         await initializePeerConnection(stream, 'voice');
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to start voice call stream:', error);
-        alert('Microphone access denied or device not found');
+        
+        let errorMessage = 'Failed to start voice call. ';
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage += 'Please allow microphone access in your browser settings.';
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          errorMessage += 'No microphone found. Please connect a microphone and try again.';
+        } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+          errorMessage += 'Microphone is already in use by another application.';
+        } else if (error.message) {
+          errorMessage += error.message;
+        } else {
+          errorMessage += 'Please check your microphone permissions and try again.';
+        }
+        
+        alert(errorMessage);
+        setActiveCall(null);
+        setLocalStream(null);
       }
     } catch (error) {
       console.error('Failed to initiate voice call:', error);
       alert('Failed to initiate voice call');
+      setActiveCall(null);
     }
   };
 
@@ -368,68 +416,138 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
   };
 
-  // List available media devices
+  // List available media devices (after permissions are granted)
   const loadMediaDevices = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       setAvailableDevices(devices.filter(d => d.kind === 'videoinput' || d.kind === 'audioinput'));
+      return devices;
     } catch (error) {
       console.error('Failed to enumerate devices:', error);
+      return [];
     }
   };
 
   // Video call stream'lerini başlat
   const startVideoCall = async () => {
     try {
-      // First, enumerate devices to get permissions
-      await loadMediaDevices();
-      
-      // Try to get user media with fallback options
       let stream: MediaStream | null = null;
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: 'user', // Prefer front camera
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+      
+      // Strategy: Try different constraint combinations progressively
+      const strategies = [
+        // Strategy 1: Full video + audio with ideal constraints
+        {
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
+        // Strategy 2: Full video + audio with basic constraints
+        {
+          video: {
+            facingMode: 'user',
+          },
+          audio: true,
         },
-      };
+        // Strategy 3: Any video device + audio
+        {
+          video: true,
+          audio: true,
+        },
+        // Strategy 4: Audio only (fallback)
+        {
+          video: false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        },
+        // Strategy 5: Basic audio only
+        {
+          video: false,
+          audio: true,
+        },
+      ];
 
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (videoError: any) {
-        console.warn('Video failed, trying audio only:', videoError);
-        // Fallback: try audio only if video fails
+      let lastError: any = null;
+      
+      for (let i = 0; i < strategies.length; i++) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ 
-            video: false, 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-            },
-          });
-          alert('Video camera not available. Continuing with audio only.');
-        } catch (audioError) {
-          console.error('Both video and audio failed:', audioError);
-          throw new Error('Camera/microphone access denied or device not found');
+          console.log(`Trying strategy ${i + 1}/${strategies.length}...`);
+          stream = await navigator.mediaDevices.getUserMedia(strategies[i]);
+          
+          // Success! Now enumerate devices if we got video
+          if (stream.getVideoTracks().length > 0) {
+            await loadMediaDevices();
+          }
+          
+          break; // Exit loop on success
+        } catch (error: any) {
+          console.warn(`Strategy ${i + 1} failed:`, error.name, error.message);
+          lastError = error;
+          
+          // If this is the last strategy, throw the error
+          if (i === strategies.length - 1) {
+            throw error;
+          }
+          
+          // Continue to next strategy
+          continue;
         }
       }
 
-      if (stream) {
-        setLocalStream(stream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = stream;
-        }
-        
-        // Initialize WebRTC peer connection
-        await initializePeerConnection(stream, activeCall?.type || activeCall?.call_type || 'video');
+      if (!stream) {
+        throw new Error('Failed to access camera or microphone. Please check your device permissions.');
       }
+
+      // Check what we actually got
+      const hasVideo = stream.getVideoTracks().length > 0;
+      const hasAudio = stream.getAudioTracks().length > 0;
+
+      if (!hasVideo && !hasAudio) {
+        throw new Error('No media tracks available');
+      }
+
+      if (!hasVideo) {
+        console.warn('⚠️ Video not available, continuing with audio only');
+        // Don't show alert here, just log - user might be okay with audio-only
+      }
+
+      setLocalStream(stream);
+      if (localVideoRef.current && hasVideo) {
+        localVideoRef.current.srcObject = stream;
+      }
+      
+      // Initialize WebRTC peer connection
+      await initializePeerConnection(stream, activeCall?.type || activeCall?.call_type || 'video');
     } catch (error: any) {
       console.error('Failed to start video call:', error);
-      alert(error.message || 'Camera/microphone access denied or device not found');
+      
+      // Provide user-friendly error messages
+      let errorMessage = 'Failed to start video call. ';
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage += 'Please allow camera/microphone access in your browser settings.';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage += 'No camera or microphone found. Please connect a device and try again.';
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage += 'Camera or microphone is already in use by another application.';
+      } else if (error.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += 'Please check your device permissions and try again.';
+      }
+      
+      alert(errorMessage);
+      
+      // Reset call state on error
+      setActiveCall(null);
+      setLocalStream(null);
     }
   };
 
@@ -562,21 +680,70 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       } else if (callType === 'voice') {
         // Voice call için de audio stream başlat
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
+          let stream: MediaStream | null = null;
+          const audioStrategies = [
+            {
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
             },
-          });
+            {
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+              },
+            },
+            {
+              audio: true,
+            },
+          ];
+
+          for (const constraints of audioStrategies) {
+            try {
+              stream = await navigator.mediaDevices.getUserMedia(constraints);
+              break;
+            } catch (error: any) {
+              console.warn('Audio strategy failed:', error.name);
+              if (constraints === audioStrategies[audioStrategies.length - 1]) {
+                throw error;
+              }
+            }
+          }
+
+          if (!stream || stream.getAudioTracks().length === 0) {
+            throw new Error('No audio track available');
+          }
+
           setLocalStream(stream);
           await initializePeerConnection(stream, callType);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to start voice call stream:', error);
+          
+          let errorMessage = 'Failed to start voice call. ';
+          if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            errorMessage += 'Please allow microphone access in your browser settings.';
+          } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            errorMessage += 'No microphone found. Please connect a microphone and try again.';
+          } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+            errorMessage += 'Microphone is already in use by another application.';
+          } else if (error.message) {
+            errorMessage += error.message;
+          } else {
+            errorMessage += 'Please check your microphone permissions and try again.';
+          }
+          
+          alert(errorMessage);
+          setActiveCall(null);
+          setLocalStream(null);
         }
       }
     } catch (error) {
       console.error('Failed to answer call:', error);
       alert('Failed to answer call');
+      setActiveCall(null);
+      setIncomingCall(null);
     }
   };
 
