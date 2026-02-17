@@ -328,9 +328,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // Create and send answer
       console.log('📤 Creating answer...');
+      const hasVideo = localStream ? localStream.getVideoTracks().length > 0 : false;
       const answer = await pc.createAnswer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: localStream?.getVideoTracks().length > 0,
+        offerToReceiveVideo: hasVideo,
       });
       await pc.setLocalDescription(answer);
       console.log('✅ Local description set (answer)');
