@@ -824,10 +824,57 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 </button>
                 {showMenuDropdown && (
                   <div className={`menu-dropdown absolute right-0 mt-2 w-56 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-white'} rounded-lg shadow-lg border ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'} z-50`}>
+                    <button
+                      onClick={() => {
+                        setActiveTab('chats');
+                        setShowMenuDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition flex items-center space-x-3 ${
+                        activeTab === 'chats' ? actualTheme === 'dark' ? 'bg-gray-600' : 'bg-gray-100' : ''
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <span>{t('chats')}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('contacts');
+                        setShowMenuDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition flex items-center space-x-3 border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'} ${
+                        activeTab === 'contacts' ? actualTheme === 'dark' ? 'bg-gray-600' : 'bg-gray-100' : ''
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      <span>{t('contactsTab')}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTab('requests');
+                        setShowMenuDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition flex items-center space-x-3 border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'} relative ${
+                        activeTab === 'requests' ? actualTheme === 'dark' ? 'bg-gray-600' : 'bg-gray-100' : ''
+                      }`}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                      </svg>
+                      <span>{t('requestsTab')}</span>
+                      {incomingProposalsCount > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+                          {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
+                        </span>
+                      )}
+                    </button>
                     <Link
                       href="/settings"
                       onClick={() => setShowMenuDropdown(false)}
-                      className={`block px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition`}
+                      className={`block px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}
                     >
                       <div className="flex items-center space-x-3">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -869,44 +916,7 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex space-x-1">
-            <button
-              onClick={() => setActiveTab('chats')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm ${
-                activeTab === 'chats'
-                  ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
-                  : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {t('chats')}
-            </button>
-            <button
-              onClick={() => setActiveTab('contacts')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm ${
-                activeTab === 'contacts'
-                  ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
-                  : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {t('contactsTab')}
-            </button>
-            <button
-              onClick={() => setActiveTab('requests')}
-              className={`flex-1 py-2 text-center font-medium rounded-t-lg transition text-xs md:text-sm relative ${
-                activeTab === 'requests'
-                  ? actualTheme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-800'
-                  : actualTheme === 'dark' ? 'text-gray-400 hover:bg-gray-700/50' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span>{t('requestsTab')}</span>
-              {incomingProposalsCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
-                  {incomingProposalsCount > 99 ? '99+' : incomingProposalsCount}
-                </span>
-              )}
-            </button>
-          </div>
+          {/* Tabs removed - moved to menu dropdown */}
         </div>
 
         {/* Search Bar */}

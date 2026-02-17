@@ -132,6 +132,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       ws.on('message', handleNewMessage);
       ws.on('typing', handleTyping);
       ws.on('call', handleIncomingCall);
+      ws.on('call_answered', handleCallAnswered);
       ws.on('message_read', handleMessageRead);
       ws.on('webrtc_offer', handleWebRTCOffer);
       ws.on('webrtc_answer', handleWebRTCAnswer);
@@ -149,6 +150,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         ws.off('message', handleNewMessage);
         ws.off('typing', handleTyping);
         ws.off('call', handleIncomingCall);
+        ws.off('call_answered', handleCallAnswered);
         ws.off('message_read', handleMessageRead);
         ws.off('webrtc_offer', handleWebRTCOffer);
         ws.off('webrtc_answer', handleWebRTCAnswer);
@@ -194,6 +196,41 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
   };
 
+  const handleCallAnswered = (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.type === 'call_answered' && evt?.chat_id === chatId && activeCall) {
+        // Call was answered by the other party, ensure WebRTC is ready
+        console.log('✅ Call answered by other party, ensuring WebRTC connection...');
+        // If we're the caller and haven't sent offer yet, do it now
+        if (peerConnectionRef.current && localStream) {
+          const pc = peerConnectionRef.current;
+          const callType = activeCall?.type || activeCall?.call_type || evt?.call_type || 'voice';
+          if (pc.localDescription === null) {
+            // Create and send offer
+            pc.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: callType === 'video',
+            }).then(offer => {
+              pc.setLocalDescription(offer);
+              if (ws) {
+                ws.send({
+                  type: 'webrtc_offer',
+                  chat_id: chatId,
+                  call_id: activeCall?.call_id || activeCall?.id,
+                  offer: JSON.stringify(offer),
+                });
+                console.log('📤 WebRTC offer sent (after call answered)');
+              }
+            }).catch(err => console.error('Failed to create offer:', err));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to parse call_answered event:', error);
+    }
+  };
+
   const handleMessageRead = (data: any) => {
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
@@ -215,7 +252,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (!peerConnectionRef.current) {
         // Initialize peer connection if not already done
         if (localStream) {
-          await initializePeerConnection(localStream);
+          const callType = activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
+          await initializePeerConnection(localStream, callType);
         } else {
           // Start stream first
           await startVideoCall();
@@ -303,7 +341,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           },
         });
         setLocalStream(stream);
-        await initializePeerConnection(stream);
+        await initializePeerConnection(stream, 'voice');
       } catch (error) {
         console.error('Failed to start voice call stream:', error);
         alert('Microphone access denied or device not found');
@@ -387,7 +425,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
         
         // Initialize WebRTC peer connection
-        await initializePeerConnection(stream);
+        await initializePeerConnection(stream, activeCall?.type || activeCall?.call_type || 'video');
       }
     } catch (error: any) {
       console.error('Failed to start video call:', error);
@@ -396,8 +434,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   // Initialize WebRTC peer connection
-  const initializePeerConnection = async (localStream: MediaStream) => {
+  const initializePeerConnection = async (localStream: MediaStream, callTypeOverride?: string) => {
     try {
+      const callType = callTypeOverride || activeCall?.type || activeCall?.call_type || 'voice';
+      
       // Create RTCPeerConnection with STUN servers
       const configuration: RTCConfiguration = {
         iceServers: [
@@ -416,7 +456,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // Handle remote stream
       pc.ontrack = (event) => {
-        console.log('Received remote track:', event);
+        console.log('✅ Received remote track:', event);
         if (event.streams && event.streams[0]) {
           setRemoteStream(event.streams[0]);
           if (remoteVideoRef.current) {
@@ -434,12 +474,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             call_id: activeCall?.call_id || activeCall?.id,
             candidate: JSON.stringify(event.candidate),
           });
+          console.log('📤 ICE candidate sent');
+        } else if (event.candidate === null) {
+          console.log('✅ ICE gathering complete');
         }
       };
 
       // Handle connection state changes
       pc.onconnectionstatechange = () => {
-        console.log('Peer connection state:', pc.connectionState);
+        console.log('🔌 Peer connection state:', pc.connectionState);
         if (pc.connectionState === 'connected') {
           console.log('✅ WebRTC connected!');
         } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
@@ -447,18 +490,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       };
 
-      // Create and send offer if we're the caller
-      if (activeCall && !incomingCall) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        if (ws) {
-          ws.send({
-            type: 'webrtc_offer',
-            chat_id: chatId,
-            call_id: activeCall?.call_id || activeCall?.id,
-            offer: JSON.stringify(offer),
+      // Create and send offer if we're the caller (not answering an incoming call)
+      // Note: We check !incomingCall to ensure we're the initiator
+      // But also check if we already have a local description (to avoid duplicate offers)
+      if (activeCall && !incomingCall && pc.localDescription === null) {
+        try {
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: callType === 'video',
           });
+          await pc.setLocalDescription(offer);
+          
+          if (ws) {
+            ws.send({
+              type: 'webrtc_offer',
+              chat_id: chatId,
+              call_id: activeCall?.call_id || activeCall?.id,
+              offer: JSON.stringify(offer),
+            });
+            console.log('📤 WebRTC offer sent');
+          }
+        } catch (error) {
+          console.error('Failed to create/send offer:', error);
         }
       }
     } catch (error) {
@@ -516,7 +569,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             },
           });
           setLocalStream(stream);
-          await initializePeerConnection(stream);
+          await initializePeerConnection(stream, callType);
         } catch (error) {
           console.error('Failed to start voice call stream:', error);
         }
