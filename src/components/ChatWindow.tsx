@@ -663,30 +663,72 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   // Video call'u durdur
   const stopVideoCall = () => {
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    
-    // Stop local stream
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+    try {
+      // Close peer connection first
+      if (peerConnectionRef.current) {
+        try {
+          peerConnectionRef.current.close();
+        } catch (e) {
+          console.warn('Error closing peer connection:', e);
+        }
+        peerConnectionRef.current = null;
+      }
+      
+      // Stop local stream tracks
+      if (localStream) {
+        try {
+          localStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (e) {
+              console.warn('Error stopping local track:', e);
+            }
+          });
+        } catch (e) {
+          console.warn('Error stopping local stream:', e);
+        }
+        setLocalStream(null);
+      }
+      
+      // Stop remote stream tracks
+      if (remoteStream) {
+        try {
+          remoteStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (e) {
+              console.warn('Error stopping remote track:', e);
+            }
+          });
+        } catch (e) {
+          console.warn('Error stopping remote stream:', e);
+        }
+        setRemoteStream(null);
+      }
+      
+      // Clear video refs
+      if (localVideoRef.current) {
+        try {
+          localVideoRef.current.srcObject = null;
+        } catch (e) {
+          console.warn('Error clearing local video ref:', e);
+        }
+      }
+      if (remoteVideoRef.current) {
+        try {
+          remoteVideoRef.current.srcObject = null;
+        } catch (e) {
+          console.warn('Error clearing remote video ref:', e);
+        }
+      }
+    } catch (error) {
+      console.error('Error in stopVideoCall:', error);
+      // Continue anyway - ensure state is cleared
       setLocalStream(null);
-    }
-    
-    // Stop remote stream
-    if (remoteStream) {
-      remoteStream.getTracks().forEach(track => track.stop());
       setRemoteStream(null);
-    }
-    
-    // Clear video refs
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current = null;
+      }
     }
   };
 
@@ -775,10 +817,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const handleEndCall = async () => {
     const callId = activeCall?.call_id || activeCall?.id || incomingCall?.call_id || incomingCall?.id;
     
-    // Always clean up UI first
+    // Immediately clean up UI state (synchronous)
     setActiveCall(null);
     setIncomingCall(null);
+    
+    // Stop all media tracks and clean up WebRTC
     stopVideoCall();
+    
+    // Reset mute/video states
+    setIsMuted(false);
+    setIsVideoOff(false);
     
     // Then try to end call on server (but don't block on error)
     if (callId) {
@@ -1334,13 +1382,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             </div>
             <div className="flex space-x-3">
               <button
-                onClick={handleEndCall}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleEndCall();
+                }}
                 className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
               >
                 Decline
               </button>
               <button
-                onClick={handleAnswerCall}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleAnswerCall();
+                }}
                 className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition"
               >
                 Accept
@@ -1460,7 +1516,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             </button>
 
             <button
-              onClick={handleEndCall}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleEndCall();
+              }}
               className="p-4 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
               title="End call"
             >
@@ -1513,7 +1573,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             </button>
 
             <button
-              onClick={handleEndCall}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleEndCall();
+              }}
               className="p-4 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
               title="End call"
             >
