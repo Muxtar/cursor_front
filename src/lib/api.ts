@@ -196,6 +196,7 @@ export const authApi = {
     user_type: 'normal' | 'company';
     company_name?: string;
     company_category?: string;
+    profession?: string;
   }) => api.post('/auth/register-with-code', data),
 };
 
@@ -236,6 +237,70 @@ export const chatApi = {
   getMessages: (chatId: string) => api.get(`/chats/${chatId}/messages`),
   sendMessage: (chatId: string, data: any) => api.post(`/chats/${chatId}/messages`, data),
   deleteChat: (chatId: string) => api.delete(`/chats/${chatId}`),
+};
+
+// Phone number comments (search by phone, create, report, block)
+export const phoneCommentApi = {
+  getByPhone: (phone: string) =>
+    api.get(`/comments?phone=${encodeURIComponent(phone)}`),
+  create: (data: { target_phone: string; text: string; rating?: number }) =>
+    api.post('/comments', data),
+  delete: (commentId: string) => api.delete(`/comments/${commentId}`),
+  report: (commentId: string, reason?: string) =>
+    api.post(`/comments/${commentId}/report`, { reason: reason || '' }),
+  getAuthorForBlock: (commentId: string) =>
+    api.get(`/comments/${commentId}/author-for-block`),
+  blockAuthor: (authorUserId: string) =>
+    api.post('/comments/block-author', { author_user_id: authorUserId }),
+  unblockAuthor: (userId: string) =>
+    api.delete(`/comments/block-author/${userId}`),
+};
+
+// Notifications (in-app; e.g. "your number received a new comment")
+export const notificationsApi = {
+  list: (limit?: number) =>
+    api.get(limit ? `/notifications?limit=${limit}` : '/notifications'),
+  markRead: (ids?: string[]) =>
+    api.post('/notifications/read', { ids: ids || [] }),
+  unreadCount: () => api.get('/notifications/unread-count'),
+};
+
+// Search: by phone (comments) or by profession + location (nearby)
+export const searchApi = {
+  byPhone: (phone: string) =>
+    api.get(`/search?phone=${encodeURIComponent(phone)}`),
+  byProfession: (params: {
+    profession: string;
+    lat: number;
+    lng: number;
+    radius_km?: number;
+  }) => {
+    const q = new URLSearchParams({
+      profession: params.profession,
+      lat: String(params.lat),
+      lng: String(params.lng),
+    });
+    if (params.radius_km != null) q.set('radius_km', String(params.radius_km));
+    return api.get(`/search?${q.toString()}`);
+  },
+};
+
+// Professions list (for signup/profile)
+export const professionsApi = {
+  list: () => api.get<{ professions: string[]; allow_custom: boolean }>('/professions'),
+};
+
+// Social accounts (link/unlink)
+export const socialApi = {
+  list: () => api.get('/social'),
+  getLinkUrl: (provider: string) => api.get(`/social/link/${provider}`),
+  linkWithToken: (data: {
+    provider: string;
+    provider_user_id: string;
+    username?: string;
+    profile_url?: string;
+  }) => api.post('/social/link-token', data),
+  unlink: (provider: string) => api.post(`/social/unlink/${provider}`),
 };
 
 // Profile comments (anonymous comments about a user; profile owner can reply to commenter)

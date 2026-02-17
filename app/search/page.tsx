@@ -1,0 +1,242 @@
+'use client';
+
+import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { phoneCommentApi, searchApi } from '@/lib/api';
+import Sidebar from '@/components/Sidebar';
+
+type Tab = 'phone' | 'profession';
+
+export default function SearchPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const [tab, setTab] = useState<Tab>('phone');
+  const [phoneQuery, setPhoneQuery] = useState('');
+  const [professionQuery, setProfessionQuery] = useState('');
+  const [radiusKm, setRadiusKm] = useState(5);
+  const [comments, setComments] = useState<any[]>([]);
+  const [nearbyResults, setNearbyResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [newCommentRating, setNewCommentRating] = useState<number | null>(null);
+
+  if (!user) {
+    router.push('/login');
+    return null;
+  }
+
+  const handleSearchByPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneQuery.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res: any = await phoneCommentApi.getByPhone(phoneQuery.trim());
+      setComments(res.comments || []);
+    } catch (err: any) {
+      setError(err?.message || 'Axtarış uğursuz');
+      setComments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSearchByProfession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!professionQuery.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const position = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+        if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+        navigator.geolocation.getCurrentPosition(
+          (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+          reject
+        );
+      });
+      const res: any = await searchApi.byProfession({
+        profession: professionQuery.trim(),
+        lat: position.lat,
+        lng: position.lng,
+        radius_km: radiusKm,
+      });
+      setNearbyResults(res.results || []);
+    } catch (err: any) {
+      setError(err?.message || 'Axtarış uğursuz');
+      setNearbyResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneQuery.trim() || !newCommentText.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await phoneCommentApi.create({
+        target_phone: phoneQuery.trim(),
+        text: newCommentText.trim(),
+        rating: newCommentRating ?? undefined,
+      });
+      setNewCommentText('');
+      setNewCommentRating(null);
+      const res: any = await phoneCommentApi.getByPhone(phoneQuery.trim());
+      setComments(res.comments || []);
+    } catch (err: any) {
+      setError(err?.message || 'Rəy əlavə olunmadı');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      <main className="flex-1 p-6 max-w-2xl mx-auto">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Axtarış</h1>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setTab('phone')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              tab === 'phone' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
+            }`}
+          >
+            Nömrəyə görə rəylər
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('profession')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              tab === 'profession' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
+            }`}
+          >
+            Peşə + yaxınlıq
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {tab === 'phone' && (
+          <>
+            <form onSubmit={handleSearchByPhone} className="flex gap-2 mb-4">
+              <input
+                type="tel"
+                value={phoneQuery}
+                onChange={(e) => setPhoneQuery(e.target.value)}
+                placeholder="+994501234567 (E.164)"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              />
+              <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                Axtar
+              </button>
+            </form>
+
+            {phoneQuery.trim() && (
+              <form onSubmit={handleAddComment} className="mb-4 p-4 bg-white border border-gray-200 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Bu nömrəyə rəy yaz</label>
+                <textarea
+                  value={newCommentText}
+                  onChange={(e) => setNewCommentText(e.target.value)}
+                  placeholder="Mətn..."
+                  rows={2}
+                  maxLength={2000}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 mb-2"
+                />
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm text-gray-600">Reytinq:</span>
+                  {[1, 2, 3, 4, 5].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setNewCommentRating(newCommentRating === r ? null : r)}
+                      className={`w-8 h-8 rounded border text-sm ${newCommentRating === r ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300'}`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                <button type="submit" disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
+                  Göndər
+                </button>
+              </form>
+            )}
+
+            <div className="space-y-3">
+              {comments.length === 0 && !loading && phoneQuery && <p className="text-gray-500">Bu nömrə üçün rəy tapılmadı.</p>}
+              {comments.map((c: any) => (
+                <div key={c.id} className="p-4 bg-white border border-gray-200 rounded-lg">
+                  <p className="text-gray-900">{c.text}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <span>{c.author_display}</span>
+                    <span>{new Date(c.created_at).toLocaleString()}</span>
+                    {c.rating != null && <span>★ {c.rating}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {tab === 'profession' && (
+          <>
+            <form onSubmit={handleSearchByProfession} className="space-y-2 mb-4">
+              <input
+                type="text"
+                value={professionQuery}
+                onChange={(e) => setProfessionQuery(e.target.value)}
+                placeholder="Peşə (məs: Bərbər)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+              />
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Radius (km):</label>
+                <select
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                >
+                  <option value={1}>1</option>
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                </select>
+              </div>
+              <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                Yaxınlıqda axtar
+              </button>
+            </form>
+
+            <div className="space-y-3">
+              {nearbyResults.length === 0 && !loading && professionQuery && <p className="text-gray-500">Nəticə tapılmadı.</p>}
+              {nearbyResults.map((r: any) => (
+                <div key={r.user_id} className="p-4 bg-white border border-gray-200 rounded-lg">
+                  <div className="font-medium text-gray-900">{r.display_name}</div>
+                  <div className="text-sm text-gray-600">{r.profession}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {r.distance_km?.toFixed(1)} km · Rəylər: {r.comment_count} · Orta reytinq: {r.average_rating?.toFixed(1) || '-'}
+                  </div>
+                  {r.social_verified?.length > 0 && (
+                    <div className="flex gap-1 mt-1">
+                      {r.social_verified.map((s: string) => (
+                        <span key={s} className="text-xs bg-gray-100 px-2 py-0.5 rounded">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

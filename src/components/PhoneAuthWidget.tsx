@@ -146,6 +146,7 @@ export default function PhoneAuthWidget() {
   const [userType, setUserType] = useState<UserType>('normal');
   const [companyName, setCompanyName] = useState('');
   const [companyCategory, setCompanyCategory] = useState('');
+  const [profession, setProfession] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [sentCode, setSentCode] = useState<string | null>(null);
@@ -267,6 +268,7 @@ export default function PhoneAuthWidget() {
         userType,
         companyName: userType === 'company' ? companyName.trim() : undefined,
         companyCategory: userType === 'company' ? companyCategory : undefined,
+        profession: profession || undefined,
       });
     } catch (err: any) {
       setError(err?.message || t('registrationFailed'));
@@ -497,15 +499,26 @@ export default function PhoneAuthWidget() {
             )}
 
             {!isExistingUser && (
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={t('usernameOptional')}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                />
-              </div>
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
+                  <input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={t('usernameOptional')}
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Peşə (optional)</label>
+                  <input
+                    value={profession}
+                    onChange={(e) => setProfession(e.target.value)}
+                    placeholder="Bərbər, Usta, ..."
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                  />
+                </div>
+              </>
             )}
             {error && (
               <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">

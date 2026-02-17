@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { authApi } from '@/lib/api';
+import { authApi, professionsApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
 type UserType = 'normal' | 'company';
@@ -16,11 +16,17 @@ export default function RegisterWidget() {
   const [username, setUsername] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [companyCategory, setCompanyCategory] = useState('');
+  const [profession, setProfession] = useState('');
+  const [professionList, setProfessionList] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sentCode, setSentCode] = useState<string | null>(null);
 
   const { registerWithCode } = useAuth();
+
+  useEffect(() => {
+    professionsApi.list().then((r) => setProfessionList(r.professions || [])).catch(() => {});
+  }, []);
 
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +65,7 @@ export default function RegisterWidget() {
         userType,
         companyName: userType === 'company' ? companyName : undefined,
         companyCategory: userType === 'company' ? companyCategory : undefined,
+        profession: profession || undefined,
       });
     } catch (err: any) {
       setError(err?.message || 'Registration failed');
@@ -182,6 +189,27 @@ export default function RegisterWidget() {
               placeholder="Username (optional)"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 placeholder:text-gray-400"
             />
+
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Peşə (optional)</label>
+              <select
+                value={professionList.includes(profession) ? profession : ''}
+                onChange={(e) => setProfession(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900"
+              >
+                <option value="">Seçin və ya boş buraxın</option>
+                {professionList.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={professionList.includes(profession) ? '' : profession}
+                onChange={(e) => setProfession(e.target.value)}
+                placeholder="Və ya öz peşənizi yazın"
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm text-gray-900 placeholder:text-gray-400"
+              />
+            </div>
 
             {userType === 'company' && (
               <>

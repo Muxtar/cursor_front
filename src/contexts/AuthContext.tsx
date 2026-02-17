@@ -33,6 +33,7 @@ interface AuthContextType {
     userType: 'normal' | 'company';
     companyName?: string;
     companyCategory?: string;
+    profession?: string;
   }) => Promise<void>;
   /** Kodu doğruladıktan sonra hesap tipi ekranından devam etmek için (mevcut kullanıcı) */
   completeLoginWithStoredSession: (token: string, user: any) => void;
@@ -120,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     userType: 'normal' | 'company';
     companyName?: string;
     companyCategory?: string;
+    profession?: string;
   }) => {
     try {
       const response: any = await authApi.registerWithCode({
@@ -129,6 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user_type: data.userType,
         company_name: data.companyName,
         company_category: data.companyCategory,
+        profession: data.profession,
       });
       api.setToken(response.token);
       setUser(normalizeUser(response.user));
