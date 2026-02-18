@@ -143,21 +143,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               // This is expected behavior and not an error
             });
           } catch (e: any) {
-            // Silently ignore synchronous errors - might be "Cannot close a closed AudioContext"
-            if (e.message && e.message.includes('closed')) {
-              // This is expected - context was already closed
-            }
+            // Silently ignore all errors - context might already be closed
+            // This is safe and expected
           }
-        } else if (state === 'closed') {
-          // Already closed, nothing to do
         }
+        // If state is 'closed' or 'closing', do nothing
       } catch (e: any) {
         // Silently ignore all errors - context might be in an invalid state
         // This is safe because we've already cleared the ref
-        if (e.message && !e.message.includes('closed')) {
-          // Only log if it's not a "closed" error
-          console.warn('AudioContext cleanup warning:', e.message);
-        }
       }
     }
     
@@ -280,7 +273,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   // Remote video/audio stream'i video/audio element'lere bağla
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
+    const videoElement = remoteVideoRef.current;
+    if (!videoElement) return;
+    
+    if (remoteStream) {
       const videoTracks = remoteStream.getVideoTracks();
       console.log('📹 Setting remote video stream to video element', {
         hasStream: !!remoteStream,
@@ -300,19 +296,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       });
       
-      const videoElement = remoteVideoRef.current;
+      // Only set srcObject if it's different to avoid unnecessary reloads
+      if (videoElement.srcObject !== remoteStream) {
+        console.log('🔄 Setting video element srcObject...');
+        // Wait for any pending play() calls to complete
+        videoElement.pause();
+        videoElement.srcObject = remoteStream;
+      }
       
-      // Remove previous event listeners to prevent duplicates
-      const cleanup = () => {
-        videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        videoElement.removeEventListener('canplay', handleCanPlay);
-        videoElement.removeEventListener('playing', handlePlaying);
-        videoElement.removeEventListener('loadeddata', handleLoadedData);
-      };
-      
-      // Set srcObject first
-      videoElement.srcObject = remoteStream;
       videoElement.muted = false; // Ensure not muted
+      
+      // Note: Video tracks should already be 'live' when received via ontrack
+      // But we'll check anyway and try to play when ready
       
       // Log video element state
       console.log('📹 Video element state:', {
@@ -327,9 +322,29 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Force play function
       const forcePlay = async () => {
         try {
-          if (!videoElement) return;
+          if (!videoElement || !remoteStream) return;
           
-          // Try to play immediately
+          // Check if stream still matches
+          if (videoElement.srcObject !== remoteStream) {
+            console.log('⚠️ Stream changed, skipping play');
+            return;
+          }
+          
+          // Check if video is ready
+          if (videoElement.readyState < 2) {
+            console.log(`⏳ Video not ready yet (readyState: ${videoElement.readyState}), waiting...`);
+            return;
+          }
+          
+          // Check if video tracks are live
+          const currentVideoTracks = remoteStream.getVideoTracks();
+          const hasLiveVideoTrack = currentVideoTracks.some(t => t.readyState === 'live' && t.enabled);
+          if (!hasLiveVideoTrack) {
+            console.log('⏳ No live video tracks yet, waiting...');
+            return;
+          }
+          
+          // Try to play
           if (videoElement.paused) {
             await videoElement.play();
             console.log('✅ Remote video playing', {
@@ -337,54 +352,121 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               videoHeight: videoElement.videoHeight,
               readyState: videoElement.readyState,
             });
+          } else {
+            console.log('✅ Remote video already playing');
           }
         } catch (err: any) {
-          console.warn('⚠️ Failed to play video:', err);
+          // Silently ignore AbortError - this happens when stream changes quickly
+          if (err.name !== 'AbortError') {
+            console.warn('⚠️ Failed to play video:', err);
+          }
         }
       };
       
       // Event handlers
       const handleLoadedMetadata = () => {
         console.log('📹 Video loadedmetadata event');
-        forcePlay();
+        if (videoElement.srcObject === remoteStream) {
+          forcePlay();
+        }
       };
       
       const handleLoadedData = () => {
         console.log('📹 Video loadeddata event');
-        forcePlay();
+        if (videoElement.srcObject === remoteStream) {
+          forcePlay();
+        }
       };
       
       const handleCanPlay = () => {
         console.log('📹 Video canplay event');
-        forcePlay();
+        if (videoElement.srcObject === remoteStream) {
+          forcePlay();
+        }
+      };
+      
+      const handleCanPlayThrough = () => {
+        console.log('📹 Video canplaythrough event');
+        if (videoElement.srcObject === remoteStream) {
+          forcePlay();
+        }
       };
       
       const handlePlaying = () => {
         console.log('✅ Video playing event');
-        cleanup(); // Clean up listeners once playing
       };
       
       // Add event listeners
       videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
       videoElement.addEventListener('loadeddata', handleLoadedData);
       videoElement.addEventListener('canplay', handleCanPlay);
+      videoElement.addEventListener('canplaythrough', handleCanPlayThrough);
       videoElement.addEventListener('playing', handlePlaying);
       
-      // Try to play immediately
-      forcePlay();
-      
-      // Also try after a short delay
-      setTimeout(() => {
-        if (videoElement.paused) {
-          console.log('🔄 Retrying video play after delay...');
+      // Try to play after delays (progressive retry)
+      const retryTimeout1 = setTimeout(() => {
+        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused && videoElement.readyState >= 2) {
+          console.log('🔄 Retrying video play after 500ms...');
           forcePlay();
         }
       }, 500);
       
+      const retryTimeout2 = setTimeout(() => {
+        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused && videoElement.readyState >= 2) {
+          console.log('🔄 Retrying video play after 1000ms...');
+          forcePlay();
+        }
+      }, 1000);
+      
+      const retryTimeout3 = setTimeout(() => {
+        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused) {
+          console.log('🔄 Final retry video play after 2000ms...');
+          // Force play even if readyState is low - sometimes it works
+          videoElement.play().catch(err => {
+            if (err.name !== 'AbortError') {
+              console.warn('⚠️ Final retry failed:', err);
+            }
+          });
+        }
+      }, 2000);
+      
+      // Also try when video element becomes ready (even if readyState was 0)
+      const checkInterval = setInterval(() => {
+        if (videoElement && videoElement.srcObject === remoteStream) {
+          if (videoElement.readyState >= 2 && videoElement.paused) {
+            console.log('🔄 Video became ready, attempting play...');
+            videoElement.play().catch(err => {
+              if (err.name !== 'AbortError') {
+                console.warn('⚠️ Play failed:', err);
+              }
+            });
+            clearInterval(checkInterval);
+          }
+        } else {
+          clearInterval(checkInterval);
+        }
+      }, 200);
+      
+      // Clear interval after 10 seconds
+      const intervalTimeout = setTimeout(() => {
+        clearInterval(checkInterval);
+      }, 10000);
+      
       // Cleanup on unmount or stream change
-      return cleanup;
-    } else if (remoteVideoRef.current && !remoteStream) {
-      remoteVideoRef.current.srcObject = null;
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        videoElement.removeEventListener('loadeddata', handleLoadedData);
+        videoElement.removeEventListener('canplay', handleCanPlay);
+        videoElement.removeEventListener('canplaythrough', handleCanPlayThrough);
+        videoElement.removeEventListener('playing', handlePlaying);
+        clearTimeout(retryTimeout1);
+        clearTimeout(retryTimeout2);
+        clearTimeout(retryTimeout3);
+        clearTimeout(intervalTimeout);
+        clearInterval(checkInterval);
+      };
+    } else {
+      videoElement.srcObject = null;
     }
     
     if (remoteAudioRef.current && remoteStream) {
@@ -1327,22 +1409,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           
           setRemoteStream(remoteStream);
           
-          // Force video element update if it exists
-          setTimeout(() => {
-            if (remoteVideoRef.current && remoteStream.getVideoTracks().length > 0) {
-              const videoElement = remoteVideoRef.current;
-              if (videoElement.srcObject !== remoteStream) {
-                console.log('🔄 Updating video element srcObject...');
-                videoElement.srcObject = remoteStream;
-              }
-              if (videoElement.paused) {
-                console.log('🔄 Attempting to play video...');
-                videoElement.play().catch(err => {
-                  console.warn('⚠️ Failed to play video:', err);
-                });
-              }
-            }
-          }, 100);
+          // Note: Video element update will be handled by useEffect
+          // Don't update here to avoid conflicts
         } else {
           // Fallback: create stream from track (for browsers that don't provide streams)
           setRemoteStream((prev) => {
@@ -2229,24 +2297,71 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               muted={false}
               className="w-full h-full object-cover"
               style={{ backgroundColor: '#111827' }}
-              onLoadedMetadata={() => {
-                console.log('📹 Video onLoadedMetadata callback');
-                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
-                  remoteVideoRef.current.play().catch(err => {
-                    console.warn('⚠️ Failed to play in onLoadedMetadata:', err);
+              onLoadedMetadata={(e) => {
+                const video = e.currentTarget;
+                console.log('📹 Video onLoadedMetadata callback', {
+                  readyState: video.readyState,
+                  videoWidth: video.videoWidth,
+                  videoHeight: video.videoHeight,
+                  paused: video.paused,
+                });
+                // Try to play when metadata is loaded
+                if (video.paused) {
+                  video.play().catch(err => {
+                    if (err.name !== 'AbortError') {
+                      console.warn('⚠️ Failed to play in onLoadedMetadata:', err);
+                    }
                   });
                 }
               }}
-              onCanPlay={() => {
-                console.log('📹 Video onCanPlay callback');
-                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
-                  remoteVideoRef.current.play().catch(err => {
-                    console.warn('⚠️ Failed to play in onCanPlay:', err);
+              onLoadedData={(e) => {
+                const video = e.currentTarget;
+                console.log('📹 Video onLoadedData callback', {
+                  readyState: video.readyState,
+                  paused: video.paused,
+                });
+                if (video.paused && video.readyState >= 2) {
+                  video.play().catch(err => {
+                    if (err.name !== 'AbortError') {
+                      console.warn('⚠️ Failed to play in onLoadedData:', err);
+                    }
                   });
                 }
               }}
-              onPlaying={() => {
-                console.log('✅ Video onPlaying callback');
+              onCanPlay={(e) => {
+                const video = e.currentTarget;
+                console.log('📹 Video onCanPlay callback', {
+                  readyState: video.readyState,
+                  paused: video.paused,
+                });
+                if (video.paused) {
+                  video.play().catch(err => {
+                    if (err.name !== 'AbortError') {
+                      console.warn('⚠️ Failed to play in onCanPlay:', err);
+                    }
+                  });
+                }
+              }}
+              onCanPlayThrough={(e) => {
+                const video = e.currentTarget;
+                console.log('📹 Video onCanPlayThrough callback');
+                if (video.paused) {
+                  video.play().catch(err => {
+                    if (err.name !== 'AbortError') {
+                      console.warn('⚠️ Failed to play in onCanPlayThrough:', err);
+                    }
+                  });
+                }
+              }}
+              onPlaying={(e) => {
+                const video = e.currentTarget;
+                console.log('✅ Video onPlaying callback', {
+                  videoWidth: video.videoWidth,
+                  videoHeight: video.videoHeight,
+                });
+              }}
+              onError={(e) => {
+                console.error('❌ Video element error:', e);
               }}
             />
             {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0) || 
