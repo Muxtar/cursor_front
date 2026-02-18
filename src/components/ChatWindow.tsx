@@ -406,9 +406,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // Clear any queued ICE candidates before setting remote description
-      iceCandidateQueueRef.current = [];
-
       const offer = JSON.parse(evt.offer);
       console.log('📥 Setting remote description (offer)...');
       isSettingRemoteDescriptionRef.current = true;
@@ -418,8 +415,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('✅ Remote description set (offer)');
       } catch (error: any) {
         console.error('❌ Failed to set remote description:', error);
-        isSettingRemoteDescriptionRef.current = false;
         throw error;
+      } finally {
+        // Stop queueing ICE candidates as soon as remote description finishes applying.
+        isSettingRemoteDescriptionRef.current = false;
       }
 
       // Process queued ICE candidates
@@ -434,7 +433,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
         }
       }
-      isSettingRemoteDescriptionRef.current = false;
 
       // Create and send answer
       console.log('📤 Creating answer...');
@@ -471,9 +469,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // Clear any queued ICE candidates before setting remote description
-      iceCandidateQueueRef.current = [];
-
       const answer = JSON.parse(evt.answer);
       console.log('📥 Setting remote description (answer)...');
       isSettingRemoteDescriptionRef.current = true;
@@ -483,8 +478,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('✅ Remote description set (answer)');
       } catch (error: any) {
         console.error('❌ Failed to set remote description:', error);
-        isSettingRemoteDescriptionRef.current = false;
         throw error;
+      } finally {
+        // Stop queueing ICE candidates as soon as remote description finishes applying.
+        isSettingRemoteDescriptionRef.current = false;
       }
 
       // Process queued ICE candidates
@@ -499,7 +496,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
         }
       }
-      isSettingRemoteDescriptionRef.current = false;
     } catch (error) {
       console.error('❌ Failed to handle WebRTC answer:', error);
       isSettingRemoteDescriptionRef.current = false;
