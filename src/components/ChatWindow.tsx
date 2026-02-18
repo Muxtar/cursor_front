@@ -103,11 +103,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
   const iceCandidateQueueRef = useRef<RTCIceCandidate[]>([]);
+  const MAX_ICE_CANDIDATE_QUEUE_SIZE = 50; // Limit queue size to prevent memory issues
   const isSettingRemoteDescriptionRef = useRef<boolean>(false);
   const ringtoneIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const ringtoneAudioContextRef = useRef<AudioContext | null>(null);
   const isPlayingRingtoneRef = useRef(false);
   const isStartingVideoCallRef = useRef(false); // Prevent duplicate startVideoCall calls
+  const isAcceptingCallRef = useRef(false); // Prevent race condition between acceptCall and handleWebRTCOffer
 
   // Çağrı sesi: gelen arama veya karşı taraf cevap verene kadar (çağıran taraf) çalar
   const stopRingtone = () => {
@@ -408,21 +410,35 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (evt?.type === 'call_answered' && evt?.chat_id === chatId && activeCall) {
         // Call was answered by the other party, ensure WebRTC is ready
         console.log('✅ Call answered by other party, ensuring WebRTC connection...');
-        // If we're the caller and haven't sent offer yet, do it now
+        
+        // Only send offer if we're the caller (we have activeCall but no incomingCall)
+        // Callee should wait for offer, not send it
+        const isCaller = !incomingCall && activeCall;
+        
+        if (!isCaller) {
+          console.log('📞 We are callee, waiting for offer from caller...');
+          return;
+        }
+        
+        // If we're the caller and have peer connection and stream, send offer
         if (peerConnectionRef.current && localStream) {
           const pc = peerConnectionRef.current;
           const callId = activeCall?.call_id || activeCall?.id;
+          
           if (pc.localDescription === null) {
             const sendOffer = async () => {
               try {
+                // Ensure tracks are added
                 if (pc.getSenders().length === 0) {
                   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
                   console.log('📤 Added local tracks to PC before offer');
                 }
-                console.log('📤 Creating offer (after call answered)...');
+                
+                console.log('📤 Creating offer (caller, after call answered)...');
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 console.log('✅ Local description set (offer after answer)');
+                
                 if (ws && callId) {
                   ws.send({
                     type: 'webrtc_offer',
@@ -430,20 +446,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     call_id: callId,
                     offer: JSON.stringify(offer),
                   });
-                  console.log('📤 WebRTC offer sent (after call answered)');
+                  console.log('📤 WebRTC offer sent (caller, after call answered)');
                 }
               } catch (err) {
                 console.error('❌ Failed to create offer after call answered:', err);
               }
             };
             setTimeout(sendOffer, 150);
+          } else {
+            console.log('⚠️ Offer already sent, skipping...');
           }
-        } else if (!localStream) {
-          // If we don't have a stream yet, start it
-          // But only if we're actually the caller (not callee who should wait for offer)
-          console.log('⚠️ No local stream, caller should start call...');
-          // Note: This should only happen for caller, callee will get stream via acceptCall
-          // So we don't start it here to prevent loops
+        } else {
+          console.warn('⚠️ Cannot send offer: missing peer connection or local stream', {
+            hasPC: !!peerConnectionRef.current,
+            hasStream: !!localStream,
+          });
         }
       }
     } catch (error) {
@@ -487,6 +504,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (evt?.chat_id !== chatId) return;
 
       console.log('📥 Received WebRTC offer');
+
+      // Wait if acceptCall is in progress to prevent race condition
+      if (isAcceptingCallRef.current) {
+        console.log('⚠️ acceptCall in progress, waiting for it to complete...');
+        let waitCount = 0;
+        while (isAcceptingCallRef.current && waitCount < 50) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          waitCount++;
+        }
+        if (waitCount >= 50) {
+          console.warn('⚠️ Timeout waiting for acceptCall to complete');
+        }
+      }
 
       // Ensure we have a peer connection and local stream
       if (!peerConnectionRef.current) {
@@ -539,17 +569,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         isSettingRemoteDescriptionRef.current = false;
       }
 
-      // Process queued ICE candidates
-      while (iceCandidateQueueRef.current.length > 0) {
+      // Process queued ICE candidates (with limit to prevent infinite loops)
+      let processedCount = 0;
+      const MAX_PROCESSING_ATTEMPTS = 100; // Safety limit
+      while (iceCandidateQueueRef.current.length > 0 && processedCount < MAX_PROCESSING_ATTEMPTS) {
         const candidate = iceCandidateQueueRef.current.shift();
         if (candidate) {
           try {
             await pc.addIceCandidate(candidate);
-            console.log('📥 Processed queued ICE candidate');
+            processedCount++;
+            console.log(`📥 Processed queued ICE candidate (${processedCount}/${iceCandidateQueueRef.current.length + processedCount} remaining)`);
           } catch (err) {
             console.warn('⚠️ Failed to add queued ICE candidate:', err);
+            // Don't re-queue failed candidates to prevent infinite loops
           }
         }
+      }
+      
+      // Clear any remaining candidates if we hit the limit
+      if (iceCandidateQueueRef.current.length > 0) {
+        console.warn(`⚠️ Clearing ${iceCandidateQueueRef.current.length} remaining ICE candidates (processing limit reached)`);
+        iceCandidateQueueRef.current = [];
       }
 
       // Create and send answer
@@ -602,17 +642,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         isSettingRemoteDescriptionRef.current = false;
       }
 
-      // Process queued ICE candidates
-      while (iceCandidateQueueRef.current.length > 0) {
+      // Process queued ICE candidates (with limit to prevent infinite loops)
+      let processedCount = 0;
+      const MAX_PROCESSING_ATTEMPTS = 100; // Safety limit
+      while (iceCandidateQueueRef.current.length > 0 && processedCount < MAX_PROCESSING_ATTEMPTS) {
         const candidate = iceCandidateQueueRef.current.shift();
         if (candidate) {
           try {
             await pc.addIceCandidate(candidate);
-            console.log('📥 Processed queued ICE candidate');
+            processedCount++;
+            console.log(`📥 Processed queued ICE candidate (${processedCount}/${iceCandidateQueueRef.current.length + processedCount} remaining)`);
           } catch (err) {
             console.warn('⚠️ Failed to add queued ICE candidate:', err);
+            // Don't re-queue failed candidates to prevent infinite loops
           }
         }
+      }
+      
+      // Clear any remaining candidates if we hit the limit
+      if (iceCandidateQueueRef.current.length > 0) {
+        console.warn(`⚠️ Clearing ${iceCandidateQueueRef.current.length} remaining ICE candidates (processing limit reached)`);
+        iceCandidateQueueRef.current = [];
       }
     } catch (error) {
       console.error('❌ Failed to handle WebRTC answer:', error);
@@ -642,7 +692,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // If remote description is not set yet, queue the candidate
       if (pc.remoteDescription === null || isSettingRemoteDescriptionRef.current) {
-        console.log('📥 Queueing ICE candidate (waiting for remote description)');
+        // Limit queue size to prevent memory issues
+        if (iceCandidateQueueRef.current.length >= MAX_ICE_CANDIDATE_QUEUE_SIZE) {
+          console.warn(`⚠️ ICE candidate queue full (${MAX_ICE_CANDIDATE_QUEUE_SIZE}), dropping oldest candidate`);
+          iceCandidateQueueRef.current.shift(); // Remove oldest
+        }
+        console.log(`📥 Queueing ICE candidate (waiting for remote description, queue size: ${iceCandidateQueueRef.current.length + 1})`);
         iceCandidateQueueRef.current.push(iceCandidate);
         return;
       }
@@ -654,7 +709,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       } catch (error: any) {
         // If adding fails, it might be because remote description is still being set
         if (error.name === 'InvalidStateError' || error.name === 'OperationError') {
-          console.log('📥 Queueing ICE candidate (retry)');
+          // Limit queue size
+          if (iceCandidateQueueRef.current.length >= MAX_ICE_CANDIDATE_QUEUE_SIZE) {
+            console.warn(`⚠️ ICE candidate queue full (${MAX_ICE_CANDIDATE_QUEUE_SIZE}), dropping oldest candidate`);
+            iceCandidateQueueRef.current.shift(); // Remove oldest
+          }
+          console.log(`📥 Queueing ICE candidate (retry, queue size: ${iceCandidateQueueRef.current.length + 1})`);
           iceCandidateQueueRef.current.push(iceCandidate);
         } else {
           console.warn('⚠️ Failed to add ICE candidate:', error);
@@ -730,36 +790,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         await new Promise(resolve => setTimeout(resolve, 100));
         await initializePeerConnection(stream, 'voice');
         
-        // Send offer after peer connection is initialized
-        // Use callData from outer scope
-        const callId = callData?.call_id || callData?.id;
-        setTimeout(async () => {
-          if (peerConnectionRef.current && stream && callId && ws) {
-            const pc = peerConnectionRef.current;
-            if (pc.localDescription === null) {
-              try {
-                console.log('📤 Creating offer (voice caller, after stream ready)...');
-                if (pc.getSenders().length === 0) {
-                  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-                  console.log('📤 Added local tracks to PC before offer');
-                }
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                console.log('✅ Local description set (voice caller offer)');
-                
-                ws.send({
-                  type: 'webrtc_offer',
-                  chat_id: chatId,
-                  call_id: callId,
-                  offer: JSON.stringify(offer),
-                });
-                console.log('📤 WebRTC offer sent (voice caller)');
-              } catch (err) {
-                console.error('❌ Failed to create offer (voice caller):', err);
-              }
-            }
-          }
-        }, 500); // Small delay to ensure state is updated
+        // NOTE: Offer will be sent ONLY after call_answered event is received
+        // This ensures callee has accepted the call and is ready for WebRTC connection
+        // See handleCallAnswered() for offer sending logic
       } catch (error: any) {
         console.error('Failed to start voice call stream:', error);
         
@@ -806,49 +839,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
       
-      // Offer'ı gönder (stream ve peer connection hazır olduktan sonra)
-      // Use stream directly instead of waiting for state update
-      const sendOffer = async () => {
-        const pc = peerConnectionRef.current;
-        const callId = callData?.call_id || callData?.id;
-        
-        if (!pc || !stream || !callId || !ws) {
-          console.warn('⚠️ Missing requirements for offer:', { pc: !!pc, stream: !!stream, callId: !!callId, ws: !!ws });
-          return;
-        }
-        
-        // Check if offer already sent
-        if (pc.localDescription !== null) {
-          console.log('⚠️ Offer already sent, skipping...');
-          return;
-        }
-        
-        try {
-          console.log('📤 Creating offer (caller, after stream ready)...');
-          // Ensure tracks are added
-          if (pc.getSenders().length === 0) {
-            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-            console.log('📤 Added local tracks to PC before offer');
-          }
-          
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          console.log('✅ Local description set (caller offer)');
-          
-          ws.send({
-            type: 'webrtc_offer',
-            chat_id: chatId,
-            call_id: callId,
-            offer: JSON.stringify(offer),
-          });
-          console.log('📤 WebRTC offer sent (caller)');
-        } catch (err) {
-          console.error('❌ Failed to create offer (caller):', err);
-        }
-      };
-      
-      // Wait a bit for peer connection to be fully initialized
-      setTimeout(sendOffer, 500);
+      // NOTE: Offer will be sent ONLY after call_answered event is received
+      // This ensures callee has accepted the call and is ready for WebRTC connection
+      // See handleCallAnswered() for offer sending logic
     } catch (error) {
       console.error('Failed to initiate video call:', error);
       alert('Failed to initiate video call');
@@ -1159,6 +1152,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   const acceptCall = async (callData: any) => {
     if (!callData) return;
+    
+    // Prevent race condition: if already accepting, return
+    if (isAcceptingCallRef.current) {
+      console.log('⚠️ acceptCall already in progress, skipping...');
+      return;
+    }
+    
     const callType = callData.call_type || callData.type || 'voice';
     const callId = callData.call_id || callData.id;
     if (!callId) {
@@ -1166,6 +1166,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       return;
     }
 
+    isAcceptingCallRef.current = true;
+    
     try {
       await callApi.answerCall(callId);
       setActiveCall({ ...(callData || {}), type: callType });
@@ -1224,12 +1226,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       alert('Failed to answer call');
       setActiveCall(null);
       setIncomingCall(null);
+    } finally {
+      isAcceptingCallRef.current = false;
     }
   };
 
-  // Video call'u durdur
+  // Video call'u durdur - comprehensive cleanup
   const stopVideoCall = () => {
     try {
+      console.log('🧹 Cleaning up video call...');
+      
+      // Reset flags
+      isAcceptingCallRef.current = false;
+      isStartingVideoCallRef.current = false;
+      isSettingRemoteDescriptionRef.current = false;
+      
       // Close peer connection first
       if (peerConnectionRef.current) {
         try {
@@ -1274,7 +1285,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       // Clear ICE candidate queue
       iceCandidateQueueRef.current = [];
-      isSettingRemoteDescriptionRef.current = false;
       
       // Clear video refs
       if (localVideoRef.current) {
@@ -1291,11 +1301,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           console.warn('Error clearing remote video ref:', e);
         }
       }
+      if (remoteAudioRef.current) {
+        try {
+          remoteAudioRef.current.srcObject = null;
+        } catch (e) {
+          console.warn('Error clearing remote audio ref:', e);
+        }
+      }
+      
+      console.log('✅ Video call cleanup complete');
     } catch (error) {
       console.error('Error in stopVideoCall:', error);
       // Continue anyway - ensure state is cleared
       setLocalStream(null);
       setRemoteStream(null);
+      setActiveCall(null);
+      setIncomingCall(null);
       if (peerConnectionRef.current) {
         peerConnectionRef.current = null;
       }

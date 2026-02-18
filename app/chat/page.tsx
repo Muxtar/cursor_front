@@ -8,7 +8,7 @@ import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
-import { api, callApi } from '@/lib/api';
+import { api, callApi, userApi } from '@/lib/api';
 
 type RingtoneKind = 'caller' | 'callee';
 
@@ -81,6 +81,7 @@ function ChatContent() {
   const [prefilledIncomingCall, setPrefilledIncomingCall] = useState<any>(null);
   const [incomingGlobalCall, setIncomingGlobalCall] = useState<any>(null);
   const [isDecliningCall, setIsDecliningCall] = useState(false);
+  const [callerInfo, setCallerInfo] = useState<any>(null);
 
   useRingtone(!!incomingGlobalCall, 'callee');
 
@@ -109,11 +110,22 @@ function ChatContent() {
   useEffect(() => {
     if (!ws) return;
 
-    const onCall = (data: any) => {
+    const onCall = async (data: any) => {
       try {
         const callData = typeof data === 'string' ? JSON.parse(data) : data;
         if (callData?.type === 'call' && callData?.chat_id) {
           setIncomingGlobalCall(callData);
+          
+          // Load caller information
+          if (callData?.caller_id) {
+            try {
+              const caller = await userApi.getUserById(callData.caller_id);
+              setCallerInfo(caller);
+            } catch (err) {
+              console.error('Failed to load caller info:', err);
+              setCallerInfo(null);
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to handle incoming call event:', e);
@@ -127,6 +139,7 @@ function ChatContent() {
         if (callData?.type === 'call_ended' || callData?.status === 'ended') {
           setIncomingGlobalCall(null);
           setPrefilledIncomingCall(null);
+          setCallerInfo(null);
         }
       } catch (e) {
         console.error('Failed to handle call ended event:', e);
@@ -235,21 +248,36 @@ function ChatContent() {
   return (
     <div className={`flex h-dvh max-h-dvh overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {incomingGlobalCall && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className={`${actualTheme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} w-full max-w-sm rounded-xl shadow-xl border ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-4`}>
-            <div className="mb-3">
-              <h3 className="text-lg font-semibold">
-                {incomingGlobalCall?.call_type === 'video' ? 'Incoming video call' : 'Incoming voice call'}
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in">
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} w-full max-w-sm rounded-xl shadow-xl border ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-6 animate-scale-in`}>
+            <div className="text-center mb-4">
+              {/* Caller Avatar */}
+              <div className="w-20 h-20 rounded-full mx-auto mb-3 overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                {callerInfo?.avatar ? (
+                  <img src={callerInfo.avatar} alt={callerInfo.username || 'Caller'} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-2xl font-bold text-white">
+                    {(callerInfo?.username || 'U').charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              
+              {/* Caller Name */}
+              <h3 className="text-xl font-semibold mb-1">
+                {callerInfo?.username || 'Unknown User'}
               </h3>
-              <p className={`text-sm mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-                Chat: {String(incomingGlobalCall?.chat_id || '')}
+              
+              {/* Call Type */}
+              <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                {incomingGlobalCall?.call_type === 'video' ? '📹 Video Call' : '📞 Voice Call'}
               </p>
             </div>
+            
             <div className="flex gap-3">
               <button
                 onClick={declineIncomingCall}
                 disabled={isDecliningCall}
-                className={`flex-1 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition ${
+                className={`flex-1 px-4 py-3 rounded-lg bg-red-500 text-white hover:bg-red-600 transition font-medium ${
                   isDecliningCall ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
@@ -257,7 +285,7 @@ function ChatContent() {
               </button>
               <button
                 onClick={acceptIncomingCall}
-                className="flex-1 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition"
+                className="flex-1 px-4 py-3 rounded-lg bg-green-500 text-white hover:bg-green-600 transition font-medium"
               >
                 Accept
               </button>
