@@ -185,10 +185,47 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     return () => stopRingtone();
   }, [incomingCall, activeCall, remoteStream]);
 
+  // Local video stream'i video element'e bağla
   useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
-  }, [remoteStream]);
+    if (localVideoRef.current && localStream) {
+      const hasVideo = localStream.getVideoTracks().length > 0;
+      if (hasVideo) {
+        console.log('📹 Setting local video stream to video element');
+        localVideoRef.current.srcObject = localStream;
+        // Ensure video plays
+        localVideoRef.current.play().catch(err => {
+          console.warn('⚠️ Failed to play local video:', err);
+        });
+      } else {
+        localVideoRef.current.srcObject = null;
+      }
+    }
+  }, [localStream, activeCall]);
+
+  // Remote video/audio stream'i video/audio element'lere bağla
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      console.log('📹 Setting remote video stream to video element');
+      remoteVideoRef.current.srcObject = remoteStream;
+      // Ensure video plays
+      remoteVideoRef.current.play().catch(err => {
+        console.warn('⚠️ Failed to play remote video:', err);
+      });
+    } else if (remoteVideoRef.current && !remoteStream) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    
+    if (remoteAudioRef.current && remoteStream) {
+      console.log('🔊 Setting remote audio stream to audio element');
+      remoteAudioRef.current.srcObject = remoteStream;
+      // Ensure audio plays
+      remoteAudioRef.current.play().catch(err => {
+        console.warn('⚠️ Failed to play remote audio:', err);
+      });
+    } else if (remoteAudioRef.current && !remoteStream) {
+      remoteAudioRef.current.srcObject = null;
+    }
+  }, [remoteStream, activeCall]);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -758,13 +795,42 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
 
       setLocalStream(stream);
-      if (localVideoRef.current && hasVideo) {
-        localVideoRef.current.srcObject = stream;
-      }
+      // Note: Local video will be set via useEffect when localStream changes
+      // This ensures video element is mounted before we try to set srcObject
       
       // Initialize WebRTC peer connection (use 'voice' if no video, otherwise 'video')
       const finalCallType = hasVideo ? 'video' : 'voice';
       await initializePeerConnection(stream, finalCallType);
+      
+      // Create and send offer immediately after peer connection is initialized
+      // This ensures the caller sends offer as soon as stream is ready
+      // Note: We check activeCall state, but if it's not set yet, offer will be sent via handleCallAnswered
+      const currentCall = activeCall || (hasVideo ? { type: 'video' } : { type: 'voice' });
+      if (peerConnectionRef.current && currentCall) {
+        const pc = peerConnectionRef.current;
+        // Only send offer if we're the caller (localDescription is null) and we have a call ID
+        const callId = currentCall?.call_id || currentCall?.id;
+        if (pc.localDescription === null && callId && ws) {
+          try {
+            console.log('📤 Creating initial offer (caller)...');
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            console.log('✅ Local description set (initial offer)');
+            
+            ws.send({
+              type: 'webrtc_offer',
+              chat_id: chatId,
+              call_id: callId,
+              offer: JSON.stringify(offer),
+            });
+            console.log('📤 WebRTC offer sent (initial)');
+          } catch (err) {
+            console.error('❌ Failed to create initial offer:', err);
+          }
+        } else if (!callId) {
+          console.log('⏳ Waiting for call ID before sending offer...');
+        }
+      }
     } catch (error: any) {
       console.error('Failed to start video call:', error);
       
@@ -842,11 +908,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Karşı taraftan gelen ses/video (bazı tarayıcılarda event.streams boş gelir)
       pc.ontrack = (event) => {
         console.log('✅ Received remote track:', event.track.kind, event);
+        console.log('📊 Track details:', {
+          kind: event.track.kind,
+          enabled: event.track.enabled,
+          readyState: event.track.readyState,
+          streams: event.streams.length,
+        });
+        
         setRemoteStream((prev) => {
           const next = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
-          if (!next.getTracks().includes(event.track)) next.addTrack(event.track);
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = next;
-          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = next;
+          if (!next.getTracks().includes(event.track)) {
+            next.addTrack(event.track);
+            console.log(`✅ Added ${event.track.kind} track to remote stream. Total tracks: ${next.getTracks().length}`);
+          }
+          // Note: Video/audio elements will be updated via useEffect when remoteStream changes
           return next;
         });
       };
@@ -946,8 +1021,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       iceCandidateQueueRef.current = [];
       setRemoteStream(null);
 
-      // Video: stream ve PC, gelen webrtc_offer ile handleWebRTCOffer içinde oluşturulur (tek yol, yarış yok)
-      if (callType !== 'video') {
+      // Start media stream based on call type
+      if (callType === 'video') {
+        // Video call - start video stream
+        await startVideoCall();
+      } else {
         // Voice call
         let stream: MediaStream | null = null;
         const audioStrategies = [
