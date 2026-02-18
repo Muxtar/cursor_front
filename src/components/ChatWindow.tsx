@@ -142,13 +142,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               // Silently ignore all errors - context might be closing/closed
               // This is expected behavior and not an error
             });
-          } catch {
-            // Silently ignore synchronous errors too
+          } catch (e: any) {
+            // Silently ignore synchronous errors - might be "Cannot close a closed AudioContext"
+            if (e.message && e.message.includes('closed')) {
+              // This is expected - context was already closed
+            }
           }
+        } else if (state === 'closed') {
+          // Already closed, nothing to do
         }
-      } catch {
+      } catch (e: any) {
         // Silently ignore all errors - context might be in an invalid state
         // This is safe because we've already cleared the ref
+        if (e.message && !e.message.includes('closed')) {
+          // Only log if it's not a "closed" error
+          console.warn('AudioContext cleanup warning:', e.message);
+        }
       }
     }
     
@@ -272,33 +281,109 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Remote video/audio stream'i video/audio element'lere bağla
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
-      console.log('📹 Setting remote video stream to video element');
+      const videoTracks = remoteStream.getVideoTracks();
+      console.log('📹 Setting remote video stream to video element', {
+        hasStream: !!remoteStream,
+        videoTracks: videoTracks.length,
+        tracksEnabled: videoTracks.map(t => t.enabled),
+        tracksReadyState: videoTracks.map(t => t.readyState),
+      });
+      
+      // Ensure video tracks are enabled
+      videoTracks.forEach(track => {
+        if (!track.enabled) {
+          console.log('⚠️ Enabling video track');
+          track.enabled = true;
+        }
+      });
+      
+      // Set srcObject
       remoteVideoRef.current.srcObject = remoteStream;
-      // Ensure video plays (only if not already playing to prevent loops)
-      if (remoteVideoRef.current.paused) {
-        remoteVideoRef.current.play().catch(err => {
+      
+      // Log video element state
+      console.log('📹 Video element state:', {
+        paused: remoteVideoRef.current.paused,
+        readyState: remoteVideoRef.current.readyState,
+        videoWidth: remoteVideoRef.current.videoWidth,
+        videoHeight: remoteVideoRef.current.videoHeight,
+        srcObject: !!remoteVideoRef.current.srcObject,
+      });
+      
+      // Force play video with retry mechanism
+      const playVideo = async (retryCount = 0) => {
+        try {
+          if (!remoteVideoRef.current) return;
+          
+          // Wait for video to be ready
+          if (remoteVideoRef.current.readyState < 2) {
+            remoteVideoRef.current.addEventListener('loadedmetadata', () => {
+              playVideo(retryCount);
+            }, { once: true });
+            return;
+          }
+          
+          if (remoteVideoRef.current.paused) {
+            await remoteVideoRef.current.play();
+            console.log('✅ Remote video playing', {
+              videoWidth: remoteVideoRef.current.videoWidth,
+              videoHeight: remoteVideoRef.current.videoHeight,
+            });
+          } else {
+            console.log('✅ Remote video already playing');
+          }
+        } catch (err: any) {
           // Silently ignore AbortError - this happens when stream changes quickly
           if (err.name !== 'AbortError') {
-            console.warn('⚠️ Failed to play remote video:', err);
+            console.warn(`⚠️ Failed to play remote video (attempt ${retryCount + 1}):`, err);
+            // Retry up to 3 times
+            if (retryCount < 3 && remoteVideoRef.current && remoteStream) {
+              setTimeout(() => {
+                playVideo(retryCount + 1);
+              }, 500 * (retryCount + 1));
+            }
           }
-        });
-      }
+        }
+      };
+      
+      playVideo();
     } else if (remoteVideoRef.current && !remoteStream) {
       remoteVideoRef.current.srcObject = null;
     }
     
     if (remoteAudioRef.current && remoteStream) {
-      console.log('🔊 Setting remote audio stream to audio element');
+      const audioTracks = remoteStream.getAudioTracks();
+      console.log('🔊 Setting remote audio stream to audio element', {
+        hasStream: !!remoteStream,
+        audioTracks: audioTracks.length,
+        tracksEnabled: audioTracks.map(t => t.enabled),
+      });
+      
+      // Ensure audio tracks are enabled
+      audioTracks.forEach(track => {
+        if (!track.enabled) {
+          console.log('⚠️ Enabling audio track');
+          track.enabled = true;
+        }
+      });
+      
       remoteAudioRef.current.srcObject = remoteStream;
-      // Ensure audio plays (only if not already playing to prevent loops)
-      if (remoteAudioRef.current.paused) {
-        remoteAudioRef.current.play().catch(err => {
+      
+      // Force play audio
+      const playAudio = async () => {
+        try {
+          if (remoteAudioRef.current && remoteAudioRef.current.paused) {
+            await remoteAudioRef.current.play();
+            console.log('✅ Remote audio playing');
+          }
+        } catch (err: any) {
           // Silently ignore AbortError - this happens when stream changes quickly
           if (err.name !== 'AbortError') {
             console.warn('⚠️ Failed to play remote audio:', err);
           }
-        });
-      }
+        }
+      };
+      
+      playAudio();
     } else if (remoteAudioRef.current && !remoteStream) {
       remoteAudioRef.current.srcObject = null;
     }
@@ -705,6 +790,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
+      // Check if answer was already set
+      if (pc.remoteDescription !== null) {
+        console.log('⚠️ Answer already set, skipping...');
+        return;
+      }
+
+      // Check peer connection state - must be in 'have-local-offer' or 'have-local-pranswer' to set remote answer
+      const currentState = pc.signalingState;
+      if (currentState !== 'have-local-offer' && currentState !== 'have-local-pranswer') {
+        console.warn(`⚠️ Cannot set remote answer in state: ${currentState}, skipping...`);
+        return;
+      }
+
       const answer = JSON.parse(evt.answer);
       console.log('📥 Setting remote description (answer)...');
       isSettingRemoteDescriptionRef.current = true;
@@ -714,7 +812,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('✅ Remote description set (answer)');
       } catch (error: any) {
         console.error('❌ Failed to set remote description:', error);
-        throw error;
+        isSettingRemoteDescriptionRef.current = false;
+        // Don't throw - might be duplicate answer
+        if (error.name === 'InvalidStateError' && pc.remoteDescription !== null) {
+          console.log('⚠️ Remote description already set, continuing...');
+        } else {
+          return; // Exit if it's a real error
+        }
       } finally {
         // Stop queueing ICE candidates as soon as remote description finishes applying.
         isSettingRemoteDescriptionRef.current = false;
@@ -1154,11 +1258,26 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           streams: event.streams.length,
         });
         
+        // Ensure track is enabled
+        if (!event.track.enabled) {
+          console.log(`⚠️ Track ${event.track.kind} is disabled, enabling...`);
+          event.track.enabled = true;
+        }
+        
         // Use event.streams if available, otherwise create new stream from track
         if (event.streams && event.streams.length > 0) {
           // Use the first stream from the event
           const remoteStream = event.streams[0];
           console.log(`✅ Received remote stream with ${remoteStream.getTracks().length} tracks`);
+          
+          // Ensure all tracks are enabled
+          remoteStream.getTracks().forEach(track => {
+            if (!track.enabled) {
+              console.log(`⚠️ Enabling ${track.kind} track`);
+              track.enabled = true;
+            }
+          });
+          
           setRemoteStream(remoteStream);
         } else {
           // Fallback: create stream from track (for browsers that don't provide streams)
@@ -1168,6 +1287,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               next.addTrack(event.track);
               console.log(`✅ Added ${event.track.kind} track to remote stream. Total tracks: ${next.getTracks().length}`);
             }
+            
+            // Ensure all tracks are enabled
+            next.getTracks().forEach(track => {
+              if (!track.enabled) {
+                console.log(`⚠️ Enabling ${track.kind} track`);
+                track.enabled = true;
+              }
+            });
+            
             return next;
           });
         }
@@ -2036,8 +2164,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               playsInline
               muted={false}
               className="w-full h-full object-cover"
+              style={{ backgroundColor: '#111827' }}
             />
-            {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0)) && (
+            {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0) || 
+              (remoteStream && remoteStream.getVideoTracks().every(t => !t.enabled || t.readyState !== 'live'))) && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
@@ -2050,7 +2180,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     )}
                   </div>
                   <p className="text-white text-lg font-semibold">{otherPartyInfo?.username || chatInfo?.name || 'Connecting...'}</p>
-                  <p className="text-gray-400 text-sm mt-2">Waiting for video connection...</p>
+                  <p className="text-gray-400 text-sm mt-2">
+                    {remoteStream && remoteStream.getVideoTracks().length > 0 
+                      ? 'Video connecting...' 
+                      : 'Waiting for video connection...'}
+                  </p>
                 </div>
               </div>
             )}
