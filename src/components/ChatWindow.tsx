@@ -467,7 +467,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         clearTimeout(intervalTimeout);
         clearInterval(checkInterval);
       };
-    } else {
+    } else if (videoElement) {
       videoElement.srcObject = null;
     }
     
