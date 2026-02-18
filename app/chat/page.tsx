@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -9,6 +9,44 @@ import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
 import { api, callApi } from '@/lib/api';
+
+function useRingtone(play: boolean) {
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ctxRef = useRef<AudioContext | null>(null);
+  useEffect(() => {
+    if (!play) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      try { ctxRef.current?.close(); } catch (_) {}
+      ctxRef.current = null;
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctx();
+      ctxRef.current = ctx;
+      const playBeep = () => {
+        if (ctx.state === 'closed') return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1);
+        g.gain.setValueAtTime(0.15, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.connect(g); g.connect(ctx.destination);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+      };
+      playBeep();
+      intervalRef.current = setInterval(playBeep, 400);
+    } catch (_) {}
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      try { ctxRef.current?.close(); } catch (_) {}
+    };
+  }, [play]);
+}
 
 function ChatContent() {
   const { user } = useAuth();
@@ -20,6 +58,8 @@ function ChatContent() {
   const [prefilledIncomingCall, setPrefilledIncomingCall] = useState<any>(null);
   const [incomingGlobalCall, setIncomingGlobalCall] = useState<any>(null);
   const [isDecliningCall, setIsDecliningCall] = useState(false);
+
+  useRingtone(!!incomingGlobalCall);
 
   useEffect(() => {
     const openChatId = searchParams.get('open');

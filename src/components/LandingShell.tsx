@@ -13,7 +13,7 @@ export default function LandingShell({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (!loading && user) {
-      router.push('/chat');
+      router.replace('/chat');
     }
   }, [loading, user, router]);
 
@@ -21,6 +21,18 @@ export default function LandingShell({ children }: { children: React.ReactNode }
     return (
       <div className="flex items-center justify-center min-h-screen bg-white">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  // Giriş yapmış kullanıcı ana sayfaya gelirse login ekranı hiç gösterilmez; sadece chat'e yönlendirilir.
+  if (user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent rounded-full" />
+          <p className="text-gray-500 text-sm">Yönlendiriliyor...</p>
+        </div>
       </div>
     );
   }
@@ -77,14 +89,12 @@ export default function LandingShell({ children }: { children: React.ReactNode }
         </div>
       )}
 
-      {/* Center websearch like Google (hide immediately if user becomes available) */}
-      {!user && (
-        <main className="min-h-screen flex flex-col items-center justify-center px-4">
-          <div className="w-full max-w-5xl">
-            <ImageSearch variant="google" />
-          </div>
-        </main>
-      )}
+      {/* Center websearch like Google - sadece giriş yapmamış kullanıcıya */}
+      <main className="min-h-screen flex flex-col items-center justify-center px-4">
+        <div className="w-full max-w-5xl">
+          <ImageSearch variant="google" />
+        </div>
+      </main>
     </div>
   );
 }

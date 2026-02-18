@@ -98,11 +98,68 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
   const iceCandidateQueueRef = useRef<RTCIceCandidate[]>([]);
   const isSettingRemoteDescriptionRef = useRef<boolean>(false);
+  const ringtoneIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ringtoneAudioContextRef = useRef<AudioContext | null>(null);
+
+  // Çağrı sesi: gelen arama veya karşı taraf cevap verene kadar (çağıran taraf) çalar
+  const stopRingtone = () => {
+    if (ringtoneIntervalRef.current) {
+      clearInterval(ringtoneIntervalRef.current);
+      ringtoneIntervalRef.current = null;
+    }
+    try {
+      if (ringtoneAudioContextRef.current?.state !== 'closed') {
+        ringtoneAudioContextRef.current?.close();
+      }
+    } catch (_) {}
+    ringtoneAudioContextRef.current = null;
+  };
+
+  const playRingtone = () => {
+    if (typeof window === 'undefined') return;
+    stopRingtone();
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      ringtoneAudioContextRef.current = ctx;
+      let phase = 0;
+      const playBeep = () => {
+        if (ctx.state === 'closed') return;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+      };
+      playBeep();
+      ringtoneIntervalRef.current = setInterval(playBeep, 400);
+    } catch (e) {
+      console.warn('Ringtone failed:', e);
+    }
+  };
+
+  useEffect(() => {
+    const shouldRing = !!incomingCall || (!!activeCall && !remoteStream);
+    if (shouldRing) playRingtone();
+    else stopRingtone();
+    return () => stopRingtone();
+  }, [incomingCall, activeCall, remoteStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -748,20 +805,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const pc = new RTCPeerConnection(configuration);
       peerConnectionRef.current = pc;
 
-      // Add local stream tracks to peer connection
+      // Yerel ses/video track'lerini ekle (karşı tarafa gidecek)
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
 
-      // Handle remote stream
+      // Karşı taraftan gelen ses/video (bazı tarayıcılarda event.streams boş gelir)
       pc.ontrack = (event) => {
-        console.log('✅ Received remote track:', event);
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = event.streams[0];
-          }
-        }
+        console.log('✅ Received remote track:', event.track.kind, event);
+        setRemoteStream((prev) => {
+          const next = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
+          if (!next.getTracks().includes(event.track)) next.addTrack(event.track);
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = next;
+          return next;
+        });
       };
 
       // Handle ICE candidates
@@ -1694,6 +1751,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             </button>
           </div>
         </div>
+      )}
+
+      {/* Sesli aramada karşı tarafın sesini çalmak için gizli audio */}
+      {activeCall && (
+        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
       )}
 
       {/* Voice Call UI */}
