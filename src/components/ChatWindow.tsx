@@ -301,21 +301,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         // If we're the caller and haven't sent offer yet, do it now
         if (peerConnectionRef.current && localStream) {
           const pc = peerConnectionRef.current;
-          const callType = activeCall?.type || activeCall?.call_type || evt?.call_type || 'voice';
+          const callId = activeCall?.call_id || activeCall?.id;
           if (pc.localDescription === null) {
-            // Wait a bit for ICE candidates to start gathering
-            setTimeout(async () => {
+            const sendOffer = async () => {
               try {
+                if (pc.getSenders().length === 0) {
+                  localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+                  console.log('📤 Added local tracks to PC before offer');
+                }
                 console.log('📤 Creating offer (after call answered)...');
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 console.log('✅ Local description set (offer after answer)');
-                
-                if (ws) {
+                if (ws && callId) {
                   ws.send({
                     type: 'webrtc_offer',
                     chat_id: chatId,
-                    call_id: activeCall?.call_id || activeCall?.id,
+                    call_id: callId,
                     offer: JSON.stringify(offer),
                   });
                   console.log('📤 WebRTC offer sent (after call answered)');
@@ -323,7 +325,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               } catch (err) {
                 console.error('❌ Failed to create offer after call answered:', err);
               }
-            }, 500);
+            };
+            setTimeout(sendOffer, 150);
           }
         } else if (!localStream) {
           // If we don't have a stream yet, start it
@@ -382,8 +385,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (!peerConnectionRef.current) {
         console.log('⚠️ No peer connection, initializing...');
         if (!localStream) {
-          // Start stream first
-          const callType = activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
+          const callType = evt?.call_type || activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
           if (callType === 'video') {
             await startVideoCall();
           } else {
@@ -393,7 +395,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             await initializePeerConnection(stream, 'voice');
           }
         } else {
-          const callType = activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
+          const callType = evt?.call_type || activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
           await initializePeerConnection(localStream, callType);
         }
       }
@@ -566,6 +568,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         type: 'voice',
         chat_id: chatId,
       });
+      setRemoteStream(null);
       setActiveCall({ ...(response || {}), type: 'voice' });
       
       // Start audio stream and WebRTC connection
@@ -645,6 +648,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         type: 'video',
         chat_id: chatId,
       });
+      setRemoteStream(null);
       setActiveCall({ ...(response || {}), type: 'video' });
       // Video stream'i başlat
       await startVideoCall();
@@ -846,6 +850,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           const next = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
           if (!next.getTracks().includes(event.track)) next.addTrack(event.track);
           if (remoteVideoRef.current) remoteVideoRef.current.srcObject = next;
+          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = next;
           return next;
         });
       };
@@ -937,16 +942,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setActiveCall({ ...(callData || {}), type: callType });
       setIncomingCall(null);
 
-      // Clear any existing peer connection
+      // Clear any existing peer connection and remote stream
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
       iceCandidateQueueRef.current = [];
+      setRemoteStream(null);
 
-      if (callType === 'video') {
-        await startVideoCall();
-      } else {
+      // Video: stream ve PC, gelen webrtc_offer ile handleWebRTCOffer içinde oluşturulur (tek yol, yarış yok)
+      if (callType !== 'video') {
         // Voice call
         let stream: MediaStream | null = null;
         const audioStrategies = [
