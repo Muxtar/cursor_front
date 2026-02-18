@@ -289,63 +289,100 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         tracksReadyState: videoTracks.map(t => t.readyState),
       });
       
-      // Ensure video tracks are enabled
+      // Ensure video tracks are enabled and live
       videoTracks.forEach(track => {
         if (!track.enabled) {
           console.log('⚠️ Enabling video track');
           track.enabled = true;
         }
+        if (track.readyState !== 'live') {
+          console.log(`⚠️ Video track readyState is ${track.readyState}, waiting for 'live'...`);
+        }
       });
       
-      // Set srcObject
-      remoteVideoRef.current.srcObject = remoteStream;
+      const videoElement = remoteVideoRef.current;
+      
+      // Remove previous event listeners to prevent duplicates
+      const cleanup = () => {
+        videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        videoElement.removeEventListener('canplay', handleCanPlay);
+        videoElement.removeEventListener('playing', handlePlaying);
+        videoElement.removeEventListener('loadeddata', handleLoadedData);
+      };
+      
+      // Set srcObject first
+      videoElement.srcObject = remoteStream;
+      videoElement.muted = false; // Ensure not muted
       
       // Log video element state
       console.log('📹 Video element state:', {
-        paused: remoteVideoRef.current.paused,
-        readyState: remoteVideoRef.current.readyState,
-        videoWidth: remoteVideoRef.current.videoWidth,
-        videoHeight: remoteVideoRef.current.videoHeight,
-        srcObject: !!remoteVideoRef.current.srcObject,
+        paused: videoElement.paused,
+        readyState: videoElement.readyState,
+        videoWidth: videoElement.videoWidth,
+        videoHeight: videoElement.videoHeight,
+        srcObject: !!videoElement.srcObject,
+        muted: videoElement.muted,
       });
       
-      // Force play video with retry mechanism
-      const playVideo = async (retryCount = 0) => {
+      // Force play function
+      const forcePlay = async () => {
         try {
-          if (!remoteVideoRef.current) return;
+          if (!videoElement) return;
           
-          // Wait for video to be ready
-          if (remoteVideoRef.current.readyState < 2) {
-            remoteVideoRef.current.addEventListener('loadedmetadata', () => {
-              playVideo(retryCount);
-            }, { once: true });
-            return;
-          }
-          
-          if (remoteVideoRef.current.paused) {
-            await remoteVideoRef.current.play();
+          // Try to play immediately
+          if (videoElement.paused) {
+            await videoElement.play();
             console.log('✅ Remote video playing', {
-              videoWidth: remoteVideoRef.current.videoWidth,
-              videoHeight: remoteVideoRef.current.videoHeight,
+              videoWidth: videoElement.videoWidth,
+              videoHeight: videoElement.videoHeight,
+              readyState: videoElement.readyState,
             });
-          } else {
-            console.log('✅ Remote video already playing');
           }
         } catch (err: any) {
-          // Silently ignore AbortError - this happens when stream changes quickly
-          if (err.name !== 'AbortError') {
-            console.warn(`⚠️ Failed to play remote video (attempt ${retryCount + 1}):`, err);
-            // Retry up to 3 times
-            if (retryCount < 3 && remoteVideoRef.current && remoteStream) {
-              setTimeout(() => {
-                playVideo(retryCount + 1);
-              }, 500 * (retryCount + 1));
-            }
-          }
+          console.warn('⚠️ Failed to play video:', err);
         }
       };
       
-      playVideo();
+      // Event handlers
+      const handleLoadedMetadata = () => {
+        console.log('📹 Video loadedmetadata event');
+        forcePlay();
+      };
+      
+      const handleLoadedData = () => {
+        console.log('📹 Video loadeddata event');
+        forcePlay();
+      };
+      
+      const handleCanPlay = () => {
+        console.log('📹 Video canplay event');
+        forcePlay();
+      };
+      
+      const handlePlaying = () => {
+        console.log('✅ Video playing event');
+        cleanup(); // Clean up listeners once playing
+      };
+      
+      // Add event listeners
+      videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+      videoElement.addEventListener('loadeddata', handleLoadedData);
+      videoElement.addEventListener('canplay', handleCanPlay);
+      videoElement.addEventListener('playing', handlePlaying);
+      
+      // Try to play immediately
+      forcePlay();
+      
+      // Also try after a short delay
+      setTimeout(() => {
+        if (videoElement.paused) {
+          console.log('🔄 Retrying video play after delay...');
+          forcePlay();
+        }
+      }, 500);
+      
+      // Cleanup on unmount or stream change
+      return cleanup;
     } else if (remoteVideoRef.current && !remoteStream) {
       remoteVideoRef.current.srcObject = null;
     }
@@ -1264,6 +1301,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           event.track.enabled = true;
         }
         
+        // For video tracks, wait for them to be 'live' before setting stream
+        if (event.track.kind === 'video' && event.track.readyState !== 'live') {
+          console.log(`⏳ Video track not live yet (${event.track.readyState}), waiting...`);
+          event.track.addEventListener('ended', () => {
+            console.log('⚠️ Video track ended');
+          });
+          // Track will become 'live' automatically when ready
+        }
+        
         // Use event.streams if available, otherwise create new stream from track
         if (event.streams && event.streams.length > 0) {
           // Use the first stream from the event
@@ -1276,9 +1322,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               console.log(`⚠️ Enabling ${track.kind} track`);
               track.enabled = true;
             }
+            console.log(`📊 Track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`);
           });
           
           setRemoteStream(remoteStream);
+          
+          // Force video element update if it exists
+          setTimeout(() => {
+            if (remoteVideoRef.current && remoteStream.getVideoTracks().length > 0) {
+              const videoElement = remoteVideoRef.current;
+              if (videoElement.srcObject !== remoteStream) {
+                console.log('🔄 Updating video element srcObject...');
+                videoElement.srcObject = remoteStream;
+              }
+              if (videoElement.paused) {
+                console.log('🔄 Attempting to play video...');
+                videoElement.play().catch(err => {
+                  console.warn('⚠️ Failed to play video:', err);
+                });
+              }
+            }
+          }, 100);
         } else {
           // Fallback: create stream from track (for browsers that don't provide streams)
           setRemoteStream((prev) => {
@@ -2165,6 +2229,25 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               muted={false}
               className="w-full h-full object-cover"
               style={{ backgroundColor: '#111827' }}
+              onLoadedMetadata={() => {
+                console.log('📹 Video onLoadedMetadata callback');
+                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                  remoteVideoRef.current.play().catch(err => {
+                    console.warn('⚠️ Failed to play in onLoadedMetadata:', err);
+                  });
+                }
+              }}
+              onCanPlay={() => {
+                console.log('📹 Video onCanPlay callback');
+                if (remoteVideoRef.current && remoteVideoRef.current.paused) {
+                  remoteVideoRef.current.play().catch(err => {
+                    console.warn('⚠️ Failed to play in onCanPlay:', err);
+                  });
+                }
+              }}
+              onPlaying={() => {
+                console.log('✅ Video onPlaying callback');
+              }}
             />
             {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0) || 
               (remoteStream && remoteStream.getVideoTracks().every(t => !t.enabled || t.readyState !== 'live'))) && (
