@@ -984,6 +984,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       console.log('✅ Peer connection initialized');
       
       // Return stream so caller can use it immediately
+      isStartingVideoCallRef.current = false;
       return stream;
     } catch (error: any) {
       console.error('Failed to start video call:', error);
@@ -994,7 +995,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage += 'Please allow camera/microphone access in your browser settings.';
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-        errorMessage += 'No camera or microphone found. Please connect a device and try again.';
+        errorMessage += 'No camera or microphone found. Connect a device and try again.';
       } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
         errorMessage += 'Camera or microphone is already in use by another application.';
       } else if (error.message) {
@@ -1031,11 +1032,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Only reset call state if we truly can't continue
       setActiveCall(null);
       setLocalStream(null);
-      isStartingVideoCallRef.current = false;
-      return null;
-    } catch (error: any) {
-      // Catch any other errors
-      console.error('Unexpected error in startVideoCall:', error);
       isStartingVideoCallRef.current = false;
       return null;
     }
