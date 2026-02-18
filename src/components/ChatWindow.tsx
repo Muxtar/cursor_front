@@ -113,12 +113,29 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       clearInterval(ringtoneIntervalRef.current);
       ringtoneIntervalRef.current = null;
     }
-    try {
-      if (ringtoneAudioContextRef.current?.state !== 'closed') {
-        ringtoneAudioContextRef.current?.close();
+    
+    // Safely close AudioContext
+    if (ringtoneAudioContextRef.current) {
+      const ctx = ringtoneAudioContextRef.current;
+      try {
+        // Check if context is not already closed or closing
+        if (ctx.state === 'running' || ctx.state === 'suspended') {
+          // close() returns a promise, but we don't need to await it
+          ctx.close().catch((err) => {
+            // Ignore errors if context is already closed
+            if (err.name !== 'InvalidStateError') {
+              console.warn('Error closing AudioContext:', err);
+            }
+          });
+        }
+      } catch (err: any) {
+        // Ignore errors if context is already closed
+        if (err.name !== 'InvalidStateError') {
+          console.warn('Error closing AudioContext:', err);
+        }
       }
-    } catch (_) {}
-    ringtoneAudioContextRef.current = null;
+      ringtoneAudioContextRef.current = null;
+    }
   };
 
   type RingtoneKind = 'caller' | 'callee';
@@ -183,14 +200,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     
     if (!shouldRing) {
       stopRingtone();
-      return () => stopRingtone();
+      return () => {
+        // Cleanup function - safely stop ringtone
+        stopRingtone();
+      };
     }
 
     // Ringtone tipi: gelen arama varsa 'callee', yoksa 'caller' (arayan kişi)
     const kind: RingtoneKind = hasIncomingCall ? 'callee' : 'caller';
     console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, activeCall: ${!!activeCall}, remoteStream: ${!!remoteStream})`);
     playRingtone(kind);
-    return () => stopRingtone();
+    
+    return () => {
+      // Cleanup function - safely stop ringtone when component unmounts or dependencies change
+      stopRingtone();
+    };
   }, [incomingCall, activeCall, remoteStream]);
 
   // Local video stream'i video element'e bağla
