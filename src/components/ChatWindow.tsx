@@ -106,9 +106,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const isSettingRemoteDescriptionRef = useRef<boolean>(false);
   const ringtoneIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const ringtoneAudioContextRef = useRef<AudioContext | null>(null);
+  const isPlayingRingtoneRef = useRef(false);
 
   // Çağrı sesi: gelen arama veya karşı taraf cevap verene kadar (çağıran taraf) çalar
   const stopRingtone = () => {
+    // Prevent multiple calls - check if already stopped
+    if (!ringtoneIntervalRef.current && !ringtoneAudioContextRef.current) {
+      return;
+    }
+    
     if (ringtoneIntervalRef.current) {
       clearInterval(ringtoneIntervalRef.current);
       ringtoneIntervalRef.current = null;
@@ -127,27 +133,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           // close() returns a promise, but we don't need to await it
           // Wrap in try-catch to handle any synchronous errors
           try {
-            ctx.close().catch((err: any) => {
-              // Silently ignore InvalidStateError - context might be closing/closed
-              if (err.name !== 'InvalidStateError' && err.name !== 'InvalidAccessError') {
-                console.warn('Error closing AudioContext:', err);
-              }
+            ctx.close().catch(() => {
+              // Silently ignore all errors - context might be closing/closed
+              // This is expected behavior and not an error
             });
-          } catch (syncErr: any) {
-            // Handle synchronous errors (shouldn't happen but just in case)
-            if (syncErr.name !== 'InvalidStateError' && syncErr.name !== 'InvalidAccessError') {
-              console.warn('Sync error closing AudioContext:', syncErr);
-            }
+          } catch {
+            // Silently ignore synchronous errors too
           }
         }
-      } catch (err: any) {
-        // Ignore all errors - context might be in an invalid state
+      } catch {
+        // Silently ignore all errors - context might be in an invalid state
         // This is safe because we've already cleared the ref
-        if (err.name !== 'InvalidStateError' && err.name !== 'InvalidAccessError') {
-          console.warn('Error checking AudioContext state:', err);
-        }
       }
     }
+    
+    // Mark as stopped
+    isPlayingRingtoneRef.current = false;
   };
 
   type RingtoneKind = 'caller' | 'callee';
@@ -210,22 +211,32 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     const hasActiveCallWithoutConnection = !!activeCall && !remoteStream;
     const shouldRing = hasIncomingCall || hasActiveCallWithoutConnection;
     
+    // Prevent infinite loops - only change if state actually changed
+    const wasPlaying = isPlayingRingtoneRef.current;
+    
     if (!shouldRing) {
-      stopRingtone();
-      return () => {
-        // Cleanup function - safely stop ringtone
+      if (wasPlaying) {
         stopRingtone();
-      };
+        isPlayingRingtoneRef.current = false;
+      }
+      return;
     }
 
-    // Ringtone tipi: gelen arama varsa 'callee', yoksa 'caller' (arayan kişi)
-    const kind: RingtoneKind = hasIncomingCall ? 'callee' : 'caller';
-    console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, activeCall: ${!!activeCall}, remoteStream: ${!!remoteStream})`);
-    playRingtone(kind);
+    // Only start ringtone if we're not already playing
+    if (!wasPlaying) {
+      // Ringtone tipi: gelen arama varsa 'callee', yoksa 'caller' (arayan kişi)
+      const kind: RingtoneKind = hasIncomingCall ? 'callee' : 'caller';
+      console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, activeCall: ${!!activeCall}, remoteStream: ${!!remoteStream})`);
+      playRingtone(kind);
+      isPlayingRingtoneRef.current = true;
+    }
     
     return () => {
       // Cleanup function - safely stop ringtone when component unmounts or dependencies change
-      stopRingtone();
+      if (isPlayingRingtoneRef.current) {
+        stopRingtone();
+        isPlayingRingtoneRef.current = false;
+      }
     };
   }, [incomingCall, activeCall, remoteStream]);
 
@@ -411,13 +422,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
         } else if (!localStream) {
           // If we don't have a stream yet, start it
-          console.log('⚠️ No local stream, starting call...');
-          const callType = activeCall?.type || activeCall?.call_type || evt?.call_type || 'voice';
-          if (callType === 'video') {
-            startVideoCall().catch(err => console.error('Failed to start video call:', err));
-          } else {
-            handleVoiceCall().catch(err => console.error('Failed to start voice call:', err));
-          }
+          // But only if we're actually the caller (not callee who should wait for offer)
+          console.log('⚠️ No local stream, caller should start call...');
+          // Note: This should only happen for caller, callee will get stream via acceptCall
+          // So we don't start it here to prevent loops
         }
       }
     } catch (error) {
@@ -1116,13 +1124,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setActiveCall({ ...(callData || {}), type: callType });
       setIncomingCall(null);
 
-      // Clear any existing peer connection and remote stream
+      // Clear any existing peer connection
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;
       }
       iceCandidateQueueRef.current = [];
-      setRemoteStream(null);
+      
+      // Only clear remoteStream if it exists (to prevent unnecessary re-renders)
+      // setRemoteStream(null); // Removed to prevent loop
 
       // Start media stream based on call type
       if (callType === 'video') {
