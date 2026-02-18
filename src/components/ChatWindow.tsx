@@ -274,10 +274,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Remote video/audio stream'i video/audio element'lere bağla
   useEffect(() => {
     const videoElement = remoteVideoRef.current;
-    if (!videoElement) return;
+    const audioElement = remoteAudioRef.current;
+    if (!videoElement && !audioElement) return;
     
-    if (remoteStream) {
-      const videoTracks = remoteStream.getVideoTracks();
+    if (remoteStream && videoElement) {
+      const currentRemoteStream = remoteStream as MediaStream;
+      const videoTracks = currentRemoteStream.getVideoTracks();
       console.log('📹 Setting remote video stream to video element', {
         hasStream: !!remoteStream,
         videoTracks: videoTracks.length,
@@ -297,11 +299,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       });
       
       // Only set srcObject if it's different to avoid unnecessary reloads
-      if (videoElement.srcObject !== remoteStream) {
+      if (videoElement.srcObject !== currentRemoteStream) {
         console.log('🔄 Setting video element srcObject...');
         // Wait for any pending play() calls to complete
         videoElement.pause();
-        videoElement.srcObject = remoteStream;
+        videoElement.srcObject = currentRemoteStream;
       }
       
       videoElement.muted = false; // Ensure not muted
@@ -325,7 +327,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           if (!videoElement || !remoteStream) return;
           
           // Check if stream still matches
-          if (videoElement.srcObject !== remoteStream) {
+          if (videoElement.srcObject !== currentRemoteStream) {
             console.log('⚠️ Stream changed, skipping play');
             return;
           }
@@ -337,7 +339,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
           
           // Check if video tracks are live
-          const currentVideoTracks = remoteStream.getVideoTracks();
+          const currentVideoTracks = currentRemoteStream.getVideoTracks();
           const hasLiveVideoTrack = currentVideoTracks.some(t => t.readyState === 'live' && t.enabled);
           if (!hasLiveVideoTrack) {
             console.log('⏳ No live video tracks yet, waiting...');
@@ -366,28 +368,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Event handlers
       const handleLoadedMetadata = () => {
         console.log('📹 Video loadedmetadata event');
-        if (videoElement.srcObject === remoteStream) {
+        if (videoElement.srcObject === currentRemoteStream) {
           forcePlay();
         }
       };
       
       const handleLoadedData = () => {
         console.log('📹 Video loadeddata event');
-        if (videoElement.srcObject === remoteStream) {
+        if (videoElement.srcObject === currentRemoteStream) {
           forcePlay();
         }
       };
       
       const handleCanPlay = () => {
         console.log('📹 Video canplay event');
-        if (videoElement.srcObject === remoteStream) {
+        if (videoElement.srcObject === currentRemoteStream) {
           forcePlay();
         }
       };
       
       const handleCanPlayThrough = () => {
         console.log('📹 Video canplaythrough event');
-        if (videoElement.srcObject === remoteStream) {
+        if (videoElement.srcObject === currentRemoteStream) {
           forcePlay();
         }
       };
@@ -405,21 +407,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       // Try to play after delays (progressive retry)
       const retryTimeout1 = setTimeout(() => {
-        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused && videoElement.readyState >= 2) {
+        if (videoElement && videoElement.srcObject === currentRemoteStream && videoElement.paused && videoElement.readyState >= 2) {
           console.log('🔄 Retrying video play after 500ms...');
           forcePlay();
         }
       }, 500);
       
       const retryTimeout2 = setTimeout(() => {
-        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused && videoElement.readyState >= 2) {
+        if (videoElement && videoElement.srcObject === currentRemoteStream && videoElement.paused && videoElement.readyState >= 2) {
           console.log('🔄 Retrying video play after 1000ms...');
           forcePlay();
         }
       }, 1000);
       
       const retryTimeout3 = setTimeout(() => {
-        if (videoElement && videoElement.srcObject === remoteStream && videoElement.paused) {
+        if (videoElement && videoElement.srcObject === currentRemoteStream && videoElement.paused) {
           console.log('🔄 Final retry video play after 2000ms...');
           // Force play even if readyState is low - sometimes it works
           videoElement.play().catch(err => {
@@ -432,7 +434,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       // Also try when video element becomes ready (even if readyState was 0)
       const checkInterval = setInterval(() => {
-        if (videoElement && videoElement.srcObject === remoteStream) {
+        if (videoElement && videoElement.srcObject === currentRemoteStream) {
           if (videoElement.readyState >= 2 && videoElement.paused) {
             console.log('🔄 Video became ready, attempting play...');
             videoElement.play().catch(err => {
@@ -469,8 +471,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       videoElement.srcObject = null;
     }
     
-    if (remoteAudioRef.current && remoteStream) {
-      const audioTracks = remoteStream.getAudioTracks();
+    if (audioElement && remoteStream) {
+      const audioStream = remoteStream as MediaStream;
+      const audioTracks = audioStream.getAudioTracks();
       console.log('🔊 Setting remote audio stream to audio element', {
         hasStream: !!remoteStream,
         audioTracks: audioTracks.length,
@@ -485,13 +488,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       });
       
-      remoteAudioRef.current.srcObject = remoteStream;
+      audioElement.srcObject = audioStream;
       
       // Force play audio
       const playAudio = async () => {
         try {
-          if (remoteAudioRef.current && remoteAudioRef.current.paused) {
-            await remoteAudioRef.current.play();
+          if (audioElement && audioElement.paused) {
+            await audioElement.play();
             console.log('✅ Remote audio playing');
           }
         } catch (err: any) {
@@ -503,8 +506,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       };
       
       playAudio();
-    } else if (remoteAudioRef.current && !remoteStream) {
-      remoteAudioRef.current.srcObject = null;
+    } else if (audioElement && !remoteStream) {
+      audioElement.srcObject = null;
     }
   }, [remoteStream]); // Removed activeCall dependency to prevent loops
 
@@ -594,7 +597,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         localStream.getTracks().forEach(track => track.stop());
       }
       if (remoteStream) {
-        remoteStream.getTracks().forEach(track => track.stop());
+        (remoteStream as MediaStream).getTracks().forEach(track => track.stop());
       }
     };
   }, [localStream, remoteStream]);
@@ -1396,10 +1399,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         if (event.streams && event.streams.length > 0) {
           // Use the first stream from the event
           const remoteStream = event.streams[0];
-          console.log(`✅ Received remote stream with ${remoteStream.getTracks().length} tracks`);
+          const streamRef = remoteStream as MediaStream;
+          console.log(`✅ Received remote stream with ${streamRef.getTracks().length} tracks`);
           
           // Ensure all tracks are enabled
-          remoteStream.getTracks().forEach(track => {
+          streamRef.getTracks().forEach(track => {
             if (!track.enabled) {
               console.log(`⚠️ Enabling ${track.kind} track`);
               track.enabled = true;
@@ -1630,7 +1634,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Stop remote stream tracks
       if (remoteStream) {
         try {
-          remoteStream.getTracks().forEach(track => {
+          (remoteStream as MediaStream).getTracks().forEach(track => {
             try {
               track.stop();
             } catch (e) {
@@ -1663,7 +1667,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
       if (remoteAudioRef.current) {
         try {
-          remoteAudioRef.current.srcObject = null;
+          (remoteAudioRef.current as HTMLAudioElement).srcObject = null;
         } catch (e) {
           console.warn('Error clearing remote audio ref:', e);
         }
@@ -2364,8 +2368,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 console.error('❌ Video element error:', e);
               }}
             />
-            {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0) || 
-              (remoteStream && remoteStream.getVideoTracks().every(t => !t.enabled || t.readyState !== 'live'))) && (
+            {(!remoteStream || (remoteStream && (remoteStream as MediaStream).getVideoTracks().length === 0) || 
+              (remoteStream && (remoteStream as MediaStream).getVideoTracks().every(t => !t.enabled || t.readyState !== 'live'))) && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
@@ -2379,7 +2383,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                   </div>
                   <p className="text-white text-lg font-semibold">{otherPartyInfo?.username || chatInfo?.name || 'Connecting...'}</p>
                   <p className="text-gray-400 text-sm mt-2">
-                    {remoteStream && remoteStream.getVideoTracks().length > 0 
+                    {remoteStream && (remoteStream as MediaStream).getVideoTracks().length > 0 
                       ? 'Video connecting...' 
                       : 'Waiting for video connection...'}
                   </p>
