@@ -174,13 +174,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   useEffect(() => {
-    const shouldRing = !!incomingCall || (!!activeCall && !remoteStream);
+    // Ringtone çalma koşulları:
+    // 1. Gelen arama varsa (callee) - her zaman çal
+    // 2. Aktif arama var ama remote stream yoksa (caller veya callee bağlantı kurulmamış) - çal
+    const hasIncomingCall = !!incomingCall;
+    const hasActiveCallWithoutConnection = !!activeCall && !remoteStream;
+    const shouldRing = hasIncomingCall || hasActiveCallWithoutConnection;
+    
     if (!shouldRing) {
       stopRingtone();
       return () => stopRingtone();
     }
 
-    const kind: RingtoneKind = incomingCall ? 'callee' : 'caller';
+    // Ringtone tipi: gelen arama varsa 'callee', yoksa 'caller' (arayan kişi)
+    const kind: RingtoneKind = hasIncomingCall ? 'callee' : 'caller';
+    console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, activeCall: ${!!activeCall}, remoteStream: ${!!remoteStream})`);
     playRingtone(kind);
     return () => stopRingtone();
   }, [incomingCall, activeCall, remoteStream]);
@@ -602,7 +610,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         chat_id: chatId,
       });
       setRemoteStream(null);
-      setActiveCall({ ...(response || {}), type: 'voice' });
+      const callData = { ...(response || {}), type: 'voice' };
+      setActiveCall(callData);
       
       // Start audio stream and WebRTC connection
       try {
@@ -647,6 +656,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         // Small delay to ensure stream is ready
         await new Promise(resolve => setTimeout(resolve, 100));
         await initializePeerConnection(stream, 'voice');
+        
+        // Send offer after peer connection is initialized
+        // Use callData from outer scope
+        const callId = callData?.call_id || callData?.id;
+        setTimeout(async () => {
+          if (peerConnectionRef.current && stream && callId && ws) {
+            const pc = peerConnectionRef.current;
+            if (pc.localDescription === null) {
+              try {
+                console.log('📤 Creating offer (voice caller, after stream ready)...');
+                if (pc.getSenders().length === 0) {
+                  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+                  console.log('📤 Added local tracks to PC before offer');
+                }
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                console.log('✅ Local description set (voice caller offer)');
+                
+                ws.send({
+                  type: 'webrtc_offer',
+                  chat_id: chatId,
+                  call_id: callId,
+                  offer: JSON.stringify(offer),
+                });
+                console.log('📤 WebRTC offer sent (voice caller)');
+              } catch (err) {
+                console.error('❌ Failed to create offer (voice caller):', err);
+              }
+            }
+          }
+        }, 500); // Small delay to ensure state is updated
       } catch (error: any) {
         console.error('Failed to start voice call stream:', error);
         
@@ -682,9 +722,42 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         chat_id: chatId,
       });
       setRemoteStream(null);
-      setActiveCall({ ...(response || {}), type: 'video' });
+      const callData = { ...(response || {}), type: 'video' };
+      setActiveCall(callData);
+      
       // Video stream'i başlat
       await startVideoCall();
+      
+      // Offer'ı gönder (activeCall state güncellendikten sonra)
+      // startVideoCall içinde de offer gönderme var ama burada da garantiliyoruz
+      setTimeout(async () => {
+        if (peerConnectionRef.current && localStream && callData) {
+          const pc = peerConnectionRef.current;
+          const callId = callData?.call_id || callData?.id;
+          if (pc.localDescription === null && callId && ws) {
+            try {
+              console.log('📤 Creating offer (caller, after stream ready)...');
+              if (pc.getSenders().length === 0) {
+                localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+                console.log('📤 Added local tracks to PC before offer');
+              }
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              console.log('✅ Local description set (caller offer)');
+              
+              ws.send({
+                type: 'webrtc_offer',
+                chat_id: chatId,
+                call_id: callId,
+                offer: JSON.stringify(offer),
+              });
+              console.log('📤 WebRTC offer sent (caller)');
+            } catch (err) {
+              console.error('❌ Failed to create offer (caller):', err);
+            }
+          }
+        }
+      }, 500); // Small delay to ensure state is updated
     } catch (error) {
       console.error('Failed to initiate video call:', error);
       alert('Failed to initiate video call');
@@ -802,35 +875,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const finalCallType = hasVideo ? 'video' : 'voice';
       await initializePeerConnection(stream, finalCallType);
       
-      // Create and send offer immediately after peer connection is initialized
-      // This ensures the caller sends offer as soon as stream is ready
-      // Note: We check activeCall state, but if it's not set yet, offer will be sent via handleCallAnswered
-      const currentCall = activeCall || (hasVideo ? { type: 'video' } : { type: 'voice' });
-      if (peerConnectionRef.current && currentCall) {
-        const pc = peerConnectionRef.current;
-        // Only send offer if we're the caller (localDescription is null) and we have a call ID
-        const callId = currentCall?.call_id || currentCall?.id;
-        if (pc.localDescription === null && callId && ws) {
-          try {
-            console.log('📤 Creating initial offer (caller)...');
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            console.log('✅ Local description set (initial offer)');
-            
-            ws.send({
-              type: 'webrtc_offer',
-              chat_id: chatId,
-              call_id: callId,
-              offer: JSON.stringify(offer),
-            });
-            console.log('📤 WebRTC offer sent (initial)');
-          } catch (err) {
-            console.error('❌ Failed to create initial offer:', err);
-          }
-        } else if (!callId) {
-          console.log('⏳ Waiting for call ID before sending offer...');
-        }
-      }
+      // Note: Offer will be sent from handleVideoCall or handleCallAnswered
+      // to ensure activeCall state is properly set with call_id
+      console.log('✅ Peer connection initialized, waiting for offer trigger...');
     } catch (error: any) {
       console.error('Failed to start video call:', error);
       
