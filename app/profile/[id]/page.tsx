@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { userApi, productApi, proposalApi, profileCommentApi, chatApi, fileApi } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import Link from 'next/link';
 
 export default function ProfilePage() {
@@ -210,11 +210,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Sidebar */}
-      <Sidebar />
-
-      {/* Main Content */}
+    <AppLayout title="Profile">
       <div className="flex-1 overflow-y-auto">
       {/* Header */}
       <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
@@ -593,6 +589,6 @@ export default function ProfilePage() {
         </div>
       )}
       </div>
-    </div>
+    </AppLayout>
   );
 }

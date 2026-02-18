@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'next/navigation';
 import { userApi } from '@/lib/api';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import Link from 'next/link';
 
 export default function LocationPage() {
@@ -172,8 +172,7 @@ export default function LocationPage() {
 
   if (loading) {
     return (
-      <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <Sidebar />
+      <AppLayout title={t('nearbyUsers')}>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
@@ -182,16 +181,12 @@ export default function LocationPage() {
             </p>
           </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Sidebar */}
-      <Sidebar />
-
-      {/* Main Content */}
+    <AppLayout title={t('nearbyUsers')}>
       <div className="flex-1 overflow-y-auto">
         {/* Header */}
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
@@ -466,6 +461,6 @@ export default function LocationPage() {
           )}
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }

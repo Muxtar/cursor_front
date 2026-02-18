@@ -123,22 +123,22 @@ function ChatContent() {
   }
 
   return (
-    <div className={`flex h-screen overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`flex h-dvh max-h-dvh overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Desktop: Sidebar always visible, Mobile: Show sidebar when no chat selected */}
       <div className={`${
         selectedChat 
-          ? 'hidden md:block' // Hide sidebar on mobile when chat is selected
-          : 'block' // Show sidebar when no chat selected
-      } w-full md:w-[420px] flex-shrink-0`}>
+          ? 'hidden md:block'
+          : 'block'
+      } w-full md:w-[420px] flex-shrink-0 min-h-0 h-full overflow-hidden`}>
         <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} />
       </div>
       
       {/* Chat Window: Desktop always visible, Mobile: Show when chat selected */}
       <div className={`${
         selectedChat 
-          ? 'block' // Show chat window when chat is selected
-          : 'hidden md:flex' // Hide on mobile when no chat, show on desktop
-      } flex-1 flex flex-col ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'} min-w-0`}>
+          ? 'block'
+          : 'hidden md:flex'
+      } flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
         {selectedChat ? (
           <ChatWindow
             chatId={selectedChat}

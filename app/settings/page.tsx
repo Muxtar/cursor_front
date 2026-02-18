@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { settingsApi } from '@/lib/api';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -96,14 +96,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className={`flex h-screen overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
-      {/* Main Sidebar - Hidden on mobile when settings sidebar is shown */}
-      <div className={`${showSettingsSidebar ? 'hidden md:block' : 'block'} w-full md:w-[420px] flex-shrink-0`}>
-        <Sidebar />
-      </div>
-      
+    <AppLayout title={t('settings')}>
+      <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Settings Sidebar - Mobile: Full width, Desktop: Fixed width */}
-      <div className={`${showSettingsSidebar ? 'block' : 'hidden'} w-full md:w-80 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col`}>
+      <div className={`${showSettingsSidebar ? 'block' : 'hidden'} md:block w-full md:w-80 flex-shrink-0 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col`}>
         {/* Header */}
         <div className={`p-3 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -216,6 +212,7 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

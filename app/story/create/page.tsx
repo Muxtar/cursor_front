@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { fileApi } from '@/lib/api';
 import { useTheme } from '@/contexts/ThemeContext';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 
 export default function CreateStoryPage() {
   const { user } = useAuth();
@@ -62,13 +62,9 @@ export default function CreateStoryPage() {
   }
 
   return (
-    <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
-      {/* Sidebar */}
-      <Sidebar />
-
-      {/* Main Content */}
+    <AppLayout title="Create Story">
       <div className="flex-1 overflow-y-auto">
-      <div className={`max-w-2xl mx-auto p-6 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg mt-8`}>
+      <div className={`max-w-2xl mx-auto p-4 md:p-6 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg mt-4 md:mt-8`}>
         <div className="flex items-center justify-between mb-6">
           <h1 className={`text-2xl font-bold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             Create Story
@@ -182,7 +178,7 @@ export default function CreateStoryPage() {
         </div>
       </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
 

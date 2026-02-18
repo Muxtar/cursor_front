@@ -11,9 +11,13 @@ import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi }
 interface SidebarProps {
   onChatSelect?: (chatId: string | null) => void;
   selectedChat?: string | null;
+  /** When true, sidebar is shown as overlay on mobile */
+  mobileOpen?: boolean;
+  /** Callback to close sidebar (e.g. when used as mobile overlay) */
+  onClose?: () => void;
 }
 
-export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
+export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClose }: SidebarProps) {
   const { user, logout, updateUser } = useAuth();
   const { actualTheme } = useTheme();
   const { t } = useLanguage();
@@ -691,11 +695,25 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
 
   return (
     <>
-      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-screen overflow-hidden`} style={{ display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-3 md:p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-full min-h-0 max-h-dvh overflow-hidden`} style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Header - sabit, scroll olmaz */}
+        <div className={`flex-shrink-0 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-3 md:p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-3 md:mb-4">
-            <div className="flex items-center space-x-3 relative" ref={profileMenuRef}>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {/* Mobile: close button when sidebar is overlay */}
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="md:hidden flex-shrink-0 p-2 -ml-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                  aria-label="Close menu"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+              <div className="flex items-center space-x-3 relative min-w-0 flex-1" ref={profileMenuRef}>
               <div className="relative">
                 <button
                   ref={profileButtonRef}
@@ -793,7 +811,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            </div>
+            <div className="flex items-center space-x-2 flex-shrink-0">
               <button
                 onClick={() => setShowNewChatModal(true)}
                 className={`p-2 ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded-full transition`}
@@ -938,8 +957,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Content - yalnız bu hissə scroll olur */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
           {searchQuery && searchResults.length > 0 ? (
             <div className="divide-y divide-gray-200 dark:divide-gray-700">
               {searchResults.map((result) => {
@@ -1629,8 +1648,8 @@ export default function Sidebar({ onChatSelect, selectedChat }: SidebarProps) {
           )}
         </div>
 
-        {/* Bottom Navigation - Always Visible - Fixed at Bottom */}
-        <div className={`p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} flex-shrink-0`}>
+        {/* Bottom Navigation - sabit aşağıda, scroll olmaz */}
+        <div className={`flex-shrink-0 p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
           <div className="flex items-center justify-around">
             <Link
               href="/story/create"

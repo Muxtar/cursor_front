@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { notificationsApi, profileCommentApi } from '@/lib/api';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import Link from 'next/link';
 
 export default function NotificationsPage() {
@@ -72,9 +72,8 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Sidebar />
-      <main className="flex-1 p-6 max-w-2xl mx-auto">
+    <AppLayout title="Bildirişlər">
+      <main className="p-4 md:p-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bildirişlər</h1>
           <div className="flex gap-2">
@@ -187,6 +186,6 @@ export default function NotificationsPage() {
           ))}
         </div>
       </main>
-    </div>
+    </AppLayout>
   );
 }

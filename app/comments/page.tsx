@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { profileCommentApi, userApi } from '@/lib/api';
@@ -48,9 +48,7 @@ export default function CommentsByPhonePage() {
   };
 
   return (
-    <div className={`flex h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <Sidebar />
-
+    <AppLayout title="Profile comments">
       <div className="flex-1 overflow-y-auto">
         <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
           <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -138,7 +136,7 @@ export default function CommentsByPhonePage() {
           </div>
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
 

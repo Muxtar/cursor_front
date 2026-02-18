@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { phoneCommentApi, searchApi } from '@/lib/api';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 
 type Tab = 'phone' | 'profession';
 
@@ -94,9 +94,8 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 p-6 max-w-2xl mx-auto">
+    <AppLayout title="Axtarış">
+      <main className="p-4 md:p-6 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Axtarış</h1>
 
         <div className="flex gap-2 mb-4">
@@ -237,6 +236,6 @@ export default function SearchPage() {
           </>
         )}
       </main>
-    </div>
+    </AppLayout>
   );
 }

@@ -1557,7 +1557,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   return (
-    <div className={`flex flex-col h-full ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`flex flex-col h-full min-h-0 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Gelen Çağrı Modal */}
       {incomingCall && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
@@ -1790,8 +1790,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       )}
 
-      {/* Chat Header - WhatsApp Style */}
-      <div className={`p-3 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between shadow-sm`}>
+      {/* Chat Header - sabit üstdə */}
+      <div className={`flex-shrink-0 p-3 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between shadow-sm`}>
         <div className="flex items-center space-x-2 md:space-x-3">
           {onBack && (
             <button
@@ -1878,9 +1878,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       </div>
 
-      {/* Reply Bar */}
+      {/* Reply Bar - sabit */}
       {replyingTo && (
-        <div className="bg-green-100 p-3 border-l-4 border-green-500 flex items-center justify-between">
+        <div className="flex-shrink-0 bg-green-100 p-3 border-l-4 border-green-500 flex items-center justify-between">
           <div className="flex-1">
             <p className="text-xs text-green-700 font-semibold">{t('reply')} {getDisplayName(replyingTo)}</p>
             <p className="text-sm text-gray-700 truncate">{replyingTo.content || t('image')}</p>
@@ -1896,8 +1896,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       )}
 
-      {/* Messages */}
-      <div className={`flex-1 overflow-y-auto p-2 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
+      {/* Messages - yalnız bu hissə scroll olur */}
+      <div className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain p-2 md:p-4 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
         <div className="flex flex-col">
         {messages.map((message, index) => {
           const isMine = isMyMessage(message);
@@ -2191,8 +2191,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       )}
 
-      {/* Message Input - WhatsApp Style */}
-      <div className={`p-2 md:p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
+      {/* Message Input - sabit aşağıda */}
+      <div className={`flex-shrink-0 p-2 md:p-3 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
         {/* Ses kaydı göstergesi */}
         {isRecording && (
           <div className="mb-2 flex items-center justify-center space-x-2 p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
