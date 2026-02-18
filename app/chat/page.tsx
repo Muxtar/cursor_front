@@ -8,7 +8,7 @@ import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, callApi } from '@/lib/api';
 
 function ChatContent() {
   const { user } = useAuth();
@@ -18,6 +18,8 @@ function ChatContent() {
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [ws, setWs] = useState<WebSocketClient | null>(null);
   const [prefilledIncomingCall, setPrefilledIncomingCall] = useState<any>(null);
+  const [incomingGlobalCall, setIncomingGlobalCall] = useState<any>(null);
+  const [isDecliningCall, setIsDecliningCall] = useState(false);
 
   useEffect(() => {
     const openChatId = searchParams.get('open');
@@ -48,19 +50,64 @@ function ChatContent() {
       try {
         const callData = typeof data === 'string' ? JSON.parse(data) : data;
         if (callData?.type === 'call' && callData?.chat_id) {
-          setPrefilledIncomingCall(callData);
-          setSelectedChat(String(callData.chat_id));
+          setIncomingGlobalCall(callData);
         }
       } catch (e) {
         console.error('Failed to handle incoming call event:', e);
       }
     };
 
+    const onCallEnded = (data: any) => {
+      try {
+        const callData = typeof data === 'string' ? JSON.parse(data) : data;
+        // If the call was declined/ended, clear the incoming call modal
+        if (callData?.type === 'call_ended' || callData?.status === 'ended') {
+          setIncomingGlobalCall(null);
+          setPrefilledIncomingCall(null);
+        }
+      } catch (e) {
+        console.error('Failed to handle call ended event:', e);
+      }
+    };
+
     ws.on('call', onCall);
+    ws.on('call_ended', onCallEnded);
     return () => {
       ws.off('call', onCall);
+      ws.off('call_ended', onCallEnded);
     };
   }, [ws]);
+
+  const acceptIncomingCall = async () => {
+    if (!incomingGlobalCall) return;
+    // Open the chat window and auto-accept inside ChatWindow
+    setSelectedChat(String(incomingGlobalCall.chat_id));
+    setPrefilledIncomingCall({ ...(incomingGlobalCall || {}), autoAccept: true });
+    setIncomingGlobalCall(null);
+  };
+
+  const declineIncomingCall = async () => {
+    if (isDecliningCall) return; // Prevent double-click
+    const callId = incomingGlobalCall?.call_id || incomingGlobalCall?.id;
+    
+    setIsDecliningCall(true);
+    // Immediately clear state to close modal - this happens synchronously
+    setIncomingGlobalCall(null);
+    setPrefilledIncomingCall(null);
+    
+    if (callId) {
+      try {
+        await callApi.endCall(String(callId));
+      } catch (e) {
+        console.error('Failed to end call:', e);
+        // Even if API call fails, modal is already closed
+      } finally {
+        setIsDecliningCall(false);
+      }
+    } else {
+      setIsDecliningCall(false);
+    }
+  };
 
   const connectWebSocket = async () => {
     try {
@@ -124,6 +171,37 @@ function ChatContent() {
 
   return (
     <div className={`flex h-dvh max-h-dvh overflow-hidden ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      {incomingGlobalCall && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} w-full max-w-sm rounded-xl shadow-xl border ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-4`}>
+            <div className="mb-3">
+              <h3 className="text-lg font-semibold">
+                {incomingGlobalCall?.call_type === 'video' ? 'Incoming video call' : 'Incoming voice call'}
+              </h3>
+              <p className={`text-sm mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                Chat: {String(incomingGlobalCall?.chat_id || '')}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={declineIncomingCall}
+                disabled={isDecliningCall}
+                className={`flex-1 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition ${
+                  isDecliningCall ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {isDecliningCall ? 'Declining...' : 'Decline'}
+              </button>
+              <button
+                onClick={acceptIncomingCall}
+                className="flex-1 px-4 py-2 rounded-lg bg-green-500 text-white hover:bg-green-600 transition"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Desktop: Sidebar always visible, Mobile: Show sidebar when no chat selected */}
       <div className={`${
         selectedChat 

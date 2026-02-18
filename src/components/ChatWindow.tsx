@@ -135,6 +135,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       ws.on('typing', handleTyping);
       ws.on('call', handleIncomingCall);
       ws.on('call_answered', handleCallAnswered);
+      ws.on('call_ended', handleCallEnded);
       ws.on('message_read', handleMessageRead);
       ws.on('webrtc_offer', handleWebRTCOffer);
       ws.on('webrtc_answer', handleWebRTCAnswer);
@@ -153,6 +154,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         ws.off('typing', handleTyping);
         ws.off('call', handleIncomingCall);
         ws.off('call_answered', handleCallAnswered);
+        ws.off('call_ended', handleCallEnded);
         ws.off('message_read', handleMessageRead);
         ws.off('webrtc_offer', handleWebRTCOffer);
         ws.off('webrtc_answer', handleWebRTCAnswer);
@@ -172,6 +174,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     const currentId = incomingCall?.call_id || incomingCall?.id;
     if (callData?.type === 'call' && callData?.chat_id === chatId && callId && callId !== currentId) {
       setIncomingCall(callData);
+      if (callData?.autoAccept) {
+        // Auto-accept when parent accepted from global modal
+        setTimeout(() => {
+          acceptCall(callData);
+        }, 0);
+      }
     }
   }, [prefilledIncomingCall, chatId, incomingCall]);
 
@@ -213,10 +221,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             setTimeout(async () => {
               try {
                 console.log('📤 Creating offer (after call answered)...');
-                const offer = await pc.createOffer({
-                  offerToReceiveAudio: true,
-                  offerToReceiveVideo: callType === 'video',
-                });
+                const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 console.log('✅ Local description set (offer after answer)');
                 
@@ -247,6 +252,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
     } catch (error) {
       console.error('❌ Failed to parse call_answered event:', error);
+    }
+  };
+
+  const handleCallEnded = (data: any) => {
+    try {
+      const evt = typeof data === 'string' ? JSON.parse(data) : data;
+      if (evt?.type === 'call_ended' && evt?.chat_id === chatId) {
+        // Call was ended (by other party or declined), clean up UI immediately
+        console.log('📞 Call ended, cleaning up...');
+        setIncomingCall(null);
+        setActiveCall(null);
+        stopVideoCall();
+        setIsMuted(false);
+        setIsVideoOff(false);
+      }
+    } catch (error) {
+      console.error('❌ Failed to parse call_ended event:', error);
     }
   };
 
@@ -329,10 +351,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Create and send answer
       console.log('📤 Creating answer...');
       const hasVideo = localStream ? localStream.getVideoTracks().length > 0 : false;
-      const answer = await pc.createAnswer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: hasVideo,
-      });
+      const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       console.log('✅ Local description set (answer)');
 
@@ -813,40 +832,67 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       pc.onicegatheringstatechange = () => {
         console.log('🧊 ICE gathering state:', pc.iceGatheringState);
       };
-
-      // Create and send offer if we're the caller (not answering an incoming call)
-      // Note: We check !incomingCall to ensure we're the initiator
-      // But also check if we already have a local description (to avoid duplicate offers)
-      if (activeCall && !incomingCall && pc.localDescription === null) {
-        try {
-          // Wait a bit for ICE candidates to start gathering
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          console.log('📤 Creating offer...');
-          const offer = await pc.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: callType === 'video',
-          });
-          
-          console.log('📤 Setting local description (offer)...');
-          await pc.setLocalDescription(offer);
-          console.log('✅ Local description set (offer)');
-          
-          if (ws) {
-            ws.send({
-              type: 'webrtc_offer',
-              chat_id: chatId,
-              call_id: activeCall?.call_id || activeCall?.id,
-              offer: JSON.stringify(offer),
-            });
-            console.log('📤 WebRTC offer sent');
-          }
-        } catch (error) {
-          console.error('❌ Failed to create/send offer:', error);
-        }
-      }
     } catch (error) {
       console.error('Failed to initialize peer connection:', error);
+    }
+  };
+
+  const acceptCall = async (callData: any) => {
+    if (!callData) return;
+    const callType = callData.call_type || callData.type || 'voice';
+    const callId = callData.call_id || callData.id;
+    if (!callId) {
+      alert('Invalid call (missing call id)');
+      return;
+    }
+
+    try {
+      await callApi.answerCall(callId);
+      setActiveCall({ ...(callData || {}), type: callType });
+      setIncomingCall(null);
+
+      // Clear any existing peer connection
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      iceCandidateQueueRef.current = [];
+
+      if (callType === 'video') {
+        await startVideoCall();
+      } else {
+        // Voice call
+        let stream: MediaStream | null = null;
+        const audioStrategies = [
+          { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } },
+          { audio: { echoCancellation: true, noiseSuppression: true } },
+          { audio: true },
+        ];
+
+        for (const constraints of audioStrategies) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            break;
+          } catch (error: any) {
+            console.warn('Audio strategy failed:', error.name);
+            if (constraints === audioStrategies[audioStrategies.length - 1]) {
+              throw error;
+            }
+          }
+        }
+
+        if (!stream || stream.getAudioTracks().length === 0) {
+          throw new Error('No audio track available');
+        }
+
+        setLocalStream(stream);
+        await initializePeerConnection(stream, 'voice');
+      }
+    } catch (error) {
+      console.error('Failed to answer call:', error);
+      alert('Failed to answer call');
+      setActiveCall(null);
+      setIncomingCall(null);
     }
   };
 
@@ -928,97 +974,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Gelen çağrıyı kabul et
   const handleAnswerCall = async () => {
     if (!incomingCall) return;
-    const callType = incomingCall.call_type || incomingCall.type || 'voice';
-    try {
-      await callApi.answerCall(incomingCall.call_id || incomingCall.id);
-      setActiveCall({ ...(incomingCall || {}), type: callType });
-      setIncomingCall(null);
-      
-      // Clear any existing peer connection
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      iceCandidateQueueRef.current = [];
-      
-      // Video call ise stream başlat ve WebRTC bağlantısı kur
-      if (callType === 'video') {
-        await startVideoCall();
-      } else if (callType === 'voice') {
-        // Voice call için de audio stream başlat
-        try {
-          let stream: MediaStream | null = null;
-          const audioStrategies = [
-            {
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-              },
-            },
-            {
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-              },
-            },
-            {
-              audio: true,
-            },
-          ];
-
-          for (const constraints of audioStrategies) {
-            try {
-              stream = await navigator.mediaDevices.getUserMedia(constraints);
-              break;
-            } catch (error: any) {
-              console.warn('Audio strategy failed:', error.name);
-              if (constraints === audioStrategies[audioStrategies.length - 1]) {
-                throw error;
-              }
-            }
-          }
-
-          if (!stream || stream.getAudioTracks().length === 0) {
-            throw new Error('No audio track available');
-          }
-
-          setLocalStream(stream);
-          await initializePeerConnection(stream, callType);
-        } catch (error: any) {
-          console.error('Failed to start voice call stream:', error);
-          
-          let errorMessage = 'Failed to start voice call. ';
-          if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-            errorMessage += 'Please allow microphone access in your browser settings.';
-          } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-            errorMessage += 'No microphone found. Please connect a microphone and try again.';
-          } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-            errorMessage += 'Microphone is already in use by another application.';
-          } else if (error.message) {
-            errorMessage += error.message;
-          } else {
-            errorMessage += 'Please check your microphone permissions and try again.';
-          }
-          
-          alert(errorMessage);
-          setActiveCall(null);
-          setLocalStream(null);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to answer call:', error);
-      alert('Failed to answer call');
-      setActiveCall(null);
-      setIncomingCall(null);
-    }
+    await acceptCall(incomingCall);
   };
 
   // Çağrıyı reddet veya sonlandır
   const handleEndCall = async () => {
     const callId = activeCall?.call_id || activeCall?.id || incomingCall?.call_id || incomingCall?.id;
     
-    // Immediately clean up UI state (synchronous)
+    // Immediately clean up UI state (synchronous) - this closes modals immediately
     setActiveCall(null);
     setIncomingCall(null);
     
@@ -1032,7 +995,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     // Then try to end call on server (but don't block on error)
     if (callId) {
       try {
-        await callApi.endCall(callId);
+        await callApi.endCall(String(callId));
       } catch (error) {
         console.error('Failed to end call on server:', error);
         // Silently fail - UI is already cleaned up
