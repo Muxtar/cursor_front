@@ -117,24 +117,36 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     // Safely close AudioContext
     if (ringtoneAudioContextRef.current) {
       const ctx = ringtoneAudioContextRef.current;
+      // Store reference and clear ref immediately to prevent double cleanup
+      ringtoneAudioContextRef.current = null;
+      
       try {
         // Check if context is not already closed or closing
-        if (ctx.state === 'running' || ctx.state === 'suspended') {
+        const state = ctx.state;
+        if (state === 'running' || state === 'suspended') {
           // close() returns a promise, but we don't need to await it
-          ctx.close().catch((err) => {
-            // Ignore errors if context is already closed
-            if (err.name !== 'InvalidStateError') {
-              console.warn('Error closing AudioContext:', err);
+          // Wrap in try-catch to handle any synchronous errors
+          try {
+            ctx.close().catch((err: any) => {
+              // Silently ignore InvalidStateError - context might be closing/closed
+              if (err.name !== 'InvalidStateError' && err.name !== 'InvalidAccessError') {
+                console.warn('Error closing AudioContext:', err);
+              }
+            });
+          } catch (syncErr: any) {
+            // Handle synchronous errors (shouldn't happen but just in case)
+            if (syncErr.name !== 'InvalidStateError' && syncErr.name !== 'InvalidAccessError') {
+              console.warn('Sync error closing AudioContext:', syncErr);
             }
-          });
+          }
         }
       } catch (err: any) {
-        // Ignore errors if context is already closed
-        if (err.name !== 'InvalidStateError') {
-          console.warn('Error closing AudioContext:', err);
+        // Ignore all errors - context might be in an invalid state
+        // This is safe because we've already cleared the ref
+        if (err.name !== 'InvalidStateError' && err.name !== 'InvalidAccessError') {
+          console.warn('Error checking AudioContext state:', err);
         }
       }
-      ringtoneAudioContextRef.current = null;
     }
   };
 
@@ -752,19 +764,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Video stream'i başlat
       await startVideoCall();
       
-      // Offer'ı gönder (activeCall state güncellendikten sonra)
-      // startVideoCall içinde de offer gönderme var ama burada da garantiliyoruz
-      setTimeout(async () => {
-        if (peerConnectionRef.current && localStream && callData) {
+      // Offer'ı gönder (stream ve peer connection hazır olduktan sonra)
+      // Use a more reliable approach: wait for both stream and peer connection
+      const sendOfferWhenReady = async () => {
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        const trySendOffer = async () => {
+          attempts++;
           const pc = peerConnectionRef.current;
-          const callId = callData?.call_id || callData?.id;
-          if (pc.localDescription === null && callId && ws) {
+          const currentStream = localStream;
+          const currentCall = activeCall || callData;
+          const callId = currentCall?.call_id || currentCall?.id;
+          
+          if (pc && currentStream && callId && ws && pc.localDescription === null) {
             try {
               console.log('📤 Creating offer (caller, after stream ready)...');
+              // Ensure tracks are added
               if (pc.getSenders().length === 0) {
-                localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+                currentStream.getTracks().forEach((track) => pc.addTrack(track, currentStream));
                 console.log('📤 Added local tracks to PC before offer');
               }
+              
               const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
               console.log('✅ Local description set (caller offer)');
@@ -776,12 +797,25 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 offer: JSON.stringify(offer),
               });
               console.log('📤 WebRTC offer sent (caller)');
+              return true; // Success
             } catch (err) {
               console.error('❌ Failed to create offer (caller):', err);
+              return false;
             }
+          } else if (attempts < maxAttempts) {
+            // Retry after a short delay
+            setTimeout(trySendOffer, 200);
+          } else {
+            console.warn('⚠️ Could not send offer after max attempts');
           }
-        }
-      }, 500); // Small delay to ensure state is updated
+          return false;
+        };
+        
+        // Start trying immediately, then retry if needed
+        setTimeout(trySendOffer, 300);
+      };
+      
+      sendOfferWhenReady();
     } catch (error) {
       console.error('Failed to initiate video call:', error);
       alert('Failed to initiate video call');
@@ -899,9 +933,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const finalCallType = hasVideo ? 'video' : 'voice';
       await initializePeerConnection(stream, finalCallType);
       
-      // Note: Offer will be sent from handleVideoCall or handleCallAnswered
-      // to ensure activeCall state is properly set with call_id
-      console.log('✅ Peer connection initialized, waiting for offer trigger...');
+      console.log('✅ Peer connection initialized');
     } catch (error: any) {
       console.error('Failed to start video call:', error);
       
