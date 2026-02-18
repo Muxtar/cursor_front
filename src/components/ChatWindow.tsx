@@ -592,6 +592,25 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
+      // Check if we've already processed this offer
+      if (pc.remoteDescription !== null) {
+        console.log('⚠️ Offer already processed, skipping...');
+        return;
+      }
+      
+      // Check if answer was already sent
+      if (pc.localDescription !== null) {
+        console.log('⚠️ Answer already sent, skipping...');
+        return;
+      }
+      
+      // Check peer connection state - must be in 'stable' or 'have-local-offer' to set remote offer
+      const currentState = pc.signalingState;
+      if (currentState !== 'stable' && currentState !== 'have-local-offer') {
+        console.warn(`⚠️ Cannot set remote offer in state: ${currentState}, skipping...`);
+        return;
+      }
+
       const offer = JSON.parse(evt.offer);
       console.log('📥 Setting remote description (offer)...');
       isSettingRemoteDescriptionRef.current = true;
@@ -601,7 +620,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('✅ Remote description set (offer)');
       } catch (error: any) {
         console.error('❌ Failed to set remote description:', error);
-        throw error;
+        isSettingRemoteDescriptionRef.current = false;
+        // Don't throw - might be duplicate offer
+        if (error.name === 'InvalidStateError' && pc.remoteDescription !== null) {
+          console.log('⚠️ Remote description already set, continuing...');
+        } else {
+          return; // Exit if it's a real error
+        }
       } finally {
         // Stop queueing ICE candidates as soon as remote description finishes applying.
         isSettingRemoteDescriptionRef.current = false;
@@ -630,21 +655,36 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         iceCandidateQueueRef.current = [];
       }
 
+      // Check state again before creating answer
+      const stateBeforeAnswer = pc.signalingState;
+      if (stateBeforeAnswer !== 'have-remote-offer' && stateBeforeAnswer !== 'have-local-pranswer') {
+        console.warn(`⚠️ Cannot create answer in state: ${stateBeforeAnswer}, skipping...`);
+        return;
+      }
+
       // Create and send answer
       console.log('📤 Creating answer...');
-      const hasVideo = localStream ? localStream.getVideoTracks().length > 0 : false;
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      console.log('✅ Local description set (answer)');
+      try {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        console.log('✅ Local description set (answer)');
 
-      if (ws) {
-        ws.send({
-          type: 'webrtc_answer',
-          chat_id: chatId,
-          call_id: evt.call_id,
-          answer: JSON.stringify(answer),
-        });
-        console.log('📤 WebRTC answer sent');
+        if (ws) {
+          ws.send({
+            type: 'webrtc_answer',
+            chat_id: chatId,
+            call_id: evt.call_id,
+            answer: JSON.stringify(answer),
+          });
+          console.log('📤 WebRTC answer sent');
+        }
+      } catch (error: any) {
+        // Check if answer was already created
+        if (error.name === 'InvalidStateError' && pc.localDescription !== null) {
+          console.log('⚠️ Answer already created, skipping...');
+        } else {
+          throw error; // Re-throw if it's a real error
+        }
       }
     } catch (error) {
       console.error('❌ Failed to handle WebRTC offer:', error);
@@ -1104,7 +1144,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         pc.addTrack(track, localStream);
       });
 
-      // Karşı taraftan gelen ses/video (bazı tarayıcılarda event.streams boş gelir)
+      // Karşı taraftan gelen ses/video
       pc.ontrack = (event) => {
         console.log('✅ Received remote track:', event.track.kind, event);
         console.log('📊 Track details:', {
@@ -1114,15 +1154,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           streams: event.streams.length,
         });
         
-        setRemoteStream((prev) => {
-          const next = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
-          if (!next.getTracks().includes(event.track)) {
-            next.addTrack(event.track);
-            console.log(`✅ Added ${event.track.kind} track to remote stream. Total tracks: ${next.getTracks().length}`);
-          }
-          // Note: Video/audio elements will be updated via useEffect when remoteStream changes
-          return next;
-        });
+        // Use event.streams if available, otherwise create new stream from track
+        if (event.streams && event.streams.length > 0) {
+          // Use the first stream from the event
+          const remoteStream = event.streams[0];
+          console.log(`✅ Received remote stream with ${remoteStream.getTracks().length} tracks`);
+          setRemoteStream(remoteStream);
+        } else {
+          // Fallback: create stream from track (for browsers that don't provide streams)
+          setRemoteStream((prev) => {
+            const next = prev ? new MediaStream(prev.getTracks()) : new MediaStream();
+            if (!next.getTracks().includes(event.track)) {
+              next.addTrack(event.track);
+              console.log(`✅ Added ${event.track.kind} track to remote stream. Total tracks: ${next.getTracks().length}`);
+            }
+            return next;
+          });
+        }
       };
 
       // Handle ICE candidates
@@ -1986,9 +2034,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              muted={false}
               className="w-full h-full object-cover"
             />
-            {!remoteStream && (
+            {(!remoteStream || (remoteStream && remoteStream.getVideoTracks().length === 0)) && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
                   <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
