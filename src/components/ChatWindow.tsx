@@ -1172,17 +1172,34 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   // Video call stream'lerini başlat
-  const startVideoCall = async () => {
-    // Prevent duplicate calls
+  const startVideoCall = async (): Promise<MediaStream | null> => {
+    // If already starting, wait for it to finish and return whatever we have.
     if (isStartingVideoCallRef.current) {
-      console.log('⚠️ startVideoCall already in progress, skipping...');
-      return;
+      console.log('⚠️ startVideoCall already in progress, waiting...');
+      let waited = 0;
+      const stepMs = 100;
+      const maxWaitMs = 5000;
+      while (isStartingVideoCallRef.current && waited < maxWaitMs) {
+        await new Promise((r) => setTimeout(r, stepMs));
+        waited += stepMs;
+      }
+      const existing = localStreamRef.current || localStream;
+      if (existing) return existing;
+      console.warn('⚠️ startVideoCall finished but no stream available');
+      return null;
     }
     
-    // If we already have a local stream, don't start again
-    if (localStream && localStream.getVideoTracks().length > 0) {
-      console.log('⚠️ Local video stream already exists, skipping startVideoCall...');
-      return;
+    // If we already have a local stream, reuse it (and ensure PC exists)
+    const existingStream = localStreamRef.current || localStream;
+    if (existingStream && (existingStream.getVideoTracks().length > 0 || existingStream.getAudioTracks().length > 0)) {
+      console.log('⚠️ Local stream already exists, reusing it');
+      localStreamRef.current = existingStream;
+      if (!peerConnectionRef.current) {
+        const existingType = existingStream.getVideoTracks().length > 0 ? 'video' : 'voice';
+        console.log('⚠️ No peer connection, initializing with existing stream...', { existingType });
+        await initializePeerConnection(existingStream, existingType);
+      }
+      return existingStream;
     }
     
     isStartingVideoCallRef.current = true;
