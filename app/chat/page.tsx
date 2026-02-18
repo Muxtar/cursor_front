@@ -10,7 +10,9 @@ import Sidebar from '@/components/Sidebar';
 import { useSearchParams } from 'next/navigation';
 import { api, callApi } from '@/lib/api';
 
-function useRingtone(play: boolean) {
+type RingtoneKind = 'caller' | 'callee';
+
+function useRingtone(play: boolean, kind: RingtoneKind = 'callee') {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
   useEffect(() => {
@@ -26,26 +28,47 @@ function useRingtone(play: boolean) {
       const Ctx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new Ctx();
       ctxRef.current = ctx;
-      const playBeep = () => {
+      const scheduleTone = (frequency: number, startAt: number, duration: number, type: OscillatorType, volume: number) => {
         if (ctx.state === 'closed') return;
         const osc = ctx.createOscillator();
         const g = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, ctx.currentTime);
-        osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1);
-        g.gain.setValueAtTime(0.15, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-        osc.connect(g); g.connect(ctx.destination);
-        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+        osc.type = type;
+        osc.frequency.setValueAtTime(frequency, startAt);
+        g.gain.setValueAtTime(Math.max(0.0001, volume), startAt);
+        g.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.02, duration));
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(startAt);
+        osc.stop(startAt + duration);
       };
-      playBeep();
-      intervalRef.current = setInterval(playBeep, 400);
+
+      const playCaller = () => {
+        const t = ctx.currentTime;
+        scheduleTone(900, t + 0.00, 0.12, 'sine', 0.18);
+        scheduleTone(900, t + 0.32, 0.12, 'sine', 0.18);
+      };
+
+      const playCallee = () => {
+        const t = ctx.currentTime;
+        scheduleTone(523.25, t + 0.00, 0.18, 'triangle', 0.12); // C5
+        scheduleTone(659.25, t + 0.22, 0.18, 'triangle', 0.12); // E5
+        scheduleTone(783.99, t + 0.44, 0.22, 'triangle', 0.12); // G5
+      };
+
+      const playOnce = () => {
+        if (kind === 'caller') playCaller();
+        else playCallee();
+      };
+
+      const intervalMs = kind === 'caller' ? 1400 : 2000;
+      playOnce();
+      intervalRef.current = setInterval(playOnce, intervalMs);
     } catch (_) {}
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       try { ctxRef.current?.close(); } catch (_) {}
     };
-  }, [play]);
+  }, [play, kind]);
 }
 
 function ChatContent() {
@@ -59,7 +82,7 @@ function ChatContent() {
   const [incomingGlobalCall, setIncomingGlobalCall] = useState<any>(null);
   const [isDecliningCall, setIsDecliningCall] = useState(false);
 
-  useRingtone(!!incomingGlobalCall);
+  useRingtone(!!incomingGlobalCall, 'callee');
 
   useEffect(() => {
     const openChatId = searchParams.get('open');

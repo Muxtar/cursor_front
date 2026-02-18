@@ -121,29 +121,53 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     ringtoneAudioContextRef.current = null;
   };
 
-  const playRingtone = () => {
+  type RingtoneKind = 'caller' | 'callee';
+
+  const playRingtone = (kind: RingtoneKind) => {
     if (typeof window === 'undefined') return;
     stopRingtone();
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       ringtoneAudioContextRef.current = ctx;
-      let phase = 0;
-      const playBeep = () => {
+
+      const scheduleTone = (frequency: number, startAt: number, duration: number, type: OscillatorType, volume: number) => {
         if (ctx.state === 'closed') return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, ctx.currentTime);
-        osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+        osc.type = type;
+        osc.frequency.setValueAtTime(frequency, startAt);
+        gain.gain.setValueAtTime(Math.max(0.0001, volume), startAt);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + Math.max(0.02, duration));
         osc.connect(gain);
         gain.connect(ctx.destination);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.2);
+        osc.start(startAt);
+        osc.stop(startAt + duration);
       };
-      playBeep();
-      ringtoneIntervalRef.current = setInterval(playBeep, 400);
+
+      // caller: "diit diit" -> iki kısa bip, sonra kısa bekleme
+      const playCaller = () => {
+        const t = ctx.currentTime;
+        scheduleTone(900, t + 0.00, 0.12, 'sine', 0.18);
+        scheduleTone(900, t + 0.32, 0.12, 'sine', 0.18);
+      };
+
+      // callee: basit "çalgi müziği" -> kısa melodi (3 nota)
+      const playCallee = () => {
+        const t = ctx.currentTime;
+        scheduleTone(523.25, t + 0.00, 0.18, 'triangle', 0.12); // C5
+        scheduleTone(659.25, t + 0.22, 0.18, 'triangle', 0.12); // E5
+        scheduleTone(783.99, t + 0.44, 0.22, 'triangle', 0.12); // G5
+      };
+
+      const playOnce = () => {
+        if (kind === 'caller') playCaller();
+        else playCallee();
+      };
+
+      // interval: caller daha sık, callee daha seyrek/melodik
+      const intervalMs = kind === 'caller' ? 1400 : 2000;
+      playOnce();
+      ringtoneIntervalRef.current = setInterval(playOnce, intervalMs);
     } catch (e) {
       console.warn('Ringtone failed:', e);
     }
@@ -151,8 +175,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   useEffect(() => {
     const shouldRing = !!incomingCall || (!!activeCall && !remoteStream);
-    if (shouldRing) playRingtone();
-    else stopRingtone();
+    if (!shouldRing) {
+      stopRingtone();
+      return () => stopRingtone();
+    }
+
+    const kind: RingtoneKind = incomingCall ? 'callee' : 'caller';
+    playRingtone(kind);
     return () => stopRingtone();
   }, [incomingCall, activeCall, remoteStream]);
 
