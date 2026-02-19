@@ -153,30 +153,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       try {
         // Check if context is not already closed or closing
         const state = ctx.state;
+        if (state === 'closed') {
+          // Already closed, do nothing
+          return;
+        }
+        // Note: 'closing' state doesn't exist in AudioContext API, but we check anyway for safety
+        if ((state as string) === 'closing') {
+          return;
+        }
+        
         if (state === 'running' || state === 'suspended') {
           // close() returns a promise, but we don't need to await it
           // Wrap in try-catch to handle any synchronous errors
           try {
             const closePromise = ctx.close();
             if (closePromise && typeof closePromise.catch === 'function') {
-              closePromise.catch(() => {
-                // Silently ignore all errors - context might be closing/closed
-                // This is expected behavior and not an error
+              closePromise.catch((err: any) => {
+                // Silently ignore InvalidStateError (already closed)
+                if (err?.name !== 'InvalidStateError') {
+                  console.warn('AudioContext close promise rejected:', err);
+                }
               });
             }
           } catch (e: any) {
-            // Silently ignore all errors - context might already be closed
-            // This is safe and expected
+            // Synchronous error during close() call
             if (e.name !== 'InvalidStateError') {
-              // Only log non-expected errors
               console.warn('AudioContext close error:', e);
             }
           }
         }
-        // If state is 'closed' or 'closing', do nothing
       } catch (e: any) {
-        // Silently ignore all errors - context might be in an invalid state
-        // This is safe because we've already cleared the ref
+        // Error accessing ctx.state
         if (e.name !== 'InvalidStateError') {
           console.warn('AudioContext state check error:', e);
         }
@@ -744,14 +751,26 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         lastCallAnsweredIdRef.current = callId || null;
         if (messageId) processedMessageIdsRef.current.add(messageId);
         
+        // Use refs to get current values (state might not be updated yet)
+        const currentActiveCall = activeCallRef.current || activeCall;
+        const currentLocalStream = localStreamRef.current || localStream;
+        
         // INSTRUMENTATION: Structured log
+        const myId = String(user?.id || user?._id || '');
+        const callerIdFromEvent = evt?.caller_id || currentActiveCall?.caller_id || currentActiveCall?.callerId;
+        const isCallerFromEvent = callerIdFromEvent && String(callerIdFromEvent) === myId;
+        
         console.log('📞 call_answered event', {
           call_id: callId,
           message_id: messageId,
           answered_by: evt?.answered_by,
+          caller_id: callerIdFromEvent,
+          my_id: myId,
+          is_caller: isCallerFromEvent,
           timestamp: new Date().toISOString(),
           hasLocalStream: !!localStream,
           hasActiveCall: !!activeCall,
+          activeCall_caller_id: currentActiveCall?.caller_id || currentActiveCall?.callerId,
           localStreamTracks: localStream ? localStream.getTracks().map(t => ({
             kind: t.kind,
             enabled: t.enabled,
@@ -760,38 +779,53 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         });
         
         try {
-          // Use refs to get current values (state might not be updated yet)
-          const currentActiveCall = activeCallRef.current || activeCall;
-          const currentLocalStream = localStreamRef.current || localStream;
+          // currentActiveCall and currentLocalStream already defined above
           
           // INSTRUMENTATION: Log state before processing
+          const myId = String(user?.id || user?._id || '');
+          const callerId = currentActiveCall?.caller_id || currentActiveCall?.callerId || evt?.caller_id;
+          const isCaller = callerId && String(callerId) === myId;
+          
           console.log('📊 State before processing call_answered:', {
             hasActiveCall: !!currentActiveCall,
             hasLocalStream: !!currentLocalStream,
             localStreamRef: !!localStreamRef.current,
             activeCallRef: !!activeCallRef.current,
+            my_id: myId,
+            caller_id: callerId,
+            is_caller: isCaller,
+            activeCall_caller_id: currentActiveCall?.caller_id || currentActiveCall?.callerId,
           });
           
           if (!currentActiveCall) {
-            console.warn('⚠️ call_answered received but no activeCall found');
+            console.warn('⚠️ call_answered received but no activeCall found', {
+              call_id: callId,
+              message_id: messageId,
+            });
             return;
           }
           
           // Call was answered by the other party, ensure WebRTC is ready
-          console.log('✅ Call answered by other party, ensuring WebRTC connection...');
+          console.log('✅ Call answered by other party, ensuring WebRTC connection...', {
+            is_caller: isCaller,
+            caller_id: callerId,
+            my_id: myId,
+          });
           
           // Only send offer if we're the caller (check caller_id from call data)
           // Callee should wait for offer, not send it
-          const myId = String(user?.id || user?._id || '');
-          const callerId = currentActiveCall?.caller_id || currentActiveCall?.callerId || evt?.caller_id;
-          const isCaller = callerId && String(callerId) === myId;
-          
           if (!isCaller) {
-            console.log('📞 We are callee, waiting for offer from caller...');
+            console.log('📞 We are callee, waiting for offer from caller...', {
+              caller_id: callerId,
+              my_id: myId,
+            });
             return;
           }
           
-          console.log('📞 We are caller, will send offer after ensuring stream/PC is ready...');
+          console.log('📞 We are caller, will send offer after ensuring stream/PC is ready...', {
+            hasPC: !!peerConnectionRef.current,
+            hasStream: !!currentLocalStream,
+          });
           
           // If we're the caller but don't have peer connection or stream yet, wait a bit and retry
           if (!peerConnectionRef.current || !currentLocalStream) {
@@ -1004,10 +1038,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         });
         
         // Call was ended (by other party or declined), clean up UI immediately
+        // CRITICAL: Set state to null BEFORE calling stopVideoCall to prevent race conditions
+        const wasActiveCall = !!activeCallRef.current || !!activeCall;
         setIncomingCall(null);
         setActiveCall(null);
         activeCallRef.current = null;
-        stopVideoCall(`call_ended:${reason}`, { evt_call_id: callId, evt_message_id: messageId });
+        
+        // Only stop video call if we actually had an active call
+        if (wasActiveCall) {
+          stopVideoCall(`call_ended:${reason}`, { evt_call_id: callId, evt_message_id: messageId });
+        } else {
+          console.log('⚠️ call_ended received but no active call to clean up', {
+            call_id: callId,
+            message_id: messageId,
+          });
+        }
         setIsMuted(false);
         setIsVideoOff(false);
       }
