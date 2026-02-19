@@ -115,6 +115,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const processingCallAnsweredRef = useRef(false); // Prevent duplicate handleCallAnswered calls
   const lastCallAnsweredIdRef = useRef<string | null>(null); // Track last processed call_answered event
   
+  // Deduplication for call_ended events
+  const processedCallEndedIdsRef = useRef<Set<string>>(new Set()); // Track processed call_ended message_ids
+  const lastCallEndedIdRef = useRef<string | null>(null); // Track last processed call_ended call_id
+  
   // Perfect Negotiation: Track polite/impolite peer
   const isPoliteRef = useRef<boolean>(false); // true = we received offer first (polite), false = we sent offer first (impolite)
   const makingOfferRef = useRef<boolean>(false); // Track if we're currently making an offer
@@ -617,7 +621,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         ws.off('webrtc_ice', handleWebRTCICE);
       }
       clearInterval(interval);
-      stopVideoCall();
+      // INSTRUMENTATION: Log why cleanup fired
+      const cleanupReason = (() => {
+        if (!chatId) return 'chatId_null';
+        if (!ws) return 'ws_null';
+        return 'effect_cleanup';
+      })();
+      console.log('🧹 useEffect cleanup firing', {
+        reason: cleanupReason,
+        chatId: chatId,
+        ws_instance: ws ? `exists_${ws.constructor.name}` : 'null',
+        ws_instance_id: ws ? (ws as any).id || 'no_id' : 'null',
+        hasActiveCall: !!activeCall,
+        activeCall_id: activeCall?.call_id || activeCall?.id || null,
+      });
+      stopVideoCall(cleanupReason);
     };
   }, [chatId, ws]);
 
@@ -694,22 +712,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.type === 'call_answered' && evt?.chat_id === chatId) {
-        // INSTRUMENTATION: Log call_answered event with localStream state
-        console.log('📞 call_answered event received', {
-          call_id: evt?.call_id,
-          answered_by: evt?.answered_by,
-          timestamp: new Date().toISOString(),
-          hasLocalStream: !!localStream,
-          hasActiveCall: !!activeCall,
-          localStreamTracks: localStream ? localStream.getTracks().map(t => ({
-            kind: t.kind,
-            enabled: t.enabled,
-            readyState: t.readyState,
-          })) : [],
-        });
+        const messageId = evt?.message_id;
+        const callId = evt?.call_id || evt?.id;
+        
+        // DEDUPLICATION: Check messageId
+        if (messageId && processedMessageIdsRef.current.has(messageId)) {
+          console.log('⚠️ Duplicate call_answered message_id ignored', { message_id: messageId, call_id: callId });
+          return;
+        }
         
         // Prevent duplicate processing
-        const callId = evt?.call_id || evt?.id;
         if (processingCallAnsweredRef.current) {
           console.log('⚠️ handleCallAnswered already processing, skipping duplicate...');
           return;
@@ -722,6 +734,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         
         processingCallAnsweredRef.current = true;
         lastCallAnsweredIdRef.current = callId || null;
+        if (messageId) processedMessageIdsRef.current.add(messageId);
+        
+        // INSTRUMENTATION: Structured log
+        console.log('📞 call_answered event', {
+          call_id: callId,
+          message_id: messageId,
+          answered_by: evt?.answered_by,
+          timestamp: new Date().toISOString(),
+          hasLocalStream: !!localStream,
+          hasActiveCall: !!activeCall,
+          localStreamTracks: localStream ? localStream.getTracks().map(t => ({
+            kind: t.kind,
+            enabled: t.enabled,
+            readyState: t.readyState,
+          })) : [],
+        });
         
         try {
           // Use refs to get current values (state might not be updated yet)
@@ -823,10 +851,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             })) : [],
           });
           
+          const willCreateOffer = !peerConnectionRef.current?.localDescription;
           await sendOfferIfReady(peerConnectionRef.current, currentLocalStream, currentActiveCall);
           
-          // INSTRUMENTATION: Log state after sending offer
-          console.log('📊 State after sending offer:', {
+          // INSTRUMENTATION: Log whether offer was created
+          console.log('📞 call_answered processed', {
+            call_id: callId,
+            message_id: messageId,
+            createdOffer: willCreateOffer && !!peerConnectionRef.current?.localDescription,
             hasLocalStream: !!localStream,
             localStreamTracks: localStream ? localStream.getTracks().map(t => ({
               kind: t.kind,
@@ -907,12 +939,45 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.type === 'call_ended' && evt?.chat_id === chatId) {
+        const messageId = evt?.message_id;
+        const callId = evt?.call_id || evt?.id;
+        const reason = evt?.reason || 'user_ended';
+        
+        // DEDUPLICATION: Check messageId
+        if (messageId && processedCallEndedIdsRef.current.has(messageId)) {
+          console.log('⚠️ Duplicate call_ended message_id ignored', { message_id: messageId, call_id: callId });
+          return;
+        }
+        
+        // GUARD: Only process if this matches current active call
+        const currentActiveCallId = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
+        if (currentActiveCallId && callId && String(currentActiveCallId) !== String(callId)) {
+          console.log('⚠️ call_ended ignored (call_id mismatch)', {
+            event_call_id: callId,
+            active_call_id: currentActiveCallId,
+            message_id: messageId,
+          });
+          return;
+        }
+        
+        // Mark as processed
+        if (messageId) processedCallEndedIdsRef.current.add(messageId);
+        if (callId) lastCallEndedIdRef.current = callId;
+        
+        // INSTRUMENTATION: Structured log
+        console.log('📞 call_ended event', {
+          call_id: callId,
+          message_id: messageId,
+          reason: reason,
+          activeCall_id: currentActiveCallId,
+          timestamp: new Date().toISOString(),
+        });
+        
         // Call was ended (by other party or declined), clean up UI immediately
-        console.log('📞 Call ended, cleaning up...');
         setIncomingCall(null);
         setActiveCall(null);
         activeCallRef.current = null;
-        stopVideoCall();
+        stopVideoCall(`call_ended:${reason}`);
         setIsMuted(false);
         setIsVideoOff(false);
       }
@@ -1038,12 +1103,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
 
       const offer = JSON.parse(evt.offer);
-      console.log('📥 Setting remote description (offer)...');
+      const stateBefore = pc.signalingState;
+      console.log('📥 Setting remote description (offer)...', {
+        message_id: messageId,
+        call_id: evt.call_id,
+        signalingState_before: stateBefore,
+      });
       settingRemoteDescriptionRef.current = true;
       
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log(`✅ Remote description set (offer) state=${pc.signalingState} (call_id=${evt.call_id})`);
+        const stateAfter = pc.signalingState;
+        console.log('📥 WebRTC offer processed', {
+          message_id: messageId,
+          call_id: evt.call_id,
+          signalingState_before: stateBefore,
+          signalingState_after: stateAfter,
+        });
         
         // Mark as processed
         if (messageId) processedMessageIdsRef.current.add(messageId);
@@ -1188,12 +1264,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
 
       const answer = JSON.parse(evt.answer);
-      console.log('📥 Setting remote description (answer)...');
+      const stateBefore = pc.signalingState;
+      console.log('📥 Setting remote description (answer)...', {
+        message_id: messageId,
+        call_id: evt.call_id,
+        signalingState_before: stateBefore,
+      });
       settingRemoteDescriptionRef.current = true;
       
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log(`✅ Remote description set (answer) state=${pc.signalingState} (call_id=${evt.call_id})`);
+        const stateAfter = pc.signalingState;
+        console.log('📥 WebRTC answer processed', {
+          message_id: messageId,
+          call_id: evt.call_id,
+          signalingState_before: stateBefore,
+          signalingState_after: stateAfter,
+        });
         
         // Mark as processed
         if (messageId) processedMessageIdsRef.current.add(messageId);
@@ -1977,12 +2064,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   // Video call'u durdur - comprehensive cleanup
-  const stopVideoCall = () => {
+  const stopVideoCall = (reason?: string) => {
     try {
-      // INSTRUMENTATION: Track when stopVideoCall is called
-      console.trace('🧹 Cleaning up video call... [STACK TRACE]');
-      console.log('🧹 stopVideoCall called', {
+      // INSTRUMENTATION: Structured log at TOP with reason and state
+      const pc = peerConnectionRef.current;
+      const logData: any = {
+        reason: reason || 'unknown',
         timestamp: new Date().toISOString(),
+        activeCall_id: activeCall?.call_id || activeCall?.id || null,
+        incomingCall_id: incomingCall?.call_id || incomingCall?.id || null,
+        chatId: chatId,
         hasLocalStream: !!localStream,
         hasRemoteStream: !!remoteStream,
         hasActiveCall: !!activeCall,
@@ -1991,9 +2082,17 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           kind: t.kind,
           enabled: t.enabled,
           readyState: t.readyState,
-          muted: t.muted,
         })) : [],
-      });
+      };
+      
+      if (pc) {
+        logData.pc_signalingState = pc.signalingState;
+        logData.pc_connectionState = pc.connectionState;
+        logData.pc_iceConnectionState = pc.iceConnectionState;
+      }
+      
+      console.trace(`🧹 stopVideoCall reason="${reason || 'unknown'}" [STACK TRACE]`);
+      console.log('🧹 stopVideoCall', logData);
       
       // Log localStream tracks readyState before cleanup
       if (localStream) {
@@ -2005,12 +2104,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           videoTracksState: videoTracks.map(t => ({
             enabled: t.enabled,
             readyState: t.readyState,
-            muted: t.muted,
           })),
           audioTracksState: audioTracks.map(t => ({
             enabled: t.enabled,
             readyState: t.readyState,
-            muted: t.muted,
           })),
         });
       }
@@ -2029,6 +2126,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       processedMessageIdsRef.current.clear();
       processedSDPHashesRef.current.clear();
       processedICECandidatesRef.current.clear();
+      processedCallEndedIdsRef.current.clear();
+      lastCallEndedIdRef.current = null;
       
       // Close peer connection first
       if (peerConnectionRef.current) {
@@ -2152,7 +2251,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     setIncomingCall(null);
     
     // Stop all media tracks and clean up WebRTC
-    stopVideoCall();
+    stopVideoCall('user_end_call');
     
     // Reset mute/video states
     setIsMuted(false);
