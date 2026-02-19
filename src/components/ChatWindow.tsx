@@ -2482,7 +2482,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             type: activeCall?.type,
             call_type: activeCall?.call_type,
             hasLocalStream: !!localStream,
-            hasVideoTracks: localStream?.getVideoTracks().length > 0,
+            hasVideoTracks: localStream ? localStream.getVideoTracks().length > 0 : false,
             hasRemoteStream: !!remoteStream,
           });
         }
