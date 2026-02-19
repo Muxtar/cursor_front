@@ -635,7 +635,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         hasActiveCall: !!activeCall,
         activeCall_id: activeCall?.call_id || activeCall?.id || null,
       });
-      stopVideoCall(cleanupReason);
+      stopVideoCall(cleanupReason, { chatId_changed: chatId, ws_instance: ws ? 'exists' : 'null' });
     };
   }, [chatId, ws]);
 
@@ -715,7 +715,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         const messageId = evt?.message_id;
         const callId = evt?.call_id || evt?.id;
         
-        // DEDUPLICATION: Check messageId
+        // INSTRUMENTATION: Log received event
+        console.log('📥 call_answered received', {
+          type: 'call_answered',
+          call_id: callId,
+          chat_id: evt?.chat_id,
+          message_id: messageId,
+        });
+        
+        // DEDUPLICATION: Check messageId in processedMessageIdsRef (shared for all call lifecycle events)
         if (messageId && processedMessageIdsRef.current.has(messageId)) {
           console.log('⚠️ Duplicate call_answered message_id ignored', { message_id: messageId, call_id: callId });
           return;
@@ -943,14 +951,33 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         const callId = evt?.call_id || evt?.id;
         const reason = evt?.reason || 'user_ended';
         
-        // DEDUPLICATION: Check messageId
-        if (messageId && processedCallEndedIdsRef.current.has(messageId)) {
+        // INSTRUMENTATION: Log received event
+        console.log('📥 call_ended received', {
+          type: 'call_ended',
+          call_id: callId,
+          chat_id: evt?.chat_id,
+          message_id: messageId,
+        });
+        
+        // DEDUPLICATION: Check messageId in processedMessageIdsRef (shared for all call lifecycle events)
+        if (messageId && processedMessageIdsRef.current.has(messageId)) {
           console.log('⚠️ Duplicate call_ended message_id ignored', { message_id: messageId, call_id: callId });
           return;
         }
         
-        // GUARD: Only process if this matches current active call
+        // HARD GUARD: Only process if this matches current active call
         const currentActiveCallId = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
+        
+        // If no active call, ignore (might be old/stale event)
+        if (!activeCallRef.current && !activeCall) {
+          console.log('⚠️ call_ended ignored (no active call)', {
+            event_call_id: callId,
+            message_id: messageId,
+          });
+          return;
+        }
+        
+        // If call_id doesn't match, ignore
         if (currentActiveCallId && callId && String(currentActiveCallId) !== String(callId)) {
           console.log('⚠️ call_ended ignored (call_id mismatch)', {
             event_call_id: callId,
@@ -961,11 +988,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
         
         // Mark as processed
-        if (messageId) processedCallEndedIdsRef.current.add(messageId);
+        if (messageId) {
+          processedMessageIdsRef.current.add(messageId);
+          processedCallEndedIdsRef.current.add(messageId);
+        }
         if (callId) lastCallEndedIdRef.current = callId;
         
         // INSTRUMENTATION: Structured log
-        console.log('📞 call_ended event', {
+        console.log('📞 call_ended event processed', {
           call_id: callId,
           message_id: messageId,
           reason: reason,
@@ -977,7 +1007,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         setIncomingCall(null);
         setActiveCall(null);
         activeCallRef.current = null;
-        stopVideoCall(`call_ended:${reason}`);
+        stopVideoCall(`call_ended:${reason}`, { evt_call_id: callId, evt_message_id: messageId });
         setIsMuted(false);
         setIsVideoOff(false);
       }
@@ -2064,12 +2094,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   // Video call'u durdur - comprehensive cleanup
-  const stopVideoCall = (reason?: string) => {
+  const stopVideoCall = (reason: string, meta?: any) => {
     try {
       // INSTRUMENTATION: Structured log at TOP with reason and state
       const pc = peerConnectionRef.current;
       const logData: any = {
-        reason: reason || 'unknown',
+        reason: reason,
         timestamp: new Date().toISOString(),
         activeCall_id: activeCall?.call_id || activeCall?.id || null,
         incomingCall_id: incomingCall?.call_id || incomingCall?.id || null,
@@ -2091,7 +2121,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         logData.pc_iceConnectionState = pc.iceConnectionState;
       }
       
-      console.trace(`🧹 stopVideoCall reason="${reason || 'unknown'}" [STACK TRACE]`);
+      // Add meta data if provided
+      if (meta) {
+        logData.meta = meta;
+      }
+      
+      console.trace(`🧹 stopVideoCall reason="${reason}" [STACK TRACE]`);
       console.log('🧹 stopVideoCall', logData);
       
       // Log localStream tracks readyState before cleanup
@@ -2251,7 +2286,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     setIncomingCall(null);
     
     // Stop all media tracks and clean up WebRTC
-    stopVideoCall('user_end_call');
+    stopVideoCall('user_end_call', {});
     
     // Reset mute/video states
     setIsMuted(false);
