@@ -1535,7 +1535,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         chat_id: chatId,
       });
       setRemoteStream(null);
-      const callData = { ...(response || {}), type: 'voice' };
+      // CRITICAL: Ensure both type and call_type are set for consistency
+      const callData = { 
+        ...(response || {}), 
+        type: 'voice',
+        call_type: response?.call_type || response?.type || 'voice', // Preserve backend's call_type if present
+      };
+      console.log('📞 Voice call initiated', {
+        call_id: callData?.call_id || callData?.id,
+        type: callData?.type,
+        call_type: callData?.call_type,
+        caller_id: callData?.caller_id || callData?.callerId,
+      });
       setActiveCall(callData);
       activeCallRef.current = callData; // Update ref immediately
       
@@ -1624,7 +1635,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         chat_id: chatId,
       });
       setRemoteStream(null);
-      const callData = { ...(response || {}), type: 'video' };
+      // CRITICAL: Ensure both type and call_type are set for consistency
+      const callData = { 
+        ...(response || {}), 
+        type: 'video',
+        call_type: response?.call_type || response?.type || 'video', // Preserve backend's call_type if present
+      };
+      console.log('📞 Video call initiated', {
+        call_id: callData?.call_id || callData?.id,
+        type: callData?.type,
+        call_type: callData?.call_type,
+        caller_id: callData?.caller_id || callData?.callerId,
+      });
       setActiveCall(callData);
       activeCallRef.current = callData; // Update ref immediately
       
@@ -2395,6 +2417,35 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Çağrıyı reddet veya sonlandır
   const handleEndCall = async () => {
     const callId = activeCall?.call_id || activeCall?.id || incomingCall?.call_id || incomingCall?.id;
+    const currentActiveCall = activeCallRef.current || activeCall;
+    const currentLocalStream = localStreamRef.current || localStream;
+    const currentRemoteStream = remoteStream;
+    const currentPeerConnection = peerConnectionRef.current;
+    
+    // INSTRUMENTATION: Log detailed state when user clicks End Call
+    console.log('📞 handleEndCall called (user clicked End Call button)', {
+      call_id: callId,
+      hasActiveCall: !!currentActiveCall,
+      hasLocalStream: !!currentLocalStream,
+      hasRemoteStream: !!currentRemoteStream,
+      hasPeerConnection: !!currentPeerConnection,
+      localStreamTracks: currentLocalStream ? currentLocalStream.getTracks().map(t => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        readyState: t.readyState,
+      })) : [],
+      remoteStreamTracks: currentRemoteStream ? (currentRemoteStream as MediaStream).getTracks().map(t => ({
+        kind: t.kind,
+        enabled: t.enabled,
+        readyState: t.readyState,
+      })) : [],
+      peerConnectionState: currentPeerConnection ? {
+        signalingState: currentPeerConnection.signalingState,
+        connectionState: currentPeerConnection.connectionState,
+        iceConnectionState: currentPeerConnection.iceConnectionState,
+      } : null,
+      stack: new Error().stack,
+    });
     
     // Immediately clean up UI state (synchronous) - this closes modals immediately
     setActiveCall(null);
@@ -2412,6 +2463,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     if (callId) {
       try {
         await callApi.endCall(String(callId));
+        console.log('✅ EndCall API called successfully', { call_id: callId });
       } catch (error) {
         console.error('Failed to end call on server:', error);
         // Silently fail - UI is already cleaned up
@@ -2998,6 +3050,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             hasLocalStream: !!localStream,
             hasVideoTracks: localStream ? localStream.getVideoTracks().length > 0 : false,
             hasRemoteStream: !!remoteStream,
+            activeCall_id: activeCall?.call_id || activeCall?.id,
+            caller_id: activeCall?.caller_id || activeCall?.callerId,
+            my_id: user?.id || user?._id,
+            is_caller: activeCall?.caller_id && String(activeCall.caller_id) === String(user?.id || user?._id),
           });
         }
         return shouldShowVideoUI;
