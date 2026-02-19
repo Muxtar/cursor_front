@@ -680,77 +680,76 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           
           // Call was answered by the other party, ensure WebRTC is ready
           console.log('✅ Call answered by other party, ensuring WebRTC connection...');
-        
-        // Only send offer if we're the caller (check caller_id from call data)
-        // Callee should wait for offer, not send it
-        const myId = String(user?.id || user?._id || '');
-        const callerId = currentActiveCall?.caller_id || currentActiveCall?.callerId || evt?.caller_id;
-        const isCaller = callerId && String(callerId) === myId;
-        
-        if (!isCaller) {
-          console.log('📞 We are callee, waiting for offer from caller...');
-          return;
-        }
-        
-        console.log('📞 We are caller, will send offer after ensuring stream/PC is ready...');
-        
-        // If we're the caller but don't have peer connection or stream yet, wait a bit and retry
-        if (!peerConnectionRef.current || !currentLocalStream) {
-          console.warn('⚠️ Missing peer connection or stream, waiting and retrying...', {
-            hasPC: !!peerConnectionRef.current,
-            hasStream: !!currentLocalStream,
-            isStartingVideoCall: isStartingVideoCallRef.current,
-          });
           
-          // If startVideoCall is in progress, wait for it to complete first
-          if (isStartingVideoCallRef.current) {
-            console.log('⏳ startVideoCall in progress, waiting for it to complete...');
-            let waitCount = 0;
-            const maxWait = 50; // 5 seconds max (50 * 100ms)
-            while (isStartingVideoCallRef.current && waitCount < maxWait) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-              waitCount++;
-            }
-            // Re-check after waiting
-            const pcAfterWait = peerConnectionRef.current;
-            const streamAfterWait = localStreamRef.current || localStream;
-            if (pcAfterWait && streamAfterWait) {
-              console.log('✅ Stream and PC ready after waiting for startVideoCall, sending offer...');
-              await sendOfferIfReady(pcAfterWait, streamAfterWait, currentActiveCall);
-              return;
-            }
+          // Only send offer if we're the caller (check caller_id from call data)
+          // Callee should wait for offer, not send it
+          const myId = String(user?.id || user?._id || '');
+          const callerId = currentActiveCall?.caller_id || currentActiveCall?.callerId || evt?.caller_id;
+          const isCaller = callerId && String(callerId) === myId;
+          
+          if (!isCaller) {
+            console.log('📞 We are callee, waiting for offer from caller...');
+            return;
           }
           
-          // Wait a bit for stream/PC to be ready (they might still be initializing)
-          let retryCount = 0;
-          const maxRetries = 30; // Increased from 10 to 30 (6 seconds total)
-          const retryInterval = 200; // 200ms
+          console.log('📞 We are caller, will send offer after ensuring stream/PC is ready...');
           
-          const retryOffer = setInterval(async () => {
-            retryCount++;
-            const pc = peerConnectionRef.current;
-            const stream = localStreamRef.current || localStream;
+          // If we're the caller but don't have peer connection or stream yet, wait a bit and retry
+          if (!peerConnectionRef.current || !currentLocalStream) {
+            console.warn('⚠️ Missing peer connection or stream, waiting and retrying...', {
+              hasPC: !!peerConnectionRef.current,
+              hasStream: !!currentLocalStream,
+              isStartingVideoCall: isStartingVideoCallRef.current,
+            });
             
-            if (pc && stream) {
-              clearInterval(retryOffer);
-              console.log('✅ Stream and PC ready, sending offer...');
-              await sendOfferIfReady(pc, stream, currentActiveCall);
-            } else if (retryCount >= maxRetries) {
-              clearInterval(retryOffer);
-              console.error('❌ Timeout waiting for stream/PC to be ready', {
-                hasPC: !!pc,
-                hasStream: !!stream,
-                isStartingVideoCall: isStartingVideoCallRef.current,
-              });
+            // If startVideoCall is in progress, wait for it to complete first
+            if (isStartingVideoCallRef.current) {
+              console.log('⏳ startVideoCall in progress, waiting for it to complete...');
+              let waitCount = 0;
+              const maxWait = 50; // 5 seconds max (50 * 100ms)
+              while (isStartingVideoCallRef.current && waitCount < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                waitCount++;
+              }
+              // Re-check after waiting
+              const pcAfterWait = peerConnectionRef.current;
+              const streamAfterWait = localStreamRef.current || localStream;
+              if (pcAfterWait && streamAfterWait) {
+                console.log('✅ Stream and PC ready after waiting for startVideoCall, sending offer...');
+                await sendOfferIfReady(pcAfterWait, streamAfterWait, currentActiveCall);
+                return;
+              }
             }
-          }, retryInterval);
-          
-          return;
-        }
-        
-        // We have both PC and stream, send offer
-        await sendOfferIfReady(peerConnectionRef.current, currentLocalStream, currentActiveCall);
+            
+            // Wait a bit for stream/PC to be ready (they might still be initializing)
+            let retryCount = 0;
+            const maxRetries = 30; // Increased from 10 to 30 (6 seconds total)
+            const retryInterval = 200; // 200ms
+            
+            const retryOffer = setInterval(async () => {
+              retryCount++;
+              const pc = peerConnectionRef.current;
+              const stream = localStreamRef.current || localStream;
+              
+              if (pc && stream) {
+                clearInterval(retryOffer);
+                console.log('✅ Stream and PC ready, sending offer...');
+                await sendOfferIfReady(pc, stream, currentActiveCall);
+              } else if (retryCount >= maxRetries) {
+                clearInterval(retryOffer);
+                console.error('❌ Timeout waiting for stream/PC to be ready', {
+                  hasPC: !!pc,
+                  hasStream: !!stream,
+                  isStartingVideoCall: isStartingVideoCallRef.current,
+                });
+              }
+            }, retryInterval);
+            
+            return;
           }
+          
+          // We have both PC and stream, send offer
+          await sendOfferIfReady(peerConnectionRef.current, currentLocalStream, currentActiveCall);
         } finally {
           // Always reset processing flag
           processingCallAnsweredRef.current = false;
