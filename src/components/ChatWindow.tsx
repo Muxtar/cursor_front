@@ -89,12 +89,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [incomingCall, setIncomingCall] = useState<any>(null);
-  const [activeCall, setActiveCallState] = useState<any>(null);
+  const [activeCall, setActiveCallStateRaw] = useState<any>(null);
   const [otherPartyInfo, setOtherPartyInfo] = useState<any>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [localStream, setLocalStreamState] = useState<MediaStream | null>(null);
+  const [localStream, setLocalStreamStateRaw] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   
   // Wrapped setters with logging to track when state is cleared
@@ -112,7 +112,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         timestamp: new Date().toISOString(),
       });
     }
-    setActiveCallState(value);
+    setActiveCallStateRaw(value);
   };
   
   const setLocalStream = (value: MediaStream | null) => {
@@ -130,12 +130,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         timestamp: new Date().toISOString(),
       });
     }
-    setLocalStreamState(value);
+    setLocalStreamStateRaw(value);
   };
-  
-  // Keep activeCall and localStream references for compatibility
-  const activeCall = activeCallState;
-  const localStream = localStreamState;
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
