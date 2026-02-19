@@ -1074,11 +1074,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         });
         
         // Call was ended (by other party or declined), clean up UI immediately
-        // CRITICAL: Set state to null BEFORE calling stopVideoCall to prevent race conditions
+        // CRITICAL: Store state BEFORE clearing to prevent race conditions
         const wasActiveCall = !!activeCallRef.current || !!activeCall;
-        setIncomingCall(null);
-        setActiveCall(null);
-        activeCallRef.current = null;
+        const currentLocalStream = localStreamRef.current || localStream;
+        const currentPeerConnection = peerConnectionRef.current;
+        
+        // Log detailed state before cleanup
+        console.log('🧹 Cleaning up call_ended', {
+          wasActiveCall,
+          hasLocalStream: !!currentLocalStream,
+          hasPeerConnection: !!currentPeerConnection,
+          localStreamTracks: currentLocalStream?.getTracks().length || 0,
+          peerConnectionState: currentPeerConnection ? {
+            signalingState: currentPeerConnection.signalingState,
+            connectionState: currentPeerConnection.connectionState,
+            iceConnectionState: currentPeerConnection.iceConnectionState,
+          } : null,
+        });
         
         // Only stop video call if we actually had an active call
         if (wasActiveCall) {
@@ -1089,6 +1101,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             message_id: messageId,
           });
         }
+        
+        // Clear state AFTER stopVideoCall to ensure cleanup happens first
+        setIncomingCall(null);
+        setActiveCall(null);
+        activeCallRef.current = null;
         setIsMuted(false);
         setIsVideoOff(false);
       }
