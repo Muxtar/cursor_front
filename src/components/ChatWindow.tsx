@@ -853,6 +853,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       // Check peer connection state - must be in 'stable' or 'have-local-offer' to set remote offer
       const currentState = pc.signalingState;
+      
+      // If already stable, negotiation might be complete, but we can still try if remoteDescription is null
+      if (currentState === 'stable' && pc.remoteDescription !== null) {
+        console.log('⚠️ Peer connection already stable with remote description, skipping offer...');
+        return;
+      }
+      
       if (currentState !== 'stable' && currentState !== 'have-local-offer') {
         console.warn(`⚠️ Cannot set remote offer in state: ${currentState}, skipping...`);
         return;
@@ -966,6 +973,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // Check peer connection state - must be in 'have-local-offer' or 'have-local-pranswer' to set remote answer
       const currentState = pc.signalingState;
+      
+      // If already stable, negotiation is complete, don't try to set answer
+      if (currentState === 'stable') {
+        console.log('⚠️ Peer connection already stable (negotiation complete), skipping answer...');
+        return;
+      }
+      
       if (currentState !== 'have-local-offer' && currentState !== 'have-local-pranswer') {
         console.warn(`⚠️ Cannot set remote answer in state: ${currentState}, skipping...`);
         return;
@@ -981,10 +995,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       } catch (error: any) {
         console.error('❌ Failed to set remote description:', error);
         isSettingRemoteDescriptionRef.current = false;
-        // Don't throw - might be duplicate answer
-        if (error.name === 'InvalidStateError' && pc.remoteDescription !== null) {
-          console.log('⚠️ Remote description already set, continuing...');
+        // Don't throw - might be duplicate answer or already stable
+        if (error.name === 'InvalidStateError') {
+          if (pc.remoteDescription !== null) {
+            console.log('⚠️ Remote description already set, continuing...');
+          } else if (pc.signalingState === 'stable') {
+            console.log('⚠️ Peer connection already stable (negotiation complete), continuing...');
+          } else {
+            console.warn(`⚠️ InvalidStateError in state: ${pc.signalingState}, continuing anyway...`);
+          }
+          // Continue to process ICE candidates even if answer setting failed
         } else {
+          console.error('❌ Real error setting remote description:', error);
           return; // Exit if it's a real error
         }
       } finally {
