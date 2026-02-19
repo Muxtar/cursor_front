@@ -275,6 +275,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   useEffect(() => {
     const videoElement = remoteVideoRef.current;
     const audioElement = remoteAudioRef.current;
+    
+    // If video element doesn't exist yet but we have an active call, wait a bit for it to mount
+    if (!videoElement && activeCall && (activeCall.type === 'video' || activeCall.call_type === 'video')) {
+      console.log('⏳ Video element not mounted yet, waiting...');
+      const checkMount = setInterval(() => {
+        if (remoteVideoRef.current) {
+          clearInterval(checkMount);
+          // Trigger re-run by setting a dummy state or force update
+          console.log('✅ Video element mounted, will set stream...');
+        }
+      }, 100);
+      
+      return () => clearInterval(checkMount);
+    }
+    
     if (!videoElement && !audioElement) return;
     
     if (remoteStream && videoElement) {
@@ -509,7 +524,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     } else if (audioElement && !remoteStream) {
       audioElement.srcObject = null;
     }
-  }, [remoteStream]); // Removed activeCall dependency to prevent loops
+  }, [remoteStream, activeCall]); // Added activeCall to trigger when video UI mounts
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -1459,7 +1474,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             console.log(`📊 Track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`);
           });
           
+          // Force update remote stream - this will trigger useEffect to update video element
+          console.log('🔄 Setting remote stream state...');
           setRemoteStream(remoteStream);
+          
+          // Also try to update video element directly if it exists
+          setTimeout(() => {
+            const videoEl = remoteVideoRef.current;
+            if (videoEl && videoEl.srcObject !== remoteStream) {
+              console.log('🔄 Directly updating remote video element srcObject...');
+              videoEl.srcObject = remoteStream;
+              videoEl.play().catch(err => {
+                if (err.name !== 'AbortError') {
+                  console.warn('⚠️ Failed to play remote video directly:', err);
+                }
+              });
+            }
+          }, 100);
           
           // Note: Video element update will be handled by useEffect
           // Don't update here to avoid conflicts
@@ -1479,6 +1510,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 track.enabled = true;
               }
             });
+            
+            // Force update
+            console.log('🔄 Setting remote stream state (fallback)...');
+            setTimeout(() => {
+              const videoEl = remoteVideoRef.current;
+              if (videoEl && videoEl.srcObject !== next) {
+                console.log('🔄 Directly updating remote video element srcObject (fallback)...');
+                videoEl.srcObject = next;
+                videoEl.play().catch(err => {
+                  if (err.name !== 'AbortError') {
+                    console.warn('⚠️ Failed to play remote video directly (fallback):', err);
+                  }
+                });
+              }
+            }, 100);
             
             return next;
           });
@@ -1587,6 +1633,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const answeredCallData = { 
         ...(callData || {}), 
         type: callType,
+        call_type: callType, // Also set call_type for consistency
         caller_id: callData?.caller_id || callData?.callerId, // Ensure caller_id is preserved
       };
       setActiveCall(answeredCallData);
@@ -1608,10 +1655,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         // Video call - start video stream
         // Only start if not already starting or if we don't have a stream
         if (!isStartingVideoCallRef.current && (!localStream || localStream.getVideoTracks().length === 0)) {
-          await startVideoCall();
+          const stream = await startVideoCall();
+          if (stream) {
+            // Ensure stream is set in both state and ref
+            setLocalStream(stream);
+            localStreamRef.current = stream;
+          }
         } else if (localStream && localStream.getVideoTracks().length > 0) {
-          // We already have a stream, just initialize peer connection
+          // We already have a stream, ensure it's in ref and initialize peer connection
+          localStreamRef.current = localStream;
           await initializePeerConnection(localStream, 'video');
+        } else {
+          // No stream yet, start one
+          const stream = await startVideoCall();
+          if (stream) {
+            setLocalStream(stream);
+            localStreamRef.current = stream;
+          }
         }
       } else {
         // Voice call
@@ -1640,6 +1700,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
         setLocalStream(stream);
         localStreamRef.current = stream; // Update ref immediately
+        // Small delay to ensure stream is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
         await initializePeerConnection(stream, 'voice');
       }
     } catch (error) {
@@ -2348,7 +2410,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       )}
 
       {/* Video Call UI - Full Screen - Show for video calls or if we have video tracks */}
-      {activeCall && activeCall.type === 'video' && (
+      {activeCall && (activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           {/* Remote Video (Karşı Taraf) */}
           <div className="flex-1 relative bg-gray-900">
@@ -2552,7 +2614,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       )}
 
       {/* Voice Call UI */}
-      {activeCall && activeCall.type === 'voice' && (
+      {activeCall && (activeCall.type === 'voice' || activeCall.call_type === 'voice') && !(activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
           <div className="text-center mb-8">
             <div className={`w-32 h-32 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
