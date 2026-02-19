@@ -643,11 +643,31 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           console.warn('⚠️ Missing peer connection or stream, waiting and retrying...', {
             hasPC: !!peerConnectionRef.current,
             hasStream: !!currentLocalStream,
+            isStartingVideoCall: isStartingVideoCallRef.current,
           });
+          
+          // If startVideoCall is in progress, wait for it to complete first
+          if (isStartingVideoCallRef.current) {
+            console.log('⏳ startVideoCall in progress, waiting for it to complete...');
+            let waitCount = 0;
+            const maxWait = 50; // 5 seconds max (50 * 100ms)
+            while (isStartingVideoCallRef.current && waitCount < maxWait) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+              waitCount++;
+            }
+            // Re-check after waiting
+            const pcAfterWait = peerConnectionRef.current;
+            const streamAfterWait = localStreamRef.current || localStream;
+            if (pcAfterWait && streamAfterWait) {
+              console.log('✅ Stream and PC ready after waiting for startVideoCall, sending offer...');
+              await sendOfferIfReady(pcAfterWait, streamAfterWait, currentActiveCall);
+              return;
+            }
+          }
           
           // Wait a bit for stream/PC to be ready (they might still be initializing)
           let retryCount = 0;
-          const maxRetries = 10;
+          const maxRetries = 30; // Increased from 10 to 30 (6 seconds total)
           const retryInterval = 200; // 200ms
           
           const retryOffer = setInterval(async () => {
@@ -661,7 +681,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               await sendOfferIfReady(pc, stream, currentActiveCall);
             } else if (retryCount >= maxRetries) {
               clearInterval(retryOffer);
-              console.error('❌ Timeout waiting for stream/PC to be ready');
+              console.error('❌ Timeout waiting for stream/PC to be ready', {
+                hasPC: !!pc,
+                hasStream: !!stream,
+                isStartingVideoCall: isStartingVideoCallRef.current,
+              });
             }
           }, retryInterval);
           
