@@ -114,6 +114,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const activeCallRef = useRef<any>(null); // Ref to track active call for handleCallAnswered
   const processingCallAnsweredRef = useRef(false); // Prevent duplicate handleCallAnswered calls
   const lastCallAnsweredIdRef = useRef<string | null>(null); // Track last processed call_answered event
+  
+  // Perfect Negotiation: Track polite/impolite peer
+  const isPoliteRef = useRef<boolean>(false); // true = we received offer first (polite), false = we sent offer first (impolite)
+  const makingOfferRef = useRef<boolean>(false); // Track if we're currently making an offer
+  
+  // Deduplication: Track processed WebRTC messages by messageId
+  const processedMessageIdsRef = useRef<Set<string>>(new Set());
+  const processedSDPHashesRef = useRef<Set<string>>(new Set()); // Hash of SDP for dedup
+  const processedICECandidatesRef = useRef<Set<string>>(new Set()); // Hash of ICE candidate for dedup
+  
+  // Mutex for setRemoteDescription operations
+  const settingRemoteDescriptionRef = useRef<boolean>(false);
+  const settingLocalDescriptionRef = useRef<boolean>(false);
 
   // Çağrı sesi: gelen arama veya karşı taraf cevap verene kadar (çağıran taraf) çalar
   const stopRingtone = () => {
@@ -761,12 +774,24 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
   };
   
-  // Helper function to send offer if ready
+  // Helper function to send offer if ready (Perfect Negotiation pattern)
   const sendOfferIfReady = async (pc: RTCPeerConnection, stream: MediaStream, call: any) => {
     const callId = call?.call_id || call?.id;
     
+    // PERFECT NEGOTIATION: Check if we're already polite (received offer first)
+    if (isPoliteRef.current) {
+      console.log('⚠️ Perfect Negotiation: We are polite (received offer first), not sending offer...');
+      return;
+    }
+    
     if (pc.localDescription !== null) {
       console.log('⚠️ Offer already sent, skipping...');
+      return;
+    }
+    
+    // MUTEX: Prevent concurrent setLocalDescription
+    if (settingLocalDescriptionRef.current) {
+      console.log('⚠️ setLocalDescription already in progress, skipping offer creation...');
       return;
     }
     
@@ -777,10 +802,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('📤 Added local tracks to PC before offer');
       }
       
+      // PERFECT NEGOTIATION: Mark that we're making an offer (impolite)
+      makingOfferRef.current = true;
+      isPoliteRef.current = false;
+      
       console.log('📤 Creating offer (caller, after call answered)...');
       const offer = await pc.createOffer();
+      settingLocalDescriptionRef.current = true;
       await pc.setLocalDescription(offer);
-      console.log('✅ Local description set (offer after answer)');
+      settingLocalDescriptionRef.current = false;
+      console.log(`✅ Local description set (offer after answer) state=${pc.signalingState} (call_id=${callId})`);
       
       if (ws && callId) {
         ws.send({
@@ -788,11 +819,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           chat_id: chatId,
           call_id: callId,
           offer: JSON.stringify(offer),
+          message_id: generateMessageId(), // Generate unique messageId
+          sender_id: user?.id || user?._id || '',
+          timestamp: Date.now(),
         });
         console.log('📤 WebRTC offer sent (caller, after call answered)');
       }
     } catch (err) {
       console.error('❌ Failed to create offer after call answered:', err);
+      makingOfferRef.current = false;
+      settingLocalDescriptionRef.current = false;
     }
   };
 
@@ -826,27 +862,50 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
   };
 
-  // WebRTC handlers
+  // WebRTC handlers with Perfect Negotiation pattern and deduplication
   const handleWebRTCOffer = async (data: any) => {
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.chat_id !== chatId) return;
 
-      console.log('📥 Received WebRTC offer');
+      // DEDUPLICATION: Check messageId
+      const messageId = evt?.message_id;
+      if (messageId && processedMessageIdsRef.current.has(messageId)) {
+        console.log(`⚠️ Duplicate offer message_id=${messageId}, skipping...`);
+        return;
+      }
+
+      // DEDUPLICATION: Check SDP hash
+      const offerSDP = evt?.offer ? JSON.parse(evt.offer).sdp : null;
+      if (offerSDP) {
+        const sdpHash = hashSDP(offerSDP);
+        if (processedSDPHashesRef.current.has(sdpHash)) {
+          console.log(`⚠️ Duplicate offer SDP hash=${sdpHash}, skipping...`);
+          return;
+        }
+        processedSDPHashesRef.current.add(sdpHash);
+      }
+
+      console.log(`📥 Received WebRTC offer call_id=${evt.call_id} sender_id=${evt.sender_id} message_id=${messageId || 'none'}`);
+
+      // MUTEX: Prevent concurrent setRemoteDescription
+      if (settingRemoteDescriptionRef.current) {
+        console.log('⚠️ setRemoteDescription already in progress, queuing offer...');
+        // Could queue here, but for simplicity, skip duplicate
+        return;
+      }
 
       // Wait if acceptCall is in progress to prevent race condition
       if (isAcceptingCallRef.current) {
         console.log('⚠️ acceptCall in progress, waiting for it to complete...');
         let waitCount = 0;
-        const maxWait = 100; // Increased to 10 seconds (100 * 100ms)
+        const maxWait = 100;
         while (isAcceptingCallRef.current && waitCount < maxWait) {
           await new Promise(resolve => setTimeout(resolve, 100));
           waitCount++;
         }
         if (waitCount >= maxWait) {
           console.warn('⚠️ Timeout waiting for acceptCall to complete, proceeding anyway...');
-        } else {
-          console.log('✅ acceptCall completed, proceeding with offer handling...');
         }
       }
 
@@ -856,12 +915,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         if (!localStream) {
           const callType = evt?.call_type || activeCall?.type || activeCall?.call_type || incomingCall?.call_type || incomingCall?.type || 'video';
           if (callType === 'video') {
-            // Only start if not already starting
             if (!isStartingVideoCallRef.current) {
               await startVideoCall();
             } else {
-              console.log('⚠️ startVideoCall already in progress, waiting...');
-              // Wait for it to complete
               let waitCount = 0;
               while (isStartingVideoCallRef.current && waitCount < 50) {
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -869,10 +925,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               }
             }
           } else {
-            // Voice call - start audio stream
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             setLocalStream(stream);
-            localStreamRef.current = stream; // Update ref immediately
+            localStreamRef.current = stream;
             await initializePeerConnection(stream, 'voice');
           }
         } else {
@@ -887,110 +942,113 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // Check if we've already processed this offer
-      if (pc.remoteDescription !== null) {
-        console.log('⚠️ Offer already processed, skipping...');
-        return;
+      // PERFECT NEGOTIATION: Mark as polite (we received offer first)
+      isPoliteRef.current = true;
+
+      // PERFECT NEGOTIATION: If we're making an offer, rollback
+      if (makingOfferRef.current) {
+        console.log('🔄 Perfect Negotiation: Rolling back local offer, remote offer received first');
+        try {
+          await pc.setLocalDescription({ type: 'rollback' });
+        } catch (e) {
+          // Rollback may fail if already set, ignore
+        }
+        makingOfferRef.current = false;
       }
-      
-      // Check peer connection state - must be in 'stable' or 'have-local-offer' to set remote offer
+
+      // Check signaling state
       const currentState = pc.signalingState;
-      
-      // If already stable, negotiation might be complete, but we can still try if remoteDescription is null
-      if (currentState === 'stable' && pc.remoteDescription !== null) {
-        console.log('⚠️ Peer connection already stable with remote description, skipping offer...');
-        return;
-      }
-      
-      if (currentState !== 'stable' && currentState !== 'have-local-offer') {
+      console.log(`📊 Signaling state before offer: ${currentState} (call_id=${evt.call_id})`);
+
+      // PERFECT NEGOTIATION: Only accept offer in stable state
+      if (currentState !== 'stable') {
         console.warn(`⚠️ Cannot set remote offer in state: ${currentState}, skipping...`);
-        return;
-      }
-      
-      // Check if answer was already sent (but only if we're past the offer stage)
-      if (pc.localDescription !== null && currentState === 'have-local-offer') {
-        console.log('⚠️ Answer already sent, skipping...');
         return;
       }
 
       const offer = JSON.parse(evt.offer);
       console.log('📥 Setting remote description (offer)...');
-      isSettingRemoteDescriptionRef.current = true;
+      settingRemoteDescriptionRef.current = true;
       
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        console.log('✅ Remote description set (offer)');
+        console.log(`✅ Remote description set (offer) state=${pc.signalingState} (call_id=${evt.call_id})`);
+        
+        // Mark as processed
+        if (messageId) processedMessageIdsRef.current.add(messageId);
       } catch (error: any) {
-        console.error('❌ Failed to set remote description:', error);
-        isSettingRemoteDescriptionRef.current = false;
-        // Don't throw - might be duplicate offer
-        if (error.name === 'InvalidStateError' && pc.remoteDescription !== null) {
-          console.log('⚠️ Remote description already set, continuing...');
+        console.error(`❌ Failed to set remote description: ${error.name} state=${pc.signalingState} (call_id=${evt.call_id})`);
+        settingRemoteDescriptionRef.current = false;
+        if (error.name === 'InvalidStateError') {
+          if (pc.remoteDescription !== null) {
+            console.log('⚠️ Remote description already set, continuing...');
+          } else {
+            return;
+          }
         } else {
-          return; // Exit if it's a real error
+          return;
         }
       } finally {
-        // Stop queueing ICE candidates as soon as remote description finishes applying.
-        isSettingRemoteDescriptionRef.current = false;
+        settingRemoteDescriptionRef.current = false;
       }
 
-      // Process queued ICE candidates (with limit to prevent infinite loops)
+      // Process queued ICE candidates
       let processedCount = 0;
-      const MAX_PROCESSING_ATTEMPTS = 100; // Safety limit
+      const MAX_PROCESSING_ATTEMPTS = 100;
       while (iceCandidateQueueRef.current.length > 0 && processedCount < MAX_PROCESSING_ATTEMPTS) {
         const candidate = iceCandidateQueueRef.current.shift();
         if (candidate) {
           try {
             await pc.addIceCandidate(candidate);
             processedCount++;
-            console.log(`📥 Processed queued ICE candidate (${processedCount}/${iceCandidateQueueRef.current.length + processedCount} remaining)`);
           } catch (err) {
             console.warn('⚠️ Failed to add queued ICE candidate:', err);
-            // Don't re-queue failed candidates to prevent infinite loops
           }
         }
       }
-      
-      // Clear any remaining candidates if we hit the limit
       if (iceCandidateQueueRef.current.length > 0) {
-        console.warn(`⚠️ Clearing ${iceCandidateQueueRef.current.length} remaining ICE candidates (processing limit reached)`);
         iceCandidateQueueRef.current = [];
       }
 
-      // Check state again before creating answer
+      // Create and send answer
       const stateBeforeAnswer = pc.signalingState;
       if (stateBeforeAnswer !== 'have-remote-offer' && stateBeforeAnswer !== 'have-local-pranswer') {
         console.warn(`⚠️ Cannot create answer in state: ${stateBeforeAnswer}, skipping...`);
         return;
       }
 
-      // Create and send answer
       console.log('📤 Creating answer...');
       try {
         const answer = await pc.createAnswer();
+        settingLocalDescriptionRef.current = true;
         await pc.setLocalDescription(answer);
-        console.log('✅ Local description set (answer)');
+        settingLocalDescriptionRef.current = false;
+        console.log(`✅ Local description set (answer) state=${pc.signalingState} (call_id=${evt.call_id})`);
 
-        if (ws) {
+        if (ws && evt.call_id) {
           ws.send({
             type: 'webrtc_answer',
             chat_id: chatId,
             call_id: evt.call_id,
             answer: JSON.stringify(answer),
+            message_id: generateMessageId(), // Generate unique messageId
+            sender_id: user?.id || user?._id || '',
+            timestamp: Date.now(),
           });
           console.log('📤 WebRTC answer sent');
         }
       } catch (error: any) {
-        // Check if answer was already created
+        settingLocalDescriptionRef.current = false;
         if (error.name === 'InvalidStateError' && pc.localDescription !== null) {
           console.log('⚠️ Answer already created, skipping...');
         } else {
-          throw error; // Re-throw if it's a real error
+          throw error;
         }
       }
     } catch (error) {
       console.error('❌ Failed to handle WebRTC offer:', error);
-      isSettingRemoteDescriptionRef.current = false;
+      settingRemoteDescriptionRef.current = false;
+      settingLocalDescriptionRef.current = false;
     }
   };
 
@@ -999,11 +1057,46 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.chat_id !== chatId) return;
 
-      console.log('📥 Received WebRTC answer');
+      // DEDUPLICATION: Check messageId
+      const messageId = evt?.message_id;
+      if (messageId && processedMessageIdsRef.current.has(messageId)) {
+        console.log(`⚠️ Duplicate answer message_id=${messageId}, skipping...`);
+        return;
+      }
+
+      // DEDUPLICATION: Check SDP hash
+      const answerSDP = evt?.answer ? JSON.parse(evt.answer).sdp : null;
+      if (answerSDP) {
+        const sdpHash = hashSDP(answerSDP);
+        if (processedSDPHashesRef.current.has(sdpHash)) {
+          console.log(`⚠️ Duplicate answer SDP hash=${sdpHash}, skipping...`);
+          return;
+        }
+        processedSDPHashesRef.current.add(sdpHash);
+      }
+
+      console.log(`📥 Received WebRTC answer call_id=${evt.call_id} sender_id=${evt.sender_id} message_id=${messageId || 'none'}`);
 
       const pc = peerConnectionRef.current;
       if (!pc) {
         console.warn('⚠️ No peer connection when receiving answer');
+        return;
+      }
+
+      // MUTEX: Prevent concurrent setRemoteDescription
+      if (settingRemoteDescriptionRef.current) {
+        console.log('⚠️ setRemoteDescription already in progress, skipping duplicate answer...');
+        return;
+      }
+
+      // Check signaling state
+      const currentState = pc.signalingState;
+      console.log(`📊 Signaling state before answer: ${currentState} (call_id=${evt.call_id})`);
+
+      // PERFECT NEGOTIATION: Only accept answer if we're impolite (we sent offer first)
+      // If we're polite (received offer first), we already sent answer, so ignore this
+      if (isPoliteRef.current) {
+        console.log('⚠️ Perfect Negotiation: We are polite (received offer first), ignoring duplicate answer...');
         return;
       }
 
@@ -1013,31 +1106,29 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // Check peer connection state - must be in 'have-local-offer' or 'have-local-pranswer' to set remote answer
-      const currentState = pc.signalingState;
-      
-      // If already stable, negotiation is complete, don't try to set answer
-      if (currentState === 'stable') {
-        console.log('⚠️ Peer connection already stable (negotiation complete), skipping answer...');
-        return;
-      }
-      
+      // PERFECT NEGOTIATION: Must be in have-local-offer state
       if (currentState !== 'have-local-offer' && currentState !== 'have-local-pranswer') {
-        console.warn(`⚠️ Cannot set remote answer in state: ${currentState}, skipping...`);
+        if (currentState === 'stable') {
+          console.log('⚠️ Peer connection already stable (negotiation complete), skipping answer...');
+        } else {
+          console.warn(`⚠️ Cannot set remote answer in state: ${currentState}, skipping...`);
+        }
         return;
       }
 
       const answer = JSON.parse(evt.answer);
       console.log('📥 Setting remote description (answer)...');
-      isSettingRemoteDescriptionRef.current = true;
+      settingRemoteDescriptionRef.current = true;
       
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log('✅ Remote description set (answer)');
+        console.log(`✅ Remote description set (answer) state=${pc.signalingState} (call_id=${evt.call_id})`);
+        
+        // Mark as processed
+        if (messageId) processedMessageIdsRef.current.add(messageId);
       } catch (error: any) {
-        console.error('❌ Failed to set remote description:', error);
-        isSettingRemoteDescriptionRef.current = false;
-        // Don't throw - might be duplicate answer or already stable
+        console.error(`❌ Failed to set remote description: ${error.name} state=${pc.signalingState} (call_id=${evt.call_id})`);
+        settingRemoteDescriptionRef.current = false;
         if (error.name === 'InvalidStateError') {
           if (pc.remoteDescription !== null) {
             console.log('⚠️ Remote description already set, continuing...');
@@ -1046,41 +1137,34 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           } else {
             console.warn(`⚠️ InvalidStateError in state: ${pc.signalingState}, continuing anyway...`);
           }
-          // Continue to process ICE candidates even if answer setting failed
         } else {
           console.error('❌ Real error setting remote description:', error);
-          return; // Exit if it's a real error
+          return;
         }
       } finally {
-        // Stop queueing ICE candidates as soon as remote description finishes applying.
-        isSettingRemoteDescriptionRef.current = false;
+        settingRemoteDescriptionRef.current = false;
       }
 
-      // Process queued ICE candidates (with limit to prevent infinite loops)
+      // Process queued ICE candidates
       let processedCount = 0;
-      const MAX_PROCESSING_ATTEMPTS = 100; // Safety limit
+      const MAX_PROCESSING_ATTEMPTS = 100;
       while (iceCandidateQueueRef.current.length > 0 && processedCount < MAX_PROCESSING_ATTEMPTS) {
         const candidate = iceCandidateQueueRef.current.shift();
         if (candidate) {
           try {
             await pc.addIceCandidate(candidate);
             processedCount++;
-            console.log(`📥 Processed queued ICE candidate (${processedCount}/${iceCandidateQueueRef.current.length + processedCount} remaining)`);
           } catch (err) {
             console.warn('⚠️ Failed to add queued ICE candidate:', err);
-            // Don't re-queue failed candidates to prevent infinite loops
           }
         }
       }
-      
-      // Clear any remaining candidates if we hit the limit
       if (iceCandidateQueueRef.current.length > 0) {
-        console.warn(`⚠️ Clearing ${iceCandidateQueueRef.current.length} remaining ICE candidates (processing limit reached)`);
         iceCandidateQueueRef.current = [];
       }
     } catch (error) {
       console.error('❌ Failed to handle WebRTC answer:', error);
-      isSettingRemoteDescriptionRef.current = false;
+      settingRemoteDescriptionRef.current = false;
     }
   };
 
@@ -1104,8 +1188,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       const candidate = JSON.parse(evt.candidate);
       const iceCandidate = new RTCIceCandidate(candidate);
 
+      // DEDUPLICATION: Check ICE candidate hash
+      const candidateHash = hashICECandidate(iceCandidate);
+      if (processedICECandidatesRef.current.has(candidateHash)) {
+        console.log(`⚠️ Duplicate ICE candidate hash=${candidateHash}, skipping...`);
+        return;
+      }
+      processedICECandidatesRef.current.add(candidateHash);
+
       // If remote description is not set yet, queue the candidate
-      if (pc.remoteDescription === null || isSettingRemoteDescriptionRef.current) {
+      if (pc.remoteDescription === null || settingRemoteDescriptionRef.current) {
         // Limit queue size to prevent memory issues
         if (iceCandidateQueueRef.current.length >= MAX_ICE_CANDIDATE_QUEUE_SIZE) {
           console.warn(`⚠️ ICE candidate queue full (${MAX_ICE_CANDIDATE_QUEUE_SIZE}), dropping oldest candidate`);
@@ -1471,6 +1563,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
   };
 
+  // Helper: Generate UUID for messageId
+  const generateMessageId = (): string => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback for older browsers
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Helper: Generate hash from SDP string for deduplication
+  const hashSDP = (sdp: string): string => {
+    // Simple hash function (FNV-1a variant)
+    let hash = 2166136261;
+    for (let i = 0; i < sdp.length; i++) {
+      hash ^= sdp.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return hash.toString(36);
+  };
+
+  // Helper: Generate hash from ICE candidate for deduplication
+  const hashICECandidate = (candidate: RTCIceCandidate): string => {
+    const str = `${candidate.candidate}|${candidate.sdpMLineIndex}|${candidate.sdpMid}`;
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return hash.toString(36);
+  };
+
   // Initialize WebRTC peer connection
   const initializePeerConnection = async (localStream: MediaStream, callTypeOverride?: string) => {
     try {
@@ -1491,6 +1614,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       const pc = new RTCPeerConnection(configuration);
       peerConnectionRef.current = pc;
+      
+      // Reset Perfect Negotiation state
+      isPoliteRef.current = false;
+      makingOfferRef.current = false;
 
       // Yerel ses/video track'lerini ekle (karşı tarafa gidecek)
       localStream.getTracks().forEach(track => {
@@ -1786,7 +1913,17 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Reset flags
       isAcceptingCallRef.current = false;
       isStartingVideoCallRef.current = false;
-      isSettingRemoteDescriptionRef.current = false;
+      settingRemoteDescriptionRef.current = false;
+      settingLocalDescriptionRef.current = false;
+      
+      // Reset Perfect Negotiation state
+      isPoliteRef.current = false;
+      makingOfferRef.current = false;
+      
+      // Clear deduplication caches
+      processedMessageIdsRef.current.clear();
+      processedSDPHashesRef.current.clear();
+      processedICECandidatesRef.current.clear();
       
       // Close peer connection first
       if (peerConnectionRef.current) {
