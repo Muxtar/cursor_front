@@ -19,8 +19,21 @@ function useRingtone(play: boolean, kind: RingtoneKind = 'callee') {
     if (!play) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = null;
-      try { ctxRef.current?.close(); } catch (_) {}
-      ctxRef.current = null;
+      // Safely close AudioContext
+      if (ctxRef.current) {
+        const ctx = ctxRef.current;
+        ctxRef.current = null;
+        try {
+          if (ctx.state !== 'closed') {
+            const closeResult = ctx.close();
+            if (closeResult && typeof closeResult === 'object' && 'catch' in closeResult) {
+              (closeResult as Promise<void>).catch(() => {}); // Silently ignore
+            }
+          }
+        } catch (_) {
+          // Silently ignore - context might already be closed
+        }
+      }
       return;
     }
     if (typeof window === 'undefined') return;
@@ -66,7 +79,21 @@ function useRingtone(play: boolean, kind: RingtoneKind = 'callee') {
     } catch (_) {}
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      try { ctxRef.current?.close(); } catch (_) {}
+      // Safely close AudioContext
+      if (ctxRef.current) {
+        const ctx = ctxRef.current;
+        ctxRef.current = null;
+        try {
+          if (ctx.state !== 'closed') {
+            const closeResult = ctx.close();
+            if (closeResult && typeof closeResult === 'object' && 'catch' in closeResult) {
+              (closeResult as Promise<void>).catch(() => {}); // Silently ignore
+            }
+          }
+        } catch (_) {
+          // Silently ignore - context might already be closed
+        }
+      }
     };
   }, [play, kind]);
 }

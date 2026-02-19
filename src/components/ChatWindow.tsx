@@ -89,13 +89,53 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [incomingCall, setIncomingCall] = useState<any>(null);
-  const [activeCall, setActiveCall] = useState<any>(null);
+  const [activeCall, setActiveCallState] = useState<any>(null);
   const [otherPartyInfo, setOtherPartyInfo] = useState<any>(null);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [localStream, setLocalStreamState] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  
+  // Wrapped setters with logging to track when state is cleared
+  const setActiveCall = (value: any) => {
+    if (value === null && activeCall !== null) {
+      console.log('🔄 setActiveCall(null) called', {
+        previous_call_id: activeCall?.call_id || activeCall?.id,
+        timestamp: new Date().toISOString(),
+        stack: new Error().stack?.split('\n').slice(1, 5).join('\n'),
+      });
+    } else if (value !== null && activeCall === null) {
+      console.log('🔄 setActiveCall(new call) called', {
+        call_id: value?.call_id || value?.id,
+        call_type: value?.type || value?.call_type,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    setActiveCallState(value);
+  };
+  
+  const setLocalStream = (value: MediaStream | null) => {
+    if (value === null && localStream !== null) {
+      console.log('🔄 setLocalStream(null) called', {
+        previous_stream_tracks: localStream.getTracks().length,
+        timestamp: new Date().toISOString(),
+        stack: new Error().stack?.split('\n').slice(1, 5).join('\n'),
+      });
+    } else if (value !== null && localStream === null) {
+      console.log('🔄 setLocalStream(new stream) called', {
+        tracks: value.getTracks().length,
+        video_tracks: value.getVideoTracks().length,
+        audio_tracks: value.getAudioTracks().length,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    setLocalStreamState(value);
+  };
+  
+  // Keep activeCall and localStream references for compatibility
+  const activeCall = activeCallState;
+  const localStream = localStreamState;
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -144,49 +184,49 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       ringtoneIntervalRef.current = null;
     }
     
-    // Safely close AudioContext
+    // Safely close AudioContext - AGGRESSIVE error handling
     if (ringtoneAudioContextRef.current) {
       const ctx = ringtoneAudioContextRef.current;
       // Store reference and clear ref immediately to prevent double cleanup
       ringtoneAudioContextRef.current = null;
       
+      // Wrap entire close operation in try-catch to prevent any errors from propagating
       try {
-        // Check if context is not already closed or closing
-        const state = ctx.state;
-        if (state === 'closed') {
-          // Already closed, do nothing
-          return;
-        }
-        // Note: 'closing' state doesn't exist in AudioContext API, but we check anyway for safety
-        if ((state as string) === 'closing') {
+        // Check state first
+        let state: string;
+        try {
+          state = ctx.state;
+        } catch (e: any) {
+          // Context might be in invalid state, can't check state - just return
           return;
         }
         
+        // If already closed, do nothing
+        if (state === 'closed') {
+          return;
+        }
+        
+        // Only attempt to close if not already closed
         if (state === 'running' || state === 'suspended') {
-          // close() returns a promise, but we don't need to await it
-          // Wrap in try-catch to handle any synchronous errors
           try {
-            const closePromise = ctx.close();
-            if (closePromise && typeof closePromise.catch === 'function') {
-              closePromise.catch((err: any) => {
-                // Silently ignore InvalidStateError (already closed)
-                if (err?.name !== 'InvalidStateError') {
-                  console.warn('AudioContext close promise rejected:', err);
-                }
+            // close() may throw synchronously or return a promise that rejects
+            const closeResult = ctx.close();
+            
+            // Handle promise rejection if close() returns a promise
+            if (closeResult && typeof closeResult === 'object' && 'catch' in closeResult) {
+              (closeResult as Promise<void>).catch((err: any) => {
+                // Silently ignore ALL errors - context might be closing/closed by another call
+                // This is expected behavior in concurrent scenarios
               });
             }
           } catch (e: any) {
-            // Synchronous error during close() call
-            if (e.name !== 'InvalidStateError') {
-              console.warn('AudioContext close error:', e);
-            }
+            // Synchronous error during close() - silently ignore
+            // This happens when context is already closed or in invalid state
           }
         }
       } catch (e: any) {
-        // Error accessing ctx.state
-        if (e.name !== 'InvalidStateError') {
-          console.warn('AudioContext state check error:', e);
-        }
+        // Any other error - silently ignore
+        // Context cleanup is best-effort, errors here are not critical
       }
     }
     
@@ -2228,6 +2268,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             readyState: t.readyState,
           }));
           
+          console.log('🛑 Stopping local stream tracks', {
+            reason: reason,
+            tracksCount: tracksBeforeStop.length,
+            tracksBeforeStop,
+          });
+          
           localStream.getTracks().forEach(track => {
             try {
               console.log(`🛑 Stopping local ${track.kind} track`, {
@@ -2242,19 +2288,25 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           });
           
           // Log tracks after stop
+          const tracksAfterStop = localStream.getTracks().map(t => ({
+            kind: t.kind,
+            enabled: t.enabled,
+            readyState: t.readyState,
+          }));
           console.log('📊 Local stream tracks AFTER stop:', {
             tracksBeforeStop,
-            tracksAfterStop: localStream.getTracks().map(t => ({
-              kind: t.kind,
-              enabled: t.enabled,
-              readyState: t.readyState,
-            })),
+            tracksAfterStop,
+            tracksStillExist: tracksAfterStop.length > 0,
           });
         } catch (e) {
           console.warn('Error stopping local stream:', e);
         }
+        
+        console.log('🛑 Clearing localStream state', { reason: reason });
         setLocalStream(null);
         localStreamRef.current = null;
+      } else {
+        console.log('⚠️ stopVideoCall: No localStream to stop', { reason: reason });
       }
       
       // Stop remote stream tracks
