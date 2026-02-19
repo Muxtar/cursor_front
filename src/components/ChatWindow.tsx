@@ -2195,18 +2195,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const stopVideoCall = (reason: string, meta?: any) => {
     try {
       // INSTRUMENTATION: Structured log at TOP with reason and state
+      // CRITICAL: Use refs instead of state to avoid race conditions
       const pc = peerConnectionRef.current;
+      const currentLocalStream = localStreamRef.current || localStream;
+      const currentActiveCall = activeCallRef.current || activeCall;
+      const currentIncomingCall = incomingCall;
       const logData: any = {
         reason: reason,
         timestamp: new Date().toISOString(),
-        activeCall_id: activeCall?.call_id || activeCall?.id || null,
-        incomingCall_id: incomingCall?.call_id || incomingCall?.id || null,
+        activeCall_id: currentActiveCall?.call_id || currentActiveCall?.id || null,
+        incomingCall_id: currentIncomingCall?.call_id || currentIncomingCall?.id || null,
         chatId: chatId,
-        hasLocalStream: !!localStream,
+        hasLocalStream: !!currentLocalStream,
         hasRemoteStream: !!remoteStream,
-        hasActiveCall: !!activeCall,
-        hasIncomingCall: !!incomingCall,
-        localStreamTracks: localStream ? localStream.getTracks().map(t => ({
+        hasActiveCall: !!currentActiveCall,
+        hasIncomingCall: !!currentIncomingCall,
+        localStreamTracks: currentLocalStream ? currentLocalStream.getTracks().map(t => ({
           kind: t.kind,
           enabled: t.enabled,
           readyState: t.readyState,
@@ -2228,9 +2232,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       console.log('🧹 stopVideoCall', logData);
       
       // Log localStream tracks readyState before cleanup
-      if (localStream) {
-        const videoTracks = localStream.getVideoTracks();
-        const audioTracks = localStream.getAudioTracks();
+      // CRITICAL: Use ref instead of state to avoid race conditions
+      if (currentLocalStream) {
+        const videoTracks = currentLocalStream.getVideoTracks();
+        const audioTracks = currentLocalStream.getAudioTracks();
         console.log('📊 Local stream tracks BEFORE cleanup:', {
           videoTracks: videoTracks.length,
           audioTracks: audioTracks.length,
@@ -2273,9 +2278,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
       
       // Stop local stream tracks
-      if (localStream) {
+      // CRITICAL: Use ref instead of state to avoid race conditions
+      if (currentLocalStream) {
         try {
-          const tracksBeforeStop = localStream.getTracks().map(t => ({
+          const tracksBeforeStop = currentLocalStream.getTracks().map(t => ({
             kind: t.kind,
             enabled: t.enabled,
             readyState: t.readyState,
@@ -2287,7 +2293,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             tracksBeforeStop,
           });
           
-          localStream.getTracks().forEach(track => {
+          currentLocalStream.getTracks().forEach(track => {
             try {
               console.log(`🛑 Stopping local ${track.kind} track`, {
                 enabled: track.enabled,
@@ -2301,7 +2307,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           });
           
           // Log tracks after stop
-          const tracksAfterStop = localStream.getTracks().map(t => ({
+          const tracksAfterStop = currentLocalStream.getTracks().map(t => ({
             kind: t.kind,
             enabled: t.enabled,
             readyState: t.readyState,
