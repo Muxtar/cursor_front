@@ -1393,22 +1393,69 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       const answer = JSON.parse(evt.answer);
       const stateBefore = pc.signalingState;
+      const myId = String(user?.id || user?._id || '');
+      const currentActiveCall = activeCallRef.current || activeCall;
+      const isCaller = currentActiveCall?.caller_id && String(currentActiveCall.caller_id) === myId;
+      
       console.log('📥 Setting remote description (answer)...', {
         message_id: messageId,
         call_id: evt.call_id,
         signalingState_before: stateBefore,
+        is_caller: isCaller,
+        my_id: myId,
+        caller_id: currentActiveCall?.caller_id || currentActiveCall?.callerId,
+        hasLocalStream: !!localStreamRef.current || !!localStream,
+        hasRemoteStream: !!remoteStream,
+        receivers_before: pc.getReceivers().length,
       });
       settingRemoteDescriptionRef.current = true;
       
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
         const stateAfter = pc.signalingState;
+        const receiversAfter = pc.getReceivers();
+        const transceiversAfter = pc.getTransceivers();
+        
         console.log('📥 WebRTC answer processed', {
           message_id: messageId,
           call_id: evt.call_id,
           signalingState_before: stateBefore,
           signalingState_after: stateAfter,
+          is_caller: isCaller,
+          receivers_count: receiversAfter.length,
+          transceivers_count: transceiversAfter.length,
+          receivers: receiversAfter.map(r => ({
+            track_kind: r.track?.kind,
+            track_enabled: r.track?.enabled,
+            track_readyState: r.track?.readyState,
+          })),
+          transceivers: transceiversAfter.map(t => ({
+            direction: t.direction,
+            currentDirection: t.currentDirection,
+            receiver_track_kind: t.receiver.track?.kind,
+            receiver_track_enabled: t.receiver.track?.enabled,
+            receiver_track_readyState: t.receiver.track?.readyState,
+          })),
+          hasRemoteStream: !!remoteStream,
+          remoteStreamTracks: remoteStream ? (remoteStream as MediaStream).getTracks().length : 0,
         });
+        
+        // Check if we have receivers but no remote stream yet (ontrack might fire later)
+        if (receiversAfter.length > 0 && !remoteStream) {
+          console.log('⏳ Receivers exist but no remote stream yet, waiting for ontrack event...');
+          // Set a timeout to check if ontrack fires
+          setTimeout(() => {
+            const currentRemoteStream = remoteStream;
+            const currentReceivers = pc.getReceivers();
+            if (!currentRemoteStream && currentReceivers.length > 0) {
+              console.warn('⚠️ Still no remote stream after answer, receivers:', currentReceivers.map(r => ({
+                track_kind: r.track?.kind,
+                track_enabled: r.track?.enabled,
+                track_readyState: r.track?.readyState,
+              })));
+            }
+          }, 2000);
+        }
         
         // Mark as processed
         if (messageId) processedMessageIdsRef.current.add(messageId);
@@ -1934,12 +1981,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // Karşı taraftan gelen ses/video
       pc.ontrack = (event) => {
+        const myId = String(user?.id || user?._id || '');
+        const currentActiveCall = activeCallRef.current || activeCall;
+        const isCaller = currentActiveCall?.caller_id && String(currentActiveCall.caller_id) === myId;
+        
         console.log('✅ Received remote track:', event.track.kind, event);
         console.log('📊 Track details:', {
           kind: event.track.kind,
           enabled: event.track.enabled,
           readyState: event.track.readyState,
           streams: event.streams.length,
+          is_caller: isCaller,
+          my_id: myId,
+          caller_id: currentActiveCall?.caller_id || currentActiveCall?.callerId,
+          call_id: currentActiveCall?.call_id || currentActiveCall?.id,
+          hasRemoteStream: !!remoteStream,
+          remoteStreamTracks: remoteStream ? (remoteStream as MediaStream).getTracks().length : 0,
         });
         
         // Ensure track is enabled
