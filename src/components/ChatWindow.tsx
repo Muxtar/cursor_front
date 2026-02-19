@@ -655,6 +655,34 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const callData = typeof data === 'string' ? JSON.parse(data) : data;
       if (callData.type === 'call' && callData.chat_id === chatId) {
+        // CRITICAL FIX: Ignore call events where caller_id matches current user
+        // This prevents caller from receiving their own call event
+        const myId = String(user?.id || user?._id || '');
+        const callerId = callData?.caller_id || callData?.callerId;
+        
+        if (callerId && String(callerId) === myId) {
+          console.log('⚠️ Ignoring own call event (caller_id matches current user)', {
+            call_id: callData?.call_id,
+            caller_id: callerId,
+            my_id: myId,
+          });
+          return;
+        }
+        
+        // Also ignore if we already have an active call (to prevent UI conflicts)
+        if (activeCall) {
+          console.log('⚠️ Ignoring incoming call event (active call already exists)', {
+            incoming_call_id: callData?.call_id,
+            active_call_id: activeCall?.call_id || activeCall?.id,
+          });
+          return;
+        }
+        
+        console.log('📞 Received incoming call event', {
+          call_id: callData?.call_id,
+          caller_id: callerId,
+          call_type: callData?.call_type,
+        });
         setIncomingCall(callData);
       }
     } catch (error) {
@@ -666,6 +694,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.type === 'call_answered' && evt?.chat_id === chatId) {
+        // INSTRUMENTATION: Log call_answered event with localStream state
+        console.log('📞 call_answered event received', {
+          call_id: evt?.call_id,
+          answered_by: evt?.answered_by,
+          timestamp: new Date().toISOString(),
+          hasLocalStream: !!localStream,
+          hasActiveCall: !!activeCall,
+          localStreamTracks: localStream ? localStream.getTracks().map(t => ({
+            kind: t.kind,
+            enabled: t.enabled,
+            readyState: t.readyState,
+          })) : [],
+        });
+        
         // Prevent duplicate processing
         const callId = evt?.call_id || evt?.id;
         if (processingCallAnsweredRef.current) {
@@ -685,6 +727,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           // Use refs to get current values (state might not be updated yet)
           const currentActiveCall = activeCallRef.current || activeCall;
           const currentLocalStream = localStreamRef.current || localStream;
+          
+          // INSTRUMENTATION: Log state before processing
+          console.log('📊 State before processing call_answered:', {
+            hasActiveCall: !!currentActiveCall,
+            hasLocalStream: !!currentLocalStream,
+            localStreamRef: !!localStreamRef.current,
+            activeCallRef: !!activeCallRef.current,
+          });
           
           if (!currentActiveCall) {
             console.warn('⚠️ call_answered received but no activeCall found');
@@ -762,7 +812,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
           
           // We have both PC and stream, send offer
+          // INSTRUMENTATION: Log state before sending offer
+          console.log('📊 State before sending offer:', {
+            hasPC: !!peerConnectionRef.current,
+            hasStream: !!currentLocalStream,
+            streamTracks: currentLocalStream ? currentLocalStream.getTracks().map(t => ({
+              kind: t.kind,
+              enabled: t.enabled,
+              readyState: t.readyState,
+            })) : [],
+          });
+          
           await sendOfferIfReady(peerConnectionRef.current, currentLocalStream, currentActiveCall);
+          
+          // INSTRUMENTATION: Log state after sending offer
+          console.log('📊 State after sending offer:', {
+            hasLocalStream: !!localStream,
+            localStreamTracks: localStream ? localStream.getTracks().map(t => ({
+              kind: t.kind,
+              enabled: t.enabled,
+              readyState: t.readyState,
+            })) : [],
+          });
         } finally {
           // Always reset processing flag
           processingCallAnsweredRef.current = false;
@@ -1908,7 +1979,41 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   // Video call'u durdur - comprehensive cleanup
   const stopVideoCall = () => {
     try {
-      console.log('🧹 Cleaning up video call...');
+      // INSTRUMENTATION: Track when stopVideoCall is called
+      console.trace('🧹 Cleaning up video call... [STACK TRACE]');
+      console.log('🧹 stopVideoCall called', {
+        timestamp: new Date().toISOString(),
+        hasLocalStream: !!localStream,
+        hasRemoteStream: !!remoteStream,
+        hasActiveCall: !!activeCall,
+        hasIncomingCall: !!incomingCall,
+        localStreamTracks: localStream ? localStream.getTracks().map(t => ({
+          kind: t.kind,
+          enabled: t.enabled,
+          readyState: t.readyState,
+          muted: t.muted,
+        })) : [],
+      });
+      
+      // Log localStream tracks readyState before cleanup
+      if (localStream) {
+        const videoTracks = localStream.getVideoTracks();
+        const audioTracks = localStream.getAudioTracks();
+        console.log('📊 Local stream tracks BEFORE cleanup:', {
+          videoTracks: videoTracks.length,
+          audioTracks: audioTracks.length,
+          videoTracksState: videoTracks.map(t => ({
+            enabled: t.enabled,
+            readyState: t.readyState,
+            muted: t.muted,
+          })),
+          audioTracksState: audioTracks.map(t => ({
+            enabled: t.enabled,
+            readyState: t.readyState,
+            muted: t.muted,
+          })),
+        });
+      }
       
       // Reset flags
       isAcceptingCallRef.current = false;
@@ -1938,12 +2043,33 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Stop local stream tracks
       if (localStream) {
         try {
+          const tracksBeforeStop = localStream.getTracks().map(t => ({
+            kind: t.kind,
+            enabled: t.enabled,
+            readyState: t.readyState,
+          }));
+          
           localStream.getTracks().forEach(track => {
             try {
+              console.log(`🛑 Stopping local ${track.kind} track`, {
+                enabled: track.enabled,
+                readyState: track.readyState,
+                muted: track.muted,
+              });
               track.stop();
             } catch (e) {
               console.warn('Error stopping local track:', e);
             }
+          });
+          
+          // Log tracks after stop
+          console.log('📊 Local stream tracks AFTER stop:', {
+            tracksBeforeStop,
+            tracksAfterStop: localStream.getTracks().map(t => ({
+              kind: t.kind,
+              enabled: t.enabled,
+              readyState: t.readyState,
+            })),
           });
         } catch (e) {
           console.warn('Error stopping local stream:', e);
@@ -2562,7 +2688,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   return (
     <div className={`flex flex-col h-full min-h-0 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
       {/* Gelen Çağrı Modal */}
-      {incomingCall && (
+      {/* CRITICAL FIX: Only show incoming call modal when there's no active call */}
+      {incomingCall && !activeCall && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-md w-full mx-4 shadow-xl`}>
             <div className="text-center mb-4">
