@@ -112,6 +112,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const isAcceptingCallRef = useRef(false); // Prevent race condition between acceptCall and handleWebRTCOffer
   const localStreamRef = useRef<MediaStream | null>(null); // Ref to track local stream for handleCallAnswered
   const activeCallRef = useRef<any>(null); // Ref to track active call for handleCallAnswered
+  const processingCallAnsweredRef = useRef(false); // Prevent duplicate handleCallAnswered calls
+  const lastCallAnsweredIdRef = useRef<string | null>(null); // Track last processed call_answered event
 
   // Çağrı sesi: gelen arama veya karşı taraf cevap verene kadar (çağıran taraf) çalar
   const stopRingtone = () => {
@@ -138,19 +140,29 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           // close() returns a promise, but we don't need to await it
           // Wrap in try-catch to handle any synchronous errors
           try {
-            ctx.close().catch(() => {
-              // Silently ignore all errors - context might be closing/closed
-              // This is expected behavior and not an error
-            });
+            const closePromise = ctx.close();
+            if (closePromise && typeof closePromise.catch === 'function') {
+              closePromise.catch(() => {
+                // Silently ignore all errors - context might be closing/closed
+                // This is expected behavior and not an error
+              });
+            }
           } catch (e: any) {
             // Silently ignore all errors - context might already be closed
             // This is safe and expected
+            if (e.name !== 'InvalidStateError') {
+              // Only log non-expected errors
+              console.warn('AudioContext close error:', e);
+            }
           }
         }
         // If state is 'closed' or 'closing', do nothing
       } catch (e: any) {
         // Silently ignore all errors - context might be in an invalid state
         // This is safe because we've already cleared the ref
+        if (e.name !== 'InvalidStateError') {
+          console.warn('AudioContext state check error:', e);
+        }
       }
     }
     
@@ -316,12 +328,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Only set srcObject if it's different to avoid unnecessary reloads
       if (videoElement.srcObject !== currentRemoteStream) {
         console.log('🔄 Setting video element srcObject...');
-        // Wait for any pending play() calls to complete
-        videoElement.pause();
         videoElement.srcObject = currentRemoteStream;
+        // Don't call load() - it resets the stream and causes issues
       }
       
       videoElement.muted = false; // Ensure not muted
+      
+      // Force play immediately - don't wait
+      if (videoElement.paused) {
+        console.log('🔄 Force playing video immediately...');
+        videoElement.play().catch(err => {
+          if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+            console.warn('⚠️ Failed to force play video:', err);
+          }
+        });
+      }
       
       // Note: Video tracks should already be 'live' when received via ontrack
       // But we'll check anyway and try to play when ready
@@ -632,17 +653,33 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const evt = typeof data === 'string' ? JSON.parse(data) : data;
       if (evt?.type === 'call_answered' && evt?.chat_id === chatId) {
-        // Use refs to get current values (state might not be updated yet)
-        const currentActiveCall = activeCallRef.current || activeCall;
-        const currentLocalStream = localStreamRef.current || localStream;
-        
-        if (!currentActiveCall) {
-          console.warn('⚠️ call_answered received but no activeCall found');
+        // Prevent duplicate processing
+        const callId = evt?.call_id || evt?.id;
+        if (processingCallAnsweredRef.current) {
+          console.log('⚠️ handleCallAnswered already processing, skipping duplicate...');
           return;
         }
         
-        // Call was answered by the other party, ensure WebRTC is ready
-        console.log('✅ Call answered by other party, ensuring WebRTC connection...');
+        if (lastCallAnsweredIdRef.current === callId) {
+          console.log('⚠️ call_answered event already processed for this call, skipping...');
+          return;
+        }
+        
+        processingCallAnsweredRef.current = true;
+        lastCallAnsweredIdRef.current = callId || null;
+        
+        try {
+          // Use refs to get current values (state might not be updated yet)
+          const currentActiveCall = activeCallRef.current || activeCall;
+          const currentLocalStream = localStreamRef.current || localStream;
+          
+          if (!currentActiveCall) {
+            console.warn('⚠️ call_answered received but no activeCall found');
+            return;
+          }
+          
+          // Call was answered by the other party, ensure WebRTC is ready
+          console.log('✅ Call answered by other party, ensuring WebRTC connection...');
         
         // Only send offer if we're the caller (check caller_id from call data)
         // Callee should wait for offer, not send it
@@ -713,9 +750,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         
         // We have both PC and stream, send offer
         await sendOfferIfReady(peerConnectionRef.current, currentLocalStream, currentActiveCall);
+          }
+        } finally {
+          // Always reset processing flag
+          processingCallAnsweredRef.current = false;
+        }
       }
     } catch (error) {
       console.error('❌ Failed to parse call_answered event:', error);
+      processingCallAnsweredRef.current = false;
     }
   };
   
@@ -2432,12 +2475,38 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       )}
 
       {/* Video Call UI - Full Screen - Show for video calls or if we have video tracks */}
-      {activeCall && (activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (
+      {(() => {
+        const shouldShowVideoUI = activeCall && (activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0));
+        if (shouldShowVideoUI) {
+          console.log('🎬 Rendering Video Call UI', {
+            activeCall: !!activeCall,
+            type: activeCall?.type,
+            call_type: activeCall?.call_type,
+            hasLocalStream: !!localStream,
+            hasVideoTracks: localStream?.getVideoTracks().length > 0,
+            hasRemoteStream: !!remoteStream,
+          });
+        }
+        return shouldShowVideoUI;
+      })() && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col">
           {/* Remote Video (Karşı Taraf) */}
           <div className="flex-1 relative bg-gray-900">
             <video
-              ref={remoteVideoRef}
+              ref={(el) => {
+                remoteVideoRef.current = el;
+                // When video element mounts, immediately set stream if available
+                if (el && remoteStream) {
+                  console.log('🎬 Video element mounted, setting stream immediately...');
+                  el.srcObject = remoteStream as MediaStream;
+                  el.muted = false;
+                  el.play().catch(err => {
+                    if (err.name !== 'AbortError') {
+                      console.warn('⚠️ Failed to play on mount:', err);
+                    }
+                  });
+                }
+              }}
               autoPlay
               playsInline
               muted={false}
@@ -2537,7 +2606,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             {localStream && localStream.getVideoTracks().length > 0 && (
               <div className="absolute bottom-20 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden border-2 border-white">
                 <video
-                  ref={localVideoRef}
+                  ref={(el) => {
+                    localVideoRef.current = el;
+                    // When local video element mounts, immediately set stream if available
+                    if (el && localStream && localStream.getVideoTracks().length > 0) {
+                      console.log('🎬 Local video element mounted, setting stream immediately...');
+                      el.srcObject = localStream;
+                      el.muted = true;
+                      el.play().catch(err => {
+                        if (err.name !== 'AbortError') {
+                          console.warn('⚠️ Failed to play local video on mount:', err);
+                        }
+                      });
+                    }
+                  }}
                   autoPlay
                   playsInline
                   muted
