@@ -629,14 +629,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         // Call was answered by the other party, ensure WebRTC is ready
         console.log('✅ Call answered by other party, ensuring WebRTC connection...');
         
-        // Only send offer if we're the caller (we have activeCall but no incomingCall)
+        // Only send offer if we're the caller (check caller_id from call data)
         // Callee should wait for offer, not send it
-        const isCaller = !incomingCall && currentActiveCall;
+        const myId = String(user?.id || user?._id || '');
+        const callerId = currentActiveCall?.caller_id || currentActiveCall?.callerId || evt?.caller_id;
+        const isCaller = callerId && String(callerId) === myId;
         
         if (!isCaller) {
           console.log('📞 We are callee, waiting for offer from caller...');
           return;
         }
+        
+        console.log('📞 We are caller, will send offer after ensuring stream/PC is ready...');
         
         // If we're the caller but don't have peer connection or stream yet, wait a bit and retry
         if (!peerConnectionRef.current || !currentLocalStream) {
@@ -777,12 +781,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       if (isAcceptingCallRef.current) {
         console.log('⚠️ acceptCall in progress, waiting for it to complete...');
         let waitCount = 0;
-        while (isAcceptingCallRef.current && waitCount < 50) {
+        const maxWait = 100; // Increased to 10 seconds (100 * 100ms)
+        while (isAcceptingCallRef.current && waitCount < maxWait) {
           await new Promise(resolve => setTimeout(resolve, 100));
           waitCount++;
         }
-        if (waitCount >= 50) {
-          console.warn('⚠️ Timeout waiting for acceptCall to complete');
+        if (waitCount >= maxWait) {
+          console.warn('⚠️ Timeout waiting for acceptCall to complete, proceeding anyway...');
+        } else {
+          console.log('✅ acceptCall completed, proceeding with offer handling...');
         }
       }
 
@@ -829,16 +836,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
       
-      // Check if answer was already sent
-      if (pc.localDescription !== null) {
-        console.log('⚠️ Answer already sent, skipping...');
-        return;
-      }
-      
       // Check peer connection state - must be in 'stable' or 'have-local-offer' to set remote offer
       const currentState = pc.signalingState;
       if (currentState !== 'stable' && currentState !== 'have-local-offer') {
         console.warn(`⚠️ Cannot set remote offer in state: ${currentState}, skipping...`);
+        return;
+      }
+      
+      // Check if answer was already sent (but only if we're past the offer stage)
+      if (pc.localDescription !== null && currentState === 'have-local-offer') {
+        console.log('⚠️ Answer already sent, skipping...');
         return;
       }
 
@@ -1481,13 +1488,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && ws) {
-          ws.send({
-            type: 'webrtc_ice',
-            chat_id: chatId,
-            call_id: activeCall?.call_id || activeCall?.id,
-            candidate: JSON.stringify(event.candidate),
-          });
-          console.log('📤 ICE candidate sent');
+          const callId = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
+          if (callId) {
+            ws.send({
+              type: 'webrtc_ice',
+              chat_id: chatId,
+              call_id: callId,
+              candidate: JSON.stringify(event.candidate),
+            });
+            console.log('📤 ICE candidate sent');
+          } else {
+            console.warn('⚠️ Cannot send ICE candidate: no call_id available');
+          }
         } else if (event.candidate === null) {
           console.log('✅ ICE gathering complete');
         }
@@ -1571,7 +1583,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     
     try {
       await callApi.answerCall(callId);
-      const answeredCallData = { ...(callData || {}), type: callType };
+      // Preserve caller_id from callData to ensure we can identify caller vs callee
+      const answeredCallData = { 
+        ...(callData || {}), 
+        type: callType,
+        caller_id: callData?.caller_id || callData?.callerId, // Ensure caller_id is preserved
+      };
       setActiveCall(answeredCallData);
       activeCallRef.current = answeredCallData; // Update ref immediately
       setIncomingCall(null);
