@@ -3709,15 +3709,17 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     )}
                   </div>
 
-                  {/* Message Options Menu */}
+                  {/* Message Options Menu - aynı stil: grup sağ tık menüsü */}
                   {selectedMessage?.id === message.id && (
-                    <div className="absolute top-full mt-2 right-0 bg-white rounded-lg shadow-lg border border-gray-200 z-10 min-w-[200px]">
+                    <div className={`absolute top-full mt-2 right-0 rounded-lg shadow-xl border z-10 min-w-[200px] ${
+                      actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
+                    }`}>
                       <button
                         onClick={() => {
                           setReplyingTo(message);
                           setSelectedMessage(null);
                         }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                       >
                         <span>💬</span>
                         <span>{t('reply')}</span>
@@ -3727,14 +3729,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                           setShowEmojiPicker(true);
                           setSelectedMessage(message);
                         }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                       >
                         <span>😊</span>
                         <span>{t('react')}</span>
                       </button>
                       <button
                         onClick={() => handleForwardMessage(message.id)}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                       >
                         <span>↪️</span>
                         <span>{t('forward')}</span>
@@ -3746,21 +3748,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                               const newContent = prompt(t('edit') + ' ' + t('typeMessage').toLowerCase() + ':', message.content);
                               if (newContent && newContent.trim()) handleEditMessage(message.id, newContent);
                             }}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+                            className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                           >
                             <span>✏️</span>
                             <span>{t('edit')}</span>
                           </button>
                           <button
                             onClick={() => handleDeleteMessage(message.id, false)}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center space-x-2"
+                            className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                           >
                             <span>🗑️</span>
                             <span>{t('deleteForMe')}</span>
                           </button>
                           <button
                             onClick={() => handleDeleteMessage(message.id, true)}
-                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 flex items-center space-x-2"
+                            className="w-full px-4 py-2.5 text-left text-sm text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
                           >
                             <span>🗑️</span>
                             <span>{t('deleteForEveryone')}</span>
@@ -3769,7 +3771,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                       )}
                       <button
                         onClick={() => setSelectedMessage(null)}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                        className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         {t('cancel')}
                       </button>
