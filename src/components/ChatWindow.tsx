@@ -91,6 +91,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const messageLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const messageLongPressMessageRef = useRef<Message | null>(null);
   const messageJustDidLongPressRef = useRef(false);
+  const selectedMessageBubbleRef = useRef<HTMLDivElement>(null);
+  const [messageMenuOpenUp, setMessageMenuOpenUp] = useState(false);
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall, setActiveCallStateRaw] = useState<any>(null);
   const [otherPartyInfo, setOtherPartyInfo] = useState<any>(null);
@@ -2925,6 +2927,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     messageLongPressMessageRef.current = null;
   };
 
+  const MESSAGE_MENU_ESTIMATED_HEIGHT = 320;
+
+  useEffect(() => {
+    if (!selectedMessage) {
+      setMessageMenuOpenUp(false);
+      return;
+    }
+    const measure = () => {
+      const el = selectedMessageBubbleRef.current;
+      if (!el || typeof window === 'undefined') return;
+      const rect = el.getBoundingClientRect();
+      setMessageMenuOpenUp(rect.bottom + MESSAGE_MENU_ESTIMATED_HEIGHT > window.innerHeight);
+    };
+    const raf = requestAnimationFrame(() => requestAnimationFrame(measure));
+    return () => cancelAnimationFrame(raf);
+  }, [selectedMessage?.id]);
+
   const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
     if (!confirm(deleteForEveryone ? t('deleteForEveryone') + '?' : t('deleteForMe') + '?')) return;
     
@@ -3585,7 +3604,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 {!isMine && !showAvatar && (
                   <div className="w-7 md:w-8 flex-shrink-0"></div>
                 )}
-                <div className="relative">
+                <div
+                  className="relative"
+                  ref={selectedMessage?.id === message.id ? selectedMessageBubbleRef : null}
+                >
                   <div
                     className={`px-2.5 py-1.5 md:px-3 md:py-1.5 rounded-lg shadow-sm text-sm md:text-base ${
                       isMine
@@ -3754,12 +3776,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     )}
                   </div>
 
-                  {/* Message Options Menu - aynı stil: grup sağ tık menüsü */}
+                  {/* Message Options Menu - aynı stil: grup sağ tık menüsü; altda yer qalmırsa yuxarı açılır */}
                   {selectedMessage?.id === message.id && (
                     <div
-                      className={`absolute top-full mt-2 ${
-                        isMine ? 'right-0' : 'left-0'
-                      } rounded-lg shadow-xl border z-10 min-w-[200px] max-w-[260px] ${
+                      className={`absolute z-10 min-w-[200px] max-w-[260px] rounded-lg shadow-xl border ${
+                        messageMenuOpenUp ? 'bottom-full mb-2' : 'top-full mt-2'
+                      } ${isMine ? 'right-0' : 'left-0'} ${
                         actualTheme === 'dark'
                           ? 'bg-gray-800 border-gray-700 text-white'
                           : 'bg-white border-gray-200 text-gray-800'

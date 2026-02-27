@@ -235,12 +235,24 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     }
   };
 
-  const handleDeleteProposal = async (proposalId: string) => {
+  const getProposalId = (p: any): string => {
+    const raw = p.id ?? p._id;
+    if (typeof raw === 'string') return raw;
+    if (raw && typeof raw === 'object' && (raw as any).$oid) return (raw as any).$oid;
+    return String(raw ?? '');
+  };
+
+  const handleDeleteProposal = async (proposalId: unknown) => {
+    const id = typeof proposalId === 'string' ? proposalId : getProposalId({ _id: proposalId });
+    if (!id || id.length < 20) {
+      alert(t('deleteProposalError'));
+      return;
+    }
     if (!confirm(t('deleteProposalConfirm'))) return;
     try {
-      await proposalApi.deleteProposal(proposalId);
-      setIncomingProposals((prev) => prev.filter((p: any) => String(p.id || p._id) !== String(proposalId)));
-      setSentProposals((prev) => prev.filter((p: any) => String(p.id || p._id) !== String(proposalId)));
+      await proposalApi.deleteProposal(id);
+      setIncomingProposals((prev) => prev.filter((p: any) => getProposalId(p) !== id));
+      setSentProposals((prev) => prev.filter((p: any) => getProposalId(p) !== id));
       loadProposalsCount();
     } catch (e) {
       console.error('Delete proposal failed:', e);
@@ -1097,6 +1109,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                     </div>
                   ) : (
                     incomingProposals.map((p: any, index: number) => {
+                      const pid = getProposalId(p);
                       const colors = [
                         { bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400' },
                         { bg: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400' },
@@ -1107,7 +1120,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                       const colorScheme = colors[index % colors.length];
                       return (
                         <div
-                          key={p.id || p._id}
+                          key={pid}
                           className={`${colorScheme.bg} ${colorScheme.border} border-2 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 transform hover:scale-[1.02]`}
                         >
                           <div className="flex items-start justify-between mb-2">
@@ -1127,10 +1140,10 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                             <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                               {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
-                            <div className="flex gap-2">
+                            <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => handleAcceptProposal(p.id || p._id)}
-                                disabled={acceptingProposalId === (p.id || p._id)}
+                                onClick={() => handleAcceptProposal(pid)}
+                                disabled={acceptingProposalId === pid}
                                 className="px-4 py-1.5 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
                                 title={t('accept')}
                               >
@@ -1140,7 +1153,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                                 {t('accept')}
                               </button>
                               <button
-                                onClick={() => handleRejectProposal(p.id || p._id)}
+                                onClick={() => handleRejectProposal(pid)}
                                 className="px-4 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
                                 title={t('reject')}
                               >
@@ -1150,7 +1163,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                                 {t('reject')}
                               </button>
                               <button
-                                onClick={() => handleDeleteProposal(p.id || p._id)}
+                                onClick={() => handleDeleteProposal(pid)}
                                 className="p-1.5 rounded-lg bg-gray-400 text-white hover:bg-gray-500 transition"
                                 title={t('deleteProposal')}
                               >
@@ -1179,6 +1192,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                     </div>
                   ) : (
                     sentProposals.map((p: any, index: number) => {
+                      const pid = getProposalId(p);
                       const colors = [
                         { bg: 'bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400' },
                         { bg: 'bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400' },
@@ -1189,7 +1203,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                       const colorScheme = colors[index % colors.length];
                       return (
                         <div
-                          key={p.id || p._id}
+                          key={pid}
                           className={`${colorScheme.bg} ${colorScheme.border} border-2 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200 transform hover:scale-[1.02]`}
                         >
                           <div className="flex items-start justify-between mb-2">
@@ -1220,18 +1234,16 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                                 {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                               </p>
                             </div>
-                            {p.status === 'pending' && (
-                              <button
-                                onClick={() => handleDeleteProposal(p.id || p._id)}
-                                className="px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
-                                title={t('deleteProposal')}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                {t('delete')}
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleDeleteProposal(pid)}
+                              className="px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition flex items-center gap-1.5 text-sm font-medium shadow-sm"
+                              title={t('deleteProposal')}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              {t('delete')}
+                            </button>
                           </div>
                         </div>
                       );

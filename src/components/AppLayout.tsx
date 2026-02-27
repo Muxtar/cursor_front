@@ -35,7 +35,7 @@ export default function AppLayout({ children, title = '', onChatSelect, selected
       <div
         className={`
           md:relative md:flex-shrink-0
-          fixed inset-y-0 left-0 z-40 h-dvh w-[min(100%,320px)] md:w-[420px] md:h-full max-w-full
+          fixed inset-y-0 left-0 z-40 h-dvh w-full md:w-[420px] md:max-w-[420px] md:h-full
           transform transition-transform duration-200 ease-out
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
