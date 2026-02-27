@@ -1724,8 +1724,12 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
           )}
         </div>
 
-        {/* Bottom Navigation - sabit aşağıda, scroll olmaz */}
-        <div className={`flex-shrink-0 p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'}`}>
+        {/* Bottom Navigation - sabit aşağıda; telefon ölçüsünde mesaj/chat ekranındayken gizlenir */}
+        <div
+          className={`flex-shrink-0 p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} ${
+            pathname === '/chat' && selectedChat ? 'hidden md:block' : ''
+          }`}
+        >
           <div className="flex items-center justify-around">
             <Link
               href="/story/create"
