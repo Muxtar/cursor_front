@@ -235,16 +235,34 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     }
   };
 
+  /** Proposal ID'yi her türlü formattan (id, _id, $oid) çıkarıp 24 karakterlik hex string'e normalize eder. */
+  const normalizeProposalId = (raw: unknown): string => {
+    if (raw == null) return '';
+    let hex = '';
+    if (typeof raw === 'string') {
+      hex = raw.trim().replace(/[^a-fA-F0-9]/g, '').slice(0, 24).toLowerCase();
+    } else if (typeof raw === 'object' && raw !== null) {
+      const o = raw as Record<string, unknown>;
+      const oid = (o.$oid ?? o.oid) as string | undefined;
+      if (typeof oid === 'string') hex = oid.trim().replace(/[^a-fA-F0-9]/g, '').slice(0, 24).toLowerCase();
+    }
+    return hex || String(raw).trim();
+  };
+
   const getProposalId = (p: any): string => {
-    const raw = p.id ?? p._id;
-    if (typeof raw === 'string') return raw;
+    const raw = p?.id ?? p?._id;
+    const normalized = normalizeProposalId(raw);
+    if (normalized) return normalized;
+    if (typeof raw === 'string') return raw.trim();
     if (raw && typeof raw === 'object' && (raw as any).$oid) return (raw as any).$oid;
     return String(raw ?? '');
   };
 
   const handleDeleteProposal = async (proposalId: unknown) => {
-    const id = typeof proposalId === 'string' ? proposalId : getProposalId({ _id: proposalId });
-    if (!id || id.length < 20) {
+    const id = normalizeProposalId(
+      typeof proposalId === 'string' ? proposalId : (proposalId as any)?.id ?? (proposalId as any)?._id ?? proposalId
+    ) || getProposalId({ id: proposalId, _id: proposalId });
+    if (!id || id.length < 12) {
       alert(t('deleteProposalError'));
       return;
     }
@@ -254,9 +272,10 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       setIncomingProposals((prev) => prev.filter((p: any) => getProposalId(p) !== id));
       setSentProposals((prev) => prev.filter((p: any) => getProposalId(p) !== id));
       loadProposalsCount();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Delete proposal failed:', e);
-      alert(t('deleteProposalError'));
+      const msg = e?.message || t('deleteProposalError');
+      alert(msg);
     }
   };
 
@@ -759,7 +778,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
 
   return (
     <>
-      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-full min-h-0 max-h-dvh overflow-hidden`} style={{ display: 'flex', flexDirection: 'column' }}>
+      <div className={`w-full md:w-[420px] ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col shadow-sm h-dvh md:h-full min-h-0 max-h-dvh overflow-hidden`} style={{ display: 'flex', flexDirection: 'column' }}>
         {/* Header - sabit, scroll olmaz */}
         <div className={`flex-shrink-0 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} p-3 md:p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="flex items-center justify-between mb-3 md:mb-4">

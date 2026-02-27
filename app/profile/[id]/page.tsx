@@ -37,16 +37,17 @@ export default function ProfilePage() {
   const [savingCompany, setSavingCompany] = useState(false);
 
   useEffect(() => {
-    if (currentUser && userId) {
-      const isOwn = currentUser.id === userId || (currentUser as any)._id === userId;
-      setIsOwnProfile(isOwn);
-      loadProfile();
-      loadProducts();
-      loadComments();
-      if (isOwn) loadProposals();
-    } else if (!currentUser) {
+    if (!currentUser) {
       router.push('/login');
+      return;
     }
+    if (!userId) return;
+    const isOwn = currentUser.id === userId || (currentUser as any)._id === userId;
+    setIsOwnProfile(isOwn);
+    loadProfile();
+    loadProducts();
+    loadComments();
+    if (isOwn) loadProposals();
   }, [currentUser, userId]);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function ProfilePage() {
   }, [profileUser, isOwnProfile]);
 
   const loadProfile = async () => {
+    if (!userId) return;
     try {
       const isOwn = currentUser?.id === userId || (currentUser as any)?._id === userId;
       const data = isOwn ? await userApi.getMe() : await userApi.getUserById(userId);
@@ -231,9 +233,19 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className={`flex justify-center items-center min-h-screen ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
-      </div>
+      <AppLayout title="Profile">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className={`flex-shrink-0 border-b ${actualTheme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} px-3 py-3 sm:py-4`}>
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            </div>
+          </div>
+          <div className={`flex-1 flex justify-center items-center p-8 ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-green-500 border-t-transparent" />
+          </div>
+        </div>
+      </AppLayout>
     );
   }
 
