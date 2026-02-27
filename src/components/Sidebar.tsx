@@ -1724,9 +1724,9 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
           )}
         </div>
 
-        {/* Bottom Navigation - sabit aşağıda; telefon ölçüsünde mesaj/chat ekranındayken gizlenir */}
+        {/* Bottom Navigation - telefon ölçüsünde her zaman ekranın en altında sabit; yalnızca chat (mesaj) ekranına geçince gizlenir */}
         <div
-          className={`flex-shrink-0 p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} ${
+          className={`flex-shrink-0 mt-auto p-3 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} ${
             pathname === '/chat' && selectedChat ? 'hidden md:block' : ''
           }`}
         >
