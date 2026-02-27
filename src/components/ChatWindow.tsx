@@ -3756,9 +3756,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
                   {/* Message Options Menu - aynı stil: grup sağ tık menüsü */}
                   {selectedMessage?.id === message.id && (
-                    <div className={`absolute top-full mt-2 right-0 rounded-lg shadow-xl border z-10 min-w-[200px] ${
-                      actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
-                    }`}>
+                    <div
+                      className={`absolute top-full mt-2 ${
+                        isMine ? 'right-0' : 'left-0'
+                      } rounded-lg shadow-xl border z-10 min-w-[200px] max-w-[260px] ${
+                        actualTheme === 'dark'
+                          ? 'bg-gray-800 border-gray-700 text-white'
+                          : 'bg-white border-gray-200 text-gray-800'
+                      }`}
+                    >
                       <button
                         onClick={() => {
                           setReplyingTo(message);
