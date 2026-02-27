@@ -88,6 +88,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const messageLongPressMessageRef = useRef<Message | null>(null);
+  const messageJustDidLongPressRef = useRef(false);
   const [incomingCall, setIncomingCall] = useState<any>(null);
   const [activeCall, setActiveCallStateRaw] = useState<any>(null);
   const [otherPartyInfo, setOtherPartyInfo] = useState<any>(null);
@@ -2890,6 +2893,38 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }, 3000);
   };
 
+  const MESSAGE_LONG_PRESS_MS = 500;
+
+  const handleMessageTouchStart = (e: React.TouchEvent, message: Message) => {
+    messageLongPressMessageRef.current = message;
+    messageLongPressTimerRef.current = setTimeout(() => {
+      messageLongPressTimerRef.current = null;
+      const msg = messageLongPressMessageRef.current;
+      messageLongPressMessageRef.current = null;
+      if (msg) {
+        setSelectedMessage(msg);
+        messageJustDidLongPressRef.current = true;
+        setTimeout(() => { messageJustDidLongPressRef.current = false; }, 300);
+      }
+    }, MESSAGE_LONG_PRESS_MS);
+  };
+
+  const handleMessageTouchEnd = () => {
+    if (messageLongPressTimerRef.current) {
+      clearTimeout(messageLongPressTimerRef.current);
+      messageLongPressTimerRef.current = null;
+    }
+    messageLongPressMessageRef.current = null;
+  };
+
+  const handleMessageTouchMove = () => {
+    if (messageLongPressTimerRef.current) {
+      clearTimeout(messageLongPressTimerRef.current);
+      messageLongPressTimerRef.current = null;
+    }
+    messageLongPressMessageRef.current = null;
+  };
+
   const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean = false) => {
     if (!confirm(deleteForEveryone ? t('deleteForEveryone') + '?' : t('deleteForMe') + '?')) return;
     
@@ -3560,6 +3595,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setSelectedMessage(message);
+                    }}
+                    onTouchStart={(e) => handleMessageTouchStart(e, message)}
+                    onTouchEnd={handleMessageTouchEnd}
+                    onTouchMove={handleMessageTouchMove}
+                    onTouchCancel={handleMessageTouchEnd}
+                    onClick={(e) => {
+                      if (messageJustDidLongPressRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
                     }}
                   >
                     {/* Grup mesajlarında gönderen ismini göster */}

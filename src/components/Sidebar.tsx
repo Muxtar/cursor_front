@@ -45,6 +45,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProposalsDropdown, setShowProposalsDropdown] = useState(false);
   const [incomingProposalsCount, setIncomingProposalsCount] = useState(0);
+  const [lastProposalsCountFetch, setLastProposalsCountFetch] = useState(0);
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showNewProposalModal, setShowNewProposalModal] = useState(false);
@@ -71,6 +72,9 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
   const proposalsDropdownRef = useRef<HTMLDivElement>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTouchRef = useRef<{ clientX: number; clientY: number; chat: any } | null>(null);
+  const justDidLongPressRef = useRef(false);
 
   useEffect(() => {
     if (user) {
@@ -141,10 +145,20 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   };
 
   const loadProposalsCount = async () => {
+    // Throttle to avoid spamming the API on every small interaction
+    const now = Date.now();
+    if (now - lastProposalsCountFetch < 5000) {
+      return;
+    }
+    setLastProposalsCountFetch(now);
     try {
       const data: any = await proposalApi.getProposals();
       const list = Array.isArray(data) ? data : data?.proposals ?? data?.data ?? [];
-      const received = list.filter((p: any) => String(p.receiver_id || p.receiver?._id || p.receiver) === String(myId) && (p.status === 'pending' || !p.status));
+      const received = list.filter(
+        (p: any) =>
+          String(p.receiver_id || p.receiver?._id || p.receiver) === String(myId) &&
+          (p.status === 'pending' || !p.status),
+      );
       setIncomingProposalsCount(received.length);
     } catch {
       setIncomingProposalsCount(0);
@@ -321,10 +335,48 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     });
   };
 
-  const handleOpenContextMenu = (e: React.MouseEvent, chat: any) => {
-    // Her zaman yeni pozisyonla aç (aynı chat için bile)
+  const handleOpenContextMenuAt = (clientX: number, clientY: number, chat: any) => {
     setContextChat(chat);
-    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    setContextMenuPos({ x: clientX, y: clientY });
+  };
+
+  const handleOpenContextMenu = (e: React.MouseEvent, chat: any) => {
+    e.preventDefault();
+    handleOpenContextMenuAt(e.clientX, e.clientY, chat);
+  };
+
+  const LONG_PRESS_MS = 500;
+
+  const handleChatRowTouchStart = (e: React.TouchEvent, chat: any) => {
+    const touch = e.touches[0];
+    if (!touch) return;
+    longPressTouchRef.current = { clientX: touch.clientX, clientY: touch.clientY, chat };
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      const t = longPressTouchRef.current;
+      longPressTouchRef.current = null;
+      if (t) {
+        handleOpenContextMenuAt(t.clientX, t.clientY, t.chat);
+        justDidLongPressRef.current = true;
+        setTimeout(() => { justDidLongPressRef.current = false; }, 300);
+      }
+    }, LONG_PRESS_MS);
+  };
+
+  const handleChatRowTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressTouchRef.current = null;
+  };
+
+  const handleChatRowTouchMove = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    longPressTouchRef.current = null;
   };
 
   useEffect(() => {
@@ -1320,6 +1372,10 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                             e.stopPropagation();
                             handleOpenContextMenu(e, chat);
                           }}
+                          onTouchStart={(e) => handleChatRowTouchStart(e, chat)}
+                          onTouchEnd={handleChatRowTouchEnd}
+                          onTouchMove={handleChatRowTouchMove}
+                          onTouchCancel={handleChatRowTouchEnd}
                           className={`group w-full px-3 py-2.5 flex items-center transition-colors cursor-pointer ${
                             selectedChat === chatId
                               ? actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
@@ -1327,7 +1383,12 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                           } ${isArchived ? 'opacity-70' : ''} ${isPinned ? 'border-l-3 border-green-500' : ''}`}
                         >
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              if (justDidLongPressRef.current) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return;
+                              }
                               if (onChatSelect) onChatSelect(chatId);
                               router.push('/chat');
                             }}
@@ -1422,7 +1483,10 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                     className={`chat-context-menu fixed z-50 w-56 rounded-lg shadow-xl border ${
                       actualTheme === 'dark' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-800'
                     }`}
-                    style={{ top: contextMenuPos.y - 20, left: Math.min(contextMenuPos.x - 20, window.innerWidth - 240) }}
+                    style={{
+                      top: Math.max(8, Math.min(contextMenuPos.y - 20, typeof window !== 'undefined' ? window.innerHeight - 320 : contextMenuPos.y - 20)),
+                      left: Math.max(8, Math.min(contextMenuPos.x - 20, typeof window !== 'undefined' ? window.innerWidth - 232 : contextMenuPos.x - 20)),
+                    }}
                     onClick={(e) => e.stopPropagation()}
                   >
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-semibold uppercase tracking-wide opacity-70">

@@ -7,7 +7,6 @@ import type { TranslationKey } from '@/lib/translations';
 import { authApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
-type UserType = 'normal' | 'company';
 
 // Şirket kategorileri (iş alanı)
 const COMPANY_CATEGORIES: { value: string; labelKey: TranslationKey }[] = [
@@ -143,9 +142,6 @@ export default function PhoneAuthWidget() {
   const [localPhone, setLocalPhone] = useState('');
   const [code, setCode] = useState('');
   const [username, setUsername] = useState('');
-  const [userType, setUserType] = useState<UserType>('normal');
-  const [companyName, setCompanyName] = useState('');
-  const [companyCategory, setCompanyCategory] = useState('');
   const [profession, setProfession] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -235,8 +231,6 @@ export default function PhoneAuthWidget() {
       // Only treat as existing user if they already have a name (username or display_name)
       const hasName = !!(response.user?.username?.trim?.() || response.user?.display_name?.trim?.());
       setIsExistingUser(hasName);
-      const ut = response.user?.user_type;
-      if (ut === 'company' || ut === 'normal') setUserType(ut);
       if (response.user?.username) setUsername(response.user.username);
       setStep('details');
     } catch (err: any) {
@@ -254,10 +248,6 @@ export default function PhoneAuthWidget() {
 
   const completeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (userType === 'company' && (!companyName.trim() || !companyCategory)) {
-      setError(t('fillCompanyFields'));
-      return;
-    }
     setError('');
     setLoading(true);
     try {
@@ -265,9 +255,7 @@ export default function PhoneAuthWidget() {
         phoneNumber: fullPhone,
         code,
         username: username || undefined,
-        userType,
-        companyName: userType === 'company' ? companyName.trim() : undefined,
-        companyCategory: userType === 'company' ? companyCategory : undefined,
+        userType: 'normal',
         profession: profession || undefined,
       });
     } catch (err: any) {
@@ -443,60 +431,10 @@ export default function PhoneAuthWidget() {
 
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('accountType')}</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setUserType('normal')}
-                  className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
-                    userType === 'normal'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {t('normalUser')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUserType('company')}
-                  className={`py-3 px-4 rounded-xl border-2 text-sm font-medium transition-all ${
-                    userType === 'company'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {t('companyAccount')}
-                </button>
+              <div className="py-3 px-4 rounded-xl border-2 text-sm font-medium border-blue-500 bg-blue-50 text-blue-700 shadow-md">
+                {t('normalUser')}
               </div>
             </div>
-
-            {!isExistingUser && userType === 'company' && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('companyName')}</label>
-                  <input
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder={t('companyNamePlaceholder')}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('companyCategory')}</label>
-                  <select
-                    value={companyCategory}
-                    onChange={(e) => setCompanyCategory(e.target.value)}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                  >
-                    <option value="">{t('selectCategory')}</option>
-                    {COMPANY_CATEGORIES.map((cat) => (
-                      <option key={cat.value} value={cat.value}>
-                        {t(cat.labelKey)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
 
             {!isExistingUser && (
               <>

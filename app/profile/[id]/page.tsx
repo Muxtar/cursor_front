@@ -31,7 +31,10 @@ export default function ProfilePage() {
   const [proposals, setProposals] = useState<any[]>([]);
   const [proposalChatAnonymous, setProposalChatAnonymous] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [deletingProposalId, setDeletingProposalId] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [companyNameInput, setCompanyNameInput] = useState('');
+  const [savingCompany, setSavingCompany] = useState(false);
 
   useEffect(() => {
     if (currentUser && userId) {
@@ -45,6 +48,12 @@ export default function ProfilePage() {
       router.push('/login');
     }
   }, [currentUser, userId]);
+
+  useEffect(() => {
+    if (profileUser && isOwnProfile) {
+      setCompanyNameInput(profileUser.company_name || '');
+    }
+  }, [profileUser, isOwnProfile]);
 
   const loadProfile = async () => {
     try {
@@ -167,6 +176,23 @@ export default function ProfilePage() {
     }
   };
 
+  const handleDeleteProposal = async (proposalId: string) => {
+    const id = typeof proposalId === 'string' ? proposalId : String((proposalId as any)?.$oid ?? proposalId);
+    if (!id || id.length < 20) {
+      alert('Invalid proposal ID');
+      return;
+    }
+    setDeletingProposalId(id);
+    try {
+      await proposalApi.deleteProposal(id);
+      loadProposals();
+    } catch (error: any) {
+      alert('Failed to delete: ' + (error?.message || 'Unknown error'));
+    } finally {
+      setDeletingProposalId(null);
+    }
+  };
+
   const handleProfilePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !isOwnProfile) return;
@@ -187,6 +213,19 @@ export default function ProfilePage() {
     } finally {
       setUploadingPhoto(false);
       e.target.value = '';
+    }
+  };
+
+  const handleSaveCompanyName = async () => {
+    if (!isOwnProfile) return;
+    setSavingCompany(true);
+    try {
+      await userApi.updateMe({ company_name: companyNameInput.trim() || null });
+      await loadProfile();
+    } catch (err: any) {
+      alert('Failed to update company name: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSavingCompany(false);
     }
   };
 
@@ -289,6 +328,39 @@ export default function ProfilePage() {
               <h1 className={`text-3xl font-bold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 {profileUser.username || profileUser.first_name || 'User'}
               </h1>
+              {isOwnProfile ? (
+                <div className="mb-3">
+                  <label className={`block text-xs font-semibold uppercase tracking-wide mb-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Company (optional)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      value={companyNameInput}
+                      onChange={(e) => setCompanyNameInput(e.target.value)}
+                      placeholder="Add your company name"
+                      className={`flex-1 px-3 py-2 rounded-md border text-sm ${
+                        actualTheme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveCompanyName}
+                      disabled={savingCompany}
+                      className="px-4 py-2 rounded-md bg-green-500 text-white text-sm font-medium hover:bg-green-600 disabled:opacity-50"
+                    >
+                      {savingCompany ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                profileUser.company_name && (
+                  <p className={`mb-3 text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Company: <span className="font-medium">{profileUser.company_name}</span>
+                  </p>
+                )
+              )}
               {profileUser.bio && (
                 <p className={`mb-4 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{profileUser.bio}</p>
               )}
@@ -426,8 +498,10 @@ export default function ProfilePage() {
                 ) : (
                   proposals
                     .filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id))
-                    .map((p: any) => (
-                      <div key={p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                    .map((p: any) => {
+                      const pid = typeof p.id === 'string' ? p.id : (p._id && typeof p._id === 'string' ? p._id : String(p.id ?? p._id ?? ''));
+                      return (
+                      <div key={pid || p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
                         <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
                         <p className={`mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
                         <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
@@ -436,8 +510,20 @@ export default function ProfilePage() {
                         <p className={`text-xs mt-1 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                           {new Date(p.created_at).toLocaleDateString()}
                         </p>
+                        {p.status === 'pending' && (
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProposal(pid)}
+                              disabled={deletingProposalId === pid}
+                              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-sm"
+                            >
+                              {deletingProposalId === pid ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ))
+                    ); })
                 )}
               </div>
             </div>
