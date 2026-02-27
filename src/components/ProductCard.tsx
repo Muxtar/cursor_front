@@ -65,7 +65,7 @@ export default function ProductCard({ product, onLike }: ProductCardProps) {
   return (
     <div
       onClick={handleClick}
-      className="bg-white rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow"
+      className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow min-w-0"
     >
       {/* Image */}
       <div className="relative w-full h-64 bg-gray-200">
@@ -87,37 +87,37 @@ export default function ProductCard({ product, onLike }: ProductCardProps) {
       </div>
 
       {/* Content */}
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         {/* Owner Info */}
-        <div className="flex items-center space-x-2 mb-2">
+        <div className="flex items-center space-x-2 mb-2 min-w-0">
           <img
             src={product.owner.avatar || '/default-avatar.png'}
             alt={product.owner.username}
-            className="w-8 h-8 rounded-full"
+            className="w-8 h-8 rounded-full flex-shrink-0"
             onError={(e) => {
               (e.target as HTMLImageElement).src = '/default-avatar.png';
             }}
           />
-          <span className="text-sm font-medium text-gray-800">
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
             {product.owner.username}
           </span>
         </div>
 
         {/* Product Info */}
-        <h3 className="font-semibold text-lg text-gray-900 mb-1 line-clamp-1">
+        <h3 className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white mb-1 line-clamp-1">
           {product.name}
         </h3>
-        <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2 line-clamp-2 break-words">
           {product.description}
         </p>
 
         {/* Category & Price */}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+        <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
+          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-1 rounded truncate">
             {product.category}
           </span>
           {product.price && (
-            <span className="text-sm font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white flex-shrink-0">
               ${product.price.toLocaleString()}
             </span>
           )}

@@ -465,10 +465,7 @@ export default function PhoneAuthWidget() {
             )}
             <button
               type="submit"
-              disabled={
-                loading ||
-                (!isExistingUser && userType === 'company' && (!companyName.trim() || !companyCategory))
-              }
+              disabled={loading}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
             >
               {isExistingUser ? t('continue') : loading ? t('creating') : t('createAccount')}

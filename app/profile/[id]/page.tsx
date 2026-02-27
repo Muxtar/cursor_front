@@ -250,21 +250,21 @@ export default function ProfilePage() {
 
   return (
     <AppLayout title="Profile">
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
       {/* Header */}
       <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex items-center justify-between min-w-0 gap-2">
             <button
               onClick={() => router.back()}
-              className={`flex items-center space-x-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-600'} hover:opacity-80`}
+              className={`flex items-center space-x-2 flex-shrink-0 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-600'} hover:opacity-80`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <span>Back</span>
+              <span className="text-sm sm:text-base">Back</span>
             </button>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
               <Link
                 href="/chat"
                 className={`text-sm ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'} hover:opacity-80`}
@@ -284,16 +284,16 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 md:py-8">
         {/* Profile Header */}
-        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6 mb-6`}>
-          <div className="flex items-start space-x-6">
-            <div className="relative">
-              <label className={`block w-24 h-24 rounded-full overflow-hidden cursor-pointer ${isOwnProfile ? 'hover:opacity-90' : ''}`} title={isOwnProfile ? 'Change profile photo' : ''}>
+        <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6`}>
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+            <div className="relative flex-shrink-0 mx-auto sm:mx-0">
+              <label className={`block w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden cursor-pointer ${isOwnProfile ? 'hover:opacity-90' : ''}`} title={isOwnProfile ? 'Change profile photo' : ''}>
                 {profileUser.avatar ? (
                   <img src={profileUser.avatar} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className={`w-full h-full ${actualTheme === 'dark' ? 'bg-green-600' : 'bg-green-500'} flex items-center justify-center text-white text-3xl font-semibold`}>
+                  <div className={`w-full h-full ${actualTheme === 'dark' ? 'bg-green-600' : 'bg-green-500'} flex items-center justify-center text-white text-2xl sm:text-3xl font-semibold`}>
                     {profileUser.username?.[0]?.toUpperCase() || profileUser.phone_number?.[0] || 'U'}
                   </div>
                 )}
@@ -315,7 +315,7 @@ export default function ProfilePage() {
               {isOwnProfile && profileUser.qr_code && (
                 <button
                   onClick={() => setShowQRCode(true)}
-                  className="absolute bottom-0 right-0 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition"
+                  className="absolute bottom-0 right-0 w-7 h-7 sm:w-8 sm:h-8 bg-green-500 rounded-full flex items-center justify-center hover:bg-green-600 transition"
                   title="Show QR Code"
                 >
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -324,8 +324,8 @@ export default function ProfilePage() {
                 </button>
               )}
             </div>
-            <div className="flex-1">
-              <h1 className={`text-3xl font-bold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            <div className="flex-1 min-w-0 w-full">
+              <h1 className={`text-2xl sm:text-3xl font-bold mb-2 truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 {profileUser.username || profileUser.first_name || 'User'}
               </h1>
               {isOwnProfile ? (
@@ -333,12 +333,12 @@ export default function ProfilePage() {
                   <label className={`block text-xs font-semibold uppercase tracking-wide mb-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
                     Company (optional)
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       value={companyNameInput}
                       onChange={(e) => setCompanyNameInput(e.target.value)}
                       placeholder="Add your company name"
-                      className={`flex-1 px-3 py-2 rounded-md border text-sm ${
+                      className={`flex-1 min-w-0 px-3 py-2 rounded-md border text-sm ${
                         actualTheme === 'dark'
                           ? 'bg-gray-700 border-gray-600 text-white'
                           : 'bg-white border-gray-300 text-gray-900'
@@ -348,7 +348,7 @@ export default function ProfilePage() {
                       type="button"
                       onClick={handleSaveCompanyName}
                       disabled={savingCompany}
-                      className="px-4 py-2 rounded-md bg-green-500 text-white text-sm font-medium hover:bg-green-600 disabled:opacity-50"
+                      className="px-4 py-2 rounded-md bg-green-500 text-white text-sm font-medium hover:bg-green-600 disabled:opacity-50 flex-shrink-0 w-full sm:w-auto"
                     >
                       {savingCompany ? 'Saving...' : 'Save'}
                     </button>
@@ -362,15 +362,15 @@ export default function ProfilePage() {
                 )
               )}
               {profileUser.bio && (
-                <p className={`mb-4 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{profileUser.bio}</p>
+                <p className={`mb-4 break-words ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{profileUser.bio}</p>
               )}
-              <div className={`flex items-center space-x-6 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              <div className={`flex flex-wrap items-center gap-x-6 gap-y-1 text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
                 <div>
                   <span className={`font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{products.length}</span>
                   <span className="ml-1">Products</span>
                 </div>
                 {profileUser.phone_number && !profileUser.hide_phone_number && (
-                  <div>
+                  <div className="min-w-0 truncate">
                     <span className={`font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                       {profileUser.phone_number}
                     </span>
@@ -378,18 +378,18 @@ export default function ProfilePage() {
                 )}
               </div>
             </div>
-            <div className="flex flex-col space-y-2">
+            <div className="flex flex-col space-y-2 w-full sm:w-auto">
               {isOwnProfile ? (
                 <Link
                   href="/explore/create"
-                  className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition-colors text-center"
+                  className="bg-green-500 text-white px-6 py-2.5 rounded-lg hover:bg-green-600 transition-colors text-center w-full sm:w-auto text-sm font-medium"
                 >
                   + Add Product
                 </Link>
               ) : (
                 <button
                   onClick={() => setShowProposalModal(true)}
-                  className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                  className="bg-green-500 text-white px-6 py-2.5 rounded-lg hover:bg-green-600 transition-colors w-full sm:w-auto text-sm font-medium"
                 >
                   Send Proposal
                 </button>
@@ -400,8 +400,8 @@ export default function ProfilePage() {
 
         {/* Products Section */}
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className={`text-2xl font-bold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          <div className="flex items-center justify-between gap-2 mb-4 min-w-0">
+            <h2 className={`text-xl sm:text-2xl font-bold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
               {isOwnProfile ? 'My Products' : 'Products'}
             </h2>
             {products.length > 0 && (
@@ -410,7 +410,7 @@ export default function ProfilePage() {
           </div>
 
           {products.length === 0 ? (
-            <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-12 text-center`}>
+            <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-md p-6 sm:p-12 text-center`}>
               <p className={`text-lg mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                 {isOwnProfile
                   ? "You haven't created any products yet"
@@ -426,7 +426,7 @@ export default function ProfilePage() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
               {products.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -447,9 +447,9 @@ export default function ProfilePage() {
 
         {/* Proposals (only on own profile) */}
         {isOwnProfile && (
-          <div className="mt-8 space-y-8" id="proposals-received">
+          <div className="mt-6 sm:mt-8 space-y-6 sm:space-y-8" id="proposals-received">
             <div>
-              <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              <h2 className={`text-xl sm:text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 Proposals received
               </h2>
               <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -463,12 +463,12 @@ export default function ProfilePage() {
                     .filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending')
                     .map((p: any) => (
                       <div key={p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                        <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
-                        <p className={`mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                        <p className={`font-medium break-words ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                        <p className={`mt-1 break-words ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
                         <p className={`text-xs mt-2 ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                           {new Date(p.created_at).toLocaleDateString()}
                         </p>
-                        <div className="flex gap-2 mt-3">
+                        <div className="flex flex-wrap gap-2 mt-3">
                           <button
                             onClick={() => handleAcceptProposal(p.id || p._id)}
                             disabled={acceptingId === (p.id || p._id)}
@@ -489,7 +489,7 @@ export default function ProfilePage() {
               </div>
             </div>
             <div id="proposals-sent">
-              <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              <h2 className={`text-xl sm:text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
                 Proposals you sent
               </h2>
               <div className={`rounded-lg ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md divide-y ${actualTheme === 'dark' ? 'divide-gray-700' : 'divide-gray-200'}`}>
@@ -502,8 +502,8 @@ export default function ProfilePage() {
                       const pid = typeof p.id === 'string' ? p.id : (p._id && typeof p._id === 'string' ? p._id : String(p.id ?? p._id ?? ''));
                       return (
                       <div key={pid || p.id || p._id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                        <p className={`font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
-                        <p className={`mt-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                        <p className={`font-medium break-words ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                        <p className={`mt-1 break-words ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
                         <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
                           {p.status}
                         </span>
@@ -511,7 +511,7 @@ export default function ProfilePage() {
                           {new Date(p.created_at).toLocaleDateString()}
                         </p>
                         {p.status === 'pending' && (
-                          <div className="flex gap-2 mt-3">
+                          <div className="flex flex-wrap gap-2 mt-3">
                             <button
                               type="button"
                               onClick={() => handleDeleteProposal(pid)}
@@ -531,8 +531,8 @@ export default function ProfilePage() {
         )}
 
         {/* Comments (anonymous; profile owner can reply to commenter) */}
-        <div className="mt-8">
-          <h2 className={`text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+        <div className="mt-6 sm:mt-8">
+          <h2 className={`text-xl sm:text-2xl font-bold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
             Comments
           </h2>
           <p className={`text-sm mb-4 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -568,8 +568,8 @@ export default function ProfilePage() {
             ) : (
               comments.map((comment) => (
                 <div key={comment.id} className={`p-4 ${actualTheme === 'dark' ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                  <p className={`${actualTheme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
-                  <div className="flex items-center justify-between mt-2">
+                  <p className={`break-words ${actualTheme === 'dark' ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
                     <span className={`text-xs ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
                       {new Date(comment.created_at).toLocaleDateString()}
                     </span>
@@ -591,8 +591,8 @@ export default function ProfilePage() {
 
       {/* QR Code Modal */}
       {showQRCode && profileUser.qr_code && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowQRCode(false)}>
-          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 max-w-sm`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowQRCode(false)}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 sm:p-6 max-w-sm w-full`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>QR Code</h3>
               <button
@@ -620,8 +620,8 @@ export default function ProfilePage() {
 
       {/* Proposal Modal */}
       {showProposalModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowProposalModal(false)}>
-          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-6 w-96 max-w-[90vw]`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProposalModal(false)}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Send Proposal</h3>
               <button
