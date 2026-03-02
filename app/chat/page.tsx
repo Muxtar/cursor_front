@@ -7,6 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { WebSocketClient } from '@/lib/websocket';
 import ChatWindow from '@/components/ChatWindow';
 import Sidebar from '@/components/Sidebar';
+import BottomNav from '@/components/BottomNav';
 import { useSearchParams } from 'next/navigation';
 import { api, callApi, userApi } from '@/lib/api';
 
@@ -320,12 +321,14 @@ function ChatContent() {
           </div>
         </div>
       )}
-      {/* Desktop: Sidebar always visible, Mobile: Show sidebar when no chat selected */}
+      {/* Desktop: Sidebar always visible, Mobile: Show sidebar when no chat selected; mobilde footer için yer bırak */}
       <div className={`${
         selectedChat 
           ? 'hidden md:block'
           : 'block'
-      } w-full md:w-[420px] flex-shrink-0 min-h-0 h-full overflow-hidden`}>
+      } w-full md:w-[420px] flex-shrink-0 min-h-0 overflow-hidden ${
+        !selectedChat ? 'h-[calc(100dvh-4.5rem)] md:h-full' : 'h-full'
+      }`}>
         <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} />
       </div>
       
@@ -360,6 +363,16 @@ function ChatContent() {
           </div>
         )}
       </div>
+
+      {/* Mobil: Sohbet listesi/gruplar/contacts görünürken footer her zaman altta; iki kişi mesajlaşma ekranında gizli */}
+      {!selectedChat ? (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[35] md:hidden"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
+          <BottomNav />
+        </div>
+      ) : null}
     </div>
   );
 }
