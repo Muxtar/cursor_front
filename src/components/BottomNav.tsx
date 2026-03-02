@@ -18,21 +18,23 @@ export default function BottomNav() {
   const profileHref = `/profile/${user?.id || (user as any)?._id}`;
 
   const linkClass = (active: boolean) =>
-    `flex flex-col items-center space-y-1 p-2 rounded-lg transition ${
+    `flex flex-col items-center justify-center space-y-0.5 p-2 min-w-[56px] rounded-lg transition ${
       active
         ? actualTheme === 'dark'
-          ? 'bg-blue-600 text-white'
-          : 'bg-blue-100 text-blue-600'
+          ? 'bg-blue-600 text-white shadow-inner'
+          : 'bg-blue-100 text-blue-600 font-medium'
         : actualTheme === 'dark'
-          ? 'hover:bg-gray-700 text-gray-300'
-          : 'hover:bg-gray-100 text-gray-600'
+          ? 'hover:bg-gray-700 text-gray-400'
+          : 'hover:bg-gray-100 text-gray-500'
     }`;
 
   return (
     <div
-      className={`flex items-center justify-around p-3 border-t ${
+      className={`flex items-center justify-around p-2 border-t ${
         actualTheme === 'dark' ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
       }`}
+      role="navigation"
+      aria-label="Bottom navigation"
     >
       <Link href="/story/create" className={linkClass(pathname === '/story/create')}>
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
