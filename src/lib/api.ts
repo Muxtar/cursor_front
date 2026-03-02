@@ -309,6 +309,9 @@ export const socialApi = {
 export const profileCommentApi = {
   create: (targetUserId: string, text: string) =>
     api.post('/profile-comments', { target_user_id: targetUserId, text }),
+  /** Giriş yapmadan numaraya şərh yazmaq (ana səhifədə); hedef nömrə sistemdə qeydiyyatda olmalıdır. */
+  createByPhone: (phoneNumber: string, text: string) =>
+    api.post('/public/profile-comments', { phone_number: phoneNumber.trim(), text: text.trim() }),
   list: (targetUserId: string) =>
     api.get(`/profile-comments?target_user_id=${encodeURIComponent(targetUserId)}`),
   listByPhoneNumber: (phoneNumber: string) =>

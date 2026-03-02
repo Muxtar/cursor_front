@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import Sidebar from '@/components/Sidebar';
+import BottomNav from '@/components/BottomNav';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -35,8 +36,9 @@ export default function AppLayout({ children, title = '', onChatSelect, selected
       <div
         className={`
           md:relative md:flex-shrink-0
-          fixed inset-y-0 left-0 z-40 h-dvh w-full md:w-[420px] md:max-w-[420px] md:h-full
+          fixed inset-y-0 left-0 z-40 w-full md:w-[420px] md:max-w-[420px] md:h-full
           transform transition-transform duration-200 ease-out
+          ${pathname !== '/chat' || !selectedChat ? 'h-[calc(100dvh-4.5rem)] md:h-full' : 'h-dvh md:h-full'}
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
       >
@@ -86,10 +88,24 @@ export default function AppLayout({ children, title = '', onChatSelect, selected
           )}
         </header>
 
-        {/* Page content - yalnız bu hissə scroll olur */}
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+        {/* Page content - mobilde alt menü açıksa altta boşluk bırakır */}
+        <main
+          className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain ${
+            pathname !== '/chat' || !selectedChat ? 'pb-20 md:pb-0' : ''
+          }`}
+        >
           {children}
         </main>
+
+        {/* Mobil: alt menü (Stories, Explore, Location, Wallet, Profile) her zaman ekranın en altında sabit; yalnızca mesaj ekranına geçince gizlenir */}
+        {pathname !== '/chat' || !selectedChat ? (
+          <div
+            className="fixed bottom-0 left-0 right-0 z-30 md:hidden"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
+            <BottomNav />
+          </div>
+        ) : null}
       </div>
     </div>
   );

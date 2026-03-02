@@ -401,6 +401,16 @@ export const az = {
   listView: 'Siyahı Görünüşü',
   noLocationPermission: 'Xəritədə yaxınlıqdakı istifadəçiləri göstərmək üçün məkan icazəsi tələb olunur.',
   yourLocation: 'Sizin Məkanınız',
+
+  // Qonaq şərh (ana səhifə - girişsiz)
+  leaveCommentForNumber: 'Bir nömrəyə şərh yaz',
+  leaveCommentNumberPlaceholder: 'Telefon nömrəsi (məs. +994501234567)',
+  leaveCommentTextPlaceholder: 'Mesajınız...',
+  leaveCommentSubmit: 'Şərh göndər',
+  leaveCommentSending: 'Göndərilir...',
+  leaveCommentSuccess: 'Şərh göndərildi. Nömrə sahibi giriş edəndə görəcək.',
+  leaveCommentError: 'Şərh göndərilə bilmədi.',
+  leaveCommentUserNotFound: 'Bu nömrə ilə istifadəçi tapılmadı.',
 };
 
 

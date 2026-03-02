@@ -401,5 +401,15 @@ export const tr = {
   listView: 'Liste Görünümü',
   noLocationPermission: 'Haritada yakındaki kullanıcıları göstermek için konum izni gereklidir.',
   yourLocation: 'Konumunuz',
+
+  // Misafir yorum (ana sayfa - girişsiz)
+  leaveCommentForNumber: 'Bir numaraya yorum yaz',
+  leaveCommentNumberPlaceholder: 'Telefon numarası (örn. +994501234567)',
+  leaveCommentTextPlaceholder: 'Mesajınız...',
+  leaveCommentSubmit: 'Yorum gönder',
+  leaveCommentSending: 'Gönderiliyor...',
+  leaveCommentSuccess: 'Yorum gönderildi. Numarayı kullanan giriş yaptığında görecek.',
+  leaveCommentError: 'Yorum gönderilemedi.',
+  leaveCommentUserNotFound: 'Bu numarayla kullanıcı bulunamadı.',
 };
 

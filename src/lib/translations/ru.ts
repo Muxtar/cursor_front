@@ -401,6 +401,16 @@ export const ru = {
   listView: 'Вид списка',
   noLocationPermission: 'Для отображения пользователей поблизости на карте требуется разрешение на местоположение.',
   yourLocation: 'Ваше местоположение',
+
+  // Гостевой комментарий (главная — без входа)
+  leaveCommentForNumber: 'Оставить комментарий по номеру',
+  leaveCommentNumberPlaceholder: 'Номер телефона (напр. +994501234567)',
+  leaveCommentTextPlaceholder: 'Ваше сообщение...',
+  leaveCommentSubmit: 'Отправить комментарий',
+  leaveCommentSending: 'Отправка...',
+  leaveCommentSuccess: 'Комментарий отправлен. Владелец номера увидит его при входе.',
+  leaveCommentError: 'Не удалось отправить комментарий.',
+  leaveCommentUserNotFound: 'Пользователь с этим номером не найден.',
 };
 
 

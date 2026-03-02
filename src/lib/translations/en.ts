@@ -401,5 +401,15 @@ export const en = {
   listView: 'List View',
   noLocationPermission: 'Location permission is required to show nearby users on map.',
   yourLocation: 'Your Location',
+
+  // Guest comment (landing page - no login)
+  leaveCommentForNumber: 'Leave a comment for a number',
+  leaveCommentNumberPlaceholder: 'Phone number (e.g. +994501234567)',
+  leaveCommentTextPlaceholder: 'Your message...',
+  leaveCommentSubmit: 'Send comment',
+  leaveCommentSending: 'Sending...',
+  leaveCommentSuccess: 'Comment sent. The person will see it when they log in.',
+  leaveCommentError: 'Could not send comment.',
+  leaveCommentUserNotFound: 'No user found with this phone number.',
 };
 

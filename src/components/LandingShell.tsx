@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageSearch from '@/components/ImageSearch';
+import GuestCommentForm from '@/components/GuestCommentForm';
 import { useAuth } from '@/contexts/AuthContext';
 import LanguageSelector from '@/components/LanguageSelector';
 
@@ -89,10 +90,11 @@ export default function LandingShell({ children }: { children: React.ReactNode }
         </div>
       )}
 
-      {/* Center websearch like Google - sadece giriş yapmamış kullanıcıya */}
-      <main className="min-h-screen flex flex-col items-center justify-center px-4">
-        <div className="w-full max-w-5xl">
+      {/* Center: arama + giriş yapmadan numaraya şərh yazma */}
+      <main className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
+        <div className="w-full max-w-5xl flex flex-col items-center">
           <ImageSearch variant="google" />
+          <GuestCommentForm />
         </div>
       </main>
     </div>
