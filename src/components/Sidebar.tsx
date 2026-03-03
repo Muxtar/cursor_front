@@ -1781,8 +1781,8 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
           )}
         </div>
 
-        {/* Bottom Navigation - masaüstünde Sidebar içinde; mobilde AppLayout'ta fixed gösterildiği için burada gizli; chat ekranında masaüstünde de gizlenir */}
-        <div className={`hidden md:block flex-shrink-0 mt-auto ${pathname === '/chat' && selectedChat ? 'md:hidden' : ''}`}>
+        {/* Bottom Navigation - masaüstündə həmişə Sidebar-da görünsün; mobilde chat səhifəsində fixed footer yalnız chat seçilməyəndə göstərilir (chat page-də), burada mobilde gizlidir (hidden md:block) */}
+        <div className="hidden md:block flex-shrink-0 mt-auto">
           <BottomNav />
         </div>
       </div>

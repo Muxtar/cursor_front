@@ -9,17 +9,23 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 // Get base API URL for file serving (remove /api/v1 suffix)
 const getBaseUrl = () => {
-  // API URL'ini api.ts'den al (aynı mantık)
   let apiUrl: string;
   if (typeof window !== 'undefined') {
-    // Browser'da: build-time env variable veya fallback
     apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
   } else {
-    // SSR: build-time env variable
     apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
   }
-  // Remove /api/v1 suffix to get base URL
-  return apiUrl.replace('/api/v1', '');
+  return apiUrl.replace(/\/api\/v1\/?$/, '');
+};
+
+// Full URL for message file/image so it works for both old (/uploads/xxx) and new (/api/v1/files/xxx) backend format
+const getMessageFileUrl = (fileUrl: string | undefined): string => {
+  if (!fileUrl) return '';
+  const base = getBaseUrl();
+  if (fileUrl.startsWith('http')) return fileUrl;
+  if (fileUrl.startsWith('/api/v1/files/')) return base + fileUrl;
+  if (fileUrl.startsWith('/uploads/')) return base + '/api/v1/files/' + fileUrl.replace(/^\/uploads\//, '');
+  return base + fileUrl;
 };
 
 interface Message {
@@ -3653,21 +3659,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     {message.message_type === 'image' && message.file_url && (
                       <div className="mb-2">
                         <img
-                          src={`${getBaseUrl()}${message.file_url}`}
+                          src={getMessageFileUrl(message.file_url)}
                           alt="Shared image"
                           className="max-w-full max-h-96 rounded-lg cursor-pointer"
-                          onClick={() => window.open(`${getBaseUrl()}${message.file_url}`, '_blank')}
+                          onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
                         />
                       </div>
                     )}
                     {message.message_type === 'video' && message.file_url && (
                       <div className="mb-2">
-                        <video controls src={`${getBaseUrl()}${message.file_url}`} className="max-w-full max-h-96 rounded-lg" />
+                        <video controls src={getMessageFileUrl(message.file_url)} className="max-w-full max-h-96 rounded-lg" />
                       </div>
                     )}
-                    {message.message_type === 'audio' && message.file_url && (
+                    {(message.message_type === 'audio' || message.message_type === 'voice_message') && message.file_url && (
                       <div className="mb-2">
-                        <audio controls src={`${getBaseUrl()}${message.file_url}`} className="w-full" />
+                        <audio controls src={getMessageFileUrl(message.file_url)} className="w-full" />
                       </div>
                     )}
                     {message.message_type === 'location' && message.location && (
@@ -3723,8 +3729,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                           )}
                         </div>
                         <a
-                          href={`${getBaseUrl()}${message.file_url}`}
-                          download
+                          href={getMessageFileUrl(message.file_url)}
+                          download={message.file_name || undefined}
                           className="p-1 hover:bg-gray-300 dark:hover:bg-gray-600 rounded"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
