@@ -32,6 +32,11 @@ const getApiUrlRuntime = (): string => {
   return API_URL;
 };
 
+/** Base URL for loading chat files/images (no /api/v1). Use for img src and download links. */
+export function getFileBaseUrl(): string {
+  return getApiUrlRuntime().replace(/\/api\/v1\/?$/, '');
+}
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;

@@ -1,31 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi, callApi } from '@/lib/api';
+import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi, callApi, getFileBaseUrl } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
-// Get base API URL for file serving (remove /api/v1 suffix)
-const getBaseUrl = () => {
-  let apiUrl: string;
-  if (typeof window !== 'undefined') {
-    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
-  } else {
-    apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://cursurback-production.up.railway.app/api/v1';
-  }
-  return apiUrl.replace(/\/api\/v1\/?$/, '');
-};
-
-// Full URL for message file/image so it works for both old (/uploads/xxx) and new (/api/v1/files/xxx) backend format
+// Full URL for message file/image (uses same base as API so localhost works)
 const getMessageFileUrl = (fileUrl: string | undefined): string => {
   if (!fileUrl) return '';
-  const base = getBaseUrl();
+  const base = getFileBaseUrl();
   if (fileUrl.startsWith('http')) return fileUrl;
   if (fileUrl.startsWith('/api/v1/files/')) return base + fileUrl;
   if (fileUrl.startsWith('/uploads/')) return base + '/api/v1/files/' + fileUrl.replace(/^\/uploads\//, '');
   return base + fileUrl;
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 };
 
 interface Message {
@@ -3655,25 +3650,46 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                       </div>
                     )}
 
-                    {/* Message Content */}
+                    {/* Message Content - WhatsApp style: media first, then optional caption */}
                     {message.message_type === 'image' && message.file_url && (
-                      <div className="mb-2">
-                        <img
-                          src={getMessageFileUrl(message.file_url)}
-                          alt="Shared image"
-                          className="max-w-full max-h-96 rounded-lg cursor-pointer"
-                          onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
-                        />
+                      <div className="mb-1">
+                        <div className="rounded-lg overflow-hidden max-w-[280px] sm:max-w-[320px]">
+                          <img
+                            src={getMessageFileUrl(message.file_url)}
+                            alt={message.content || 'Shared image'}
+                            className="w-full max-h-80 object-cover cursor-pointer block"
+                            loading="lazy"
+                            onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const wrap = (e.target as HTMLImageElement).closest('.rounded-lg');
+                              const fallback = wrap?.querySelector('.img-fallback');
+                              if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                            }}
+                          />
+                          <div className="img-fallback hidden py-8 px-4 bg-gray-300 dark:bg-gray-600 rounded-b-lg text-center text-sm">
+                            {t('image')}
+                          </div>
+                        </div>
+                        {message.content && (
+                          <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
+                        )}
                       </div>
                     )}
                     {message.message_type === 'video' && message.file_url && (
-                      <div className="mb-2">
-                        <video controls src={getMessageFileUrl(message.file_url)} className="max-w-full max-h-96 rounded-lg" />
+                      <div className="mb-1">
+                        <video controls src={getMessageFileUrl(message.file_url)} className="max-w-full max-h-80 rounded-lg w-full" />
+                        {message.content && (
+                          <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
+                        )}
                       </div>
                     )}
                     {(message.message_type === 'audio' || message.message_type === 'voice_message') && message.file_url && (
-                      <div className="mb-2">
-                        <audio controls src={getMessageFileUrl(message.file_url)} className="w-full" />
+                      <div className="mb-1">
+                        <audio controls src={getMessageFileUrl(message.file_url)} className="w-full max-w-[280px]" />
+                        {message.content && (
+                          <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
+                        )}
                       </div>
                     )}
                     {message.message_type === 'location' && message.location && (
@@ -3716,30 +3732,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                       </div>
                     )}
                     {message.message_type === 'file' && message.file_url && (
-                      <div className="mb-2 p-2 bg-gray-200 dark:bg-gray-700 rounded flex items-center space-x-2">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
+                      <a
+                        href={getMessageFileUrl(message.file_url)}
+                        download={message.file_name || undefined}
+                        className="mb-1 flex items-center gap-3 p-3 rounded-lg bg-gray-200/80 dark:bg-gray-700/80 hover:bg-gray-300/80 dark:hover:bg-gray-600/80 max-w-[280px] sm:max-w-[320px]"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-gray-400 dark:bg-gray-600 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{message.file_name || message.content}</p>
-                          {message.file_size && (
-                            <p className="text-xs text-gray-500">
-                              {(message.file_size / 1024 / 1024).toFixed(2)} MB
-                            </p>
+                          {message.file_size != null && message.file_size > 0 && (
+                            <p className="text-xs opacity-75">{formatFileSize(message.file_size)}</p>
                           )}
                         </div>
-                        <a
-                          href={getMessageFileUrl(message.file_url)}
-                          download={message.file_name || undefined}
-                          className="p-1 hover:bg-gray-300 dark:hover:bg-gray-600 rounded"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                          </svg>
-                        </a>
-                      </div>
+                        <svg className="w-5 h-5 flex-shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                      </a>
                     )}
-                    {message.content && message.message_type !== 'file' && (
+                    {message.content && message.message_type === 'text' && (
                       <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
                     )}
                     
