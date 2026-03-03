@@ -409,27 +409,28 @@ export default function LocationPage() {
                     <option value={50000}>50 {t('km')}</option>
                   </select>
                 </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    viewMode === 'list'
-                      ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                      : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {t('listView')}
-                </button>
-                <button
-                  onClick={() => setViewMode('map')}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
-                    viewMode === 'map'
-                      ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                      : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {t('mapView')}
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      viewMode === 'list'
+                        ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                        : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {t('listView')}
+                  </button>
+                  <button
+                    onClick={() => setViewMode('map')}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                      viewMode === 'map'
+                        ? actualTheme === 'dark' ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
+                        : actualTheme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {t('mapView')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
