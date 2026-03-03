@@ -209,8 +209,12 @@ export const userApi = {
   updateMe: (data: any) => api.put('/users/me', data),
   updateLocation: (data: { latitude: number; longitude: number; address?: string }) =>
     api.put('/users/location', data),
-  getNearbyUsers: (radius?: number) =>
-    api.get(`/users/nearby${radius ? `?radius=${radius}` : ''}`),
+  getNearbyUsers: (params?: { radius?: number; profession?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.radius != null) q.set('radius', String(params.radius));
+    if (params?.profession?.trim()) q.set('profession', params.profession.trim());
+    return api.get(`/users/nearby${q.toString() ? `?${q.toString()}` : ''}`);
+  },
   searchByUsername: (query: string) =>
     api.get(`/public/users/search?q=${encodeURIComponent(query)}`),
   searchUsers: (query: string) =>
@@ -305,17 +309,32 @@ export const socialApi = {
   unlink: (provider: string) => api.post(`/social/unlink/${provider}`),
 };
 
-// Profile comments (anonymous comments about a user; profile owner can reply to commenter)
+// Profile comments: phone (notify + deletable by owner), car_number/person_name (search-only)
+export type ProfileCommentTargetType = 'phone' | 'car_number' | 'person_name';
+
 export const profileCommentApi = {
   create: (targetUserId: string, text: string) =>
     api.post('/profile-comments', { target_user_id: targetUserId, text }),
-  /** Giriş yapmadan numaraya şərh yazmaq (ana səhifədə); hedef nömrə sistemdə qeydiyyatda olmalıdır. */
+  /** Create with type: phone (notify+deletable) or car_number/person_name (search-only). */
+  createWithTarget: (targetType: ProfileCommentTargetType, targetValue: string, text: string) =>
+    api.post('/profile-comments', { target_type: targetType, target_value: targetValue.trim(), text: text.trim() }),
+  /** Guest: create without login. Phone → user must exist, notification; car_number/person_name → search-only. */
   createByPhone: (phoneNumber: string, text: string) =>
     api.post('/public/profile-comments', { phone_number: phoneNumber.trim(), text: text.trim() }),
+  createPublicWithTarget: (targetType: ProfileCommentTargetType, targetValue: string, text: string) =>
+    api.post('/public/profile-comments', {
+      target_type: targetType,
+      target_value: targetValue.trim(),
+      ...(targetType === 'phone' ? { phone_number: targetValue.trim() } : {}),
+      text: text.trim(),
+    }),
   list: (targetUserId: string) =>
     api.get(`/profile-comments?target_user_id=${encodeURIComponent(targetUserId)}`),
   listByPhoneNumber: (phoneNumber: string) =>
     api.get(`/profile-comments?phone_number=${encodeURIComponent(phoneNumber)}`),
+  search: (q: string) =>
+    api.get(`/public/profile-comments/search?q=${encodeURIComponent(q)}`),
+  delete: (commentId: string) => api.delete(`/profile-comments/${commentId}`),
   reply: (commentId: string) => api.post(`/profile-comments/${commentId}/reply`),
 };
 

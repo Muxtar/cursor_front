@@ -19,8 +19,9 @@ export default function LocationPage() {
   const [error, setError] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<'granted' | 'denied' | 'prompt' | null>(null);
-  const [searchRadius, setSearchRadius] = useState<number>(5000); // Default 5km
-  const [viewMode, setViewMode] = useState<'map' | 'list'>('map'); // Default map view
+  const [searchRadius, setSearchRadius] = useState<number>(5000); // meters, default 5km
+  const [professionFilter, setProfessionFilter] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
 
   useEffect(() => {
     if (!user) {
@@ -82,15 +83,16 @@ export default function LocationPage() {
     }
   }, [user]);
 
+  const getNearbyParams = (radiusMeters?: number) => ({
+    radius: (radiusMeters ?? searchRadius) / 1000, // backend expects km
+    profession: professionFilter.trim() || undefined,
+  });
+
   const loadNearbyUsers = async (lat: number, lng: number, radius?: number) => {
     try {
-      // Update user location
       await userApi.updateLocation({ latitude: lat, longitude: lng });
-      
-      // Get nearby users with selected radius
-      const users: any = await userApi.getNearbyUsers(radius || searchRadius);
+      const users: any = await userApi.getNearbyUsers(getNearbyParams(radius));
       const usersList = Array.isArray(users) ? users : users?.users || [];
-      
       setNearbyUsers(usersList);
     } catch (error: any) {
       console.error('Failed to load nearby users:', error);
@@ -102,8 +104,7 @@ export default function LocationPage() {
 
   const loadNearbyUsersWithoutLocation = async (radius?: number) => {
     try {
-      // Try to get nearby users without updating location
-      const users: any = await userApi.getNearbyUsers(radius || searchRadius);
+      const users: any = await userApi.getNearbyUsers(getNearbyParams(radius));
       const usersList = Array.isArray(users) ? users : users?.users || [];
       setNearbyUsers(usersList);
     } catch (error: any) {
@@ -120,6 +121,16 @@ export default function LocationPage() {
       loadNearbyUsers(userLocation.lat, userLocation.lng, newRadius);
     } else {
       loadNearbyUsersWithoutLocation(newRadius);
+    }
+  };
+
+  const handleProfessionSearch = () => {
+    setLoading(true);
+    setError(null);
+    if (userLocation) {
+      loadNearbyUsers(userLocation.lat, userLocation.lng);
+    } else {
+      loadNearbyUsersWithoutLocation();
     }
   };
 
@@ -264,11 +275,12 @@ export default function LocationPage() {
                           left: `calc(50% + ${leftOffset}px)`,
                           transform: 'translate(-50%, -50%)',
                         }}
-                        title={`${nearbyUser.username || nearbyUser.phone_number}${nearbyUser.distance !== undefined ? ` - ${nearbyUser.distance.toFixed(1)} km` : ''}`}
+                        title={`${nearbyUser.username || nearbyUser.phone_number}${nearbyUser.profession ? ` - ${nearbyUser.profession}` : ''}${nearbyUser.distance !== undefined ? ` - ${nearbyUser.distance.toFixed(1)} km` : ''}`}
                       >
                         <div className="w-6 h-6 bg-blue-500 rounded-full border-3 border-white shadow-lg group-hover:scale-110 transition-transform"></div>
                         <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap bg-black/70 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           {nearbyUser.username || nearbyUser.phone_number}
+                          {nearbyUser.profession ? ` · ${nearbyUser.profession}` : ''}
                         </div>
                       </div>
                     );
@@ -303,14 +315,19 @@ export default function LocationPage() {
                 <p className={`text-xs font-semibold mb-2 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                   {nearbyUsers.length} {t('usersNearby')}
                 </p>
-                {nearbyUsers.slice(0, 5).map((user) => (
-                  <div key={user.id || user._id} className="text-xs py-1 border-b dark:border-gray-700 last:border-0">
+                {nearbyUsers.slice(0, 5).map((u) => (
+                  <div key={u.id || u._id} className="text-xs py-1 border-b dark:border-gray-700 last:border-0">
                     <span className={actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
-                      {user.username || user.phone_number}
+                      {u.username || u.phone_number}
                     </span>
-                    {user.distance !== undefined && (
+                    {u.profession && (
+                      <span className={`ml-1 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                        · {u.profession}
+                      </span>
+                    )}
+                    {u.distance !== undefined && (
                       <span className={`ml-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {user.distance.toFixed(1)} {t('km')}
+                        {u.distance.toFixed(1)} {t('km')}
                       </span>
                     )}
                   </div>
@@ -336,31 +353,62 @@ export default function LocationPage() {
           </div>
         )}
 
-        {/* Search Radius Selector */}
+        {/* Profession filter + Search Radius */}
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg border ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} p-4`}>
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center space-x-4">
-                <label className={`text-sm font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
-                  {t('searchRadius')}:
-                </label>
-                <select
-                  value={searchRadius}
-                  onChange={(e) => handleRadiusChange(Number(e.target.value))}
-                  className={`px-3 py-2 rounded-lg border text-sm ${
-                    actualTheme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-800'
-                  }`}
-                >
-                  <option value={1000}>1 {t('km')}</option>
-                  <option value={2000}>2 {t('km')}</option>
-                  <option value={5000}>5 {t('km')}</option>
-                  <option value={10000}>10 {t('km')}</option>
-                  <option value={20000}>20 {t('km')}</option>
-                  <option value={50000}>50 {t('km')}</option>
-                </select>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[180px]">
+                  <label className={`block text-sm font-medium mb-1 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    {t('searchByProfession')}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={professionFilter}
+                      onChange={(e) => setProfessionFilter(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleProfessionSearch()}
+                      placeholder={t('professionFilterPlaceholder')}
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm ${
+                        actualTheme === 'dark'
+                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
+                          : 'bg-white border-gray-300 text-gray-800 placeholder-gray-500'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleProfessionSearch}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                        actualTheme === 'dark' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      }`}
+                    >
+                      {t('search')}
+                    </button>
+                  </div>
+                </div>
               </div>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center space-x-4">
+                  <label className={`text-sm font-medium ${actualTheme === 'dark' ? 'text-white' : 'text-gray-700'}`}>
+                    {t('searchRadius')}:
+                  </label>
+                  <select
+                    value={searchRadius}
+                    onChange={(e) => handleRadiusChange(Number(e.target.value))}
+                    className={`px-3 py-2 rounded-lg border text-sm ${
+                      actualTheme === 'dark'
+                        ? 'bg-gray-700 border-gray-600 text-white'
+                        : 'bg-white border-gray-300 text-gray-800'
+                    }`}
+                  >
+                    <option value={1000}>1 {t('km')}</option>
+                    <option value={2000}>2 {t('km')}</option>
+                    <option value={5000}>5 {t('km')}</option>
+                    <option value={10000}>10 {t('km')}</option>
+                    <option value={20000}>20 {t('km')}</option>
+                    <option value={50000}>50 {t('km')}</option>
+                  </select>
+                </div>
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setViewMode('list')}
@@ -440,7 +488,12 @@ export default function LocationPage() {
                       <p className={`font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
                         {nearbyUser.username || nearbyUser.phone_number || 'User'}
                       </p>
-                        {nearbyUser.distance !== undefined && (
+                      {nearbyUser.profession && (
+                        <p className={`text-sm ${actualTheme === 'dark' ? 'text-blue-300' : 'text-blue-600'}`}>
+                          {nearbyUser.profession}
+                        </p>
+                      )}
+                      {nearbyUser.distance !== undefined && (
                         <p className={`text-sm ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                           {nearbyUser.distance.toFixed(1)} {t('kmAway')}
                         </p>

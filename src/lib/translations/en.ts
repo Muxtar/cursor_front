@@ -270,7 +270,9 @@ export const en = {
   loggingIn: 'Logging in...',
   registering: 'Registering...',
   createAccount: 'Create Account',
-  usernameOptional: 'Username (Optional)',
+  usernameOptional: 'Name (Optional)',
+  professionOptional: 'Profession (Optional)',
+  professionPlaceholder: 'e.g. Barber, Mechanic, Driver…',
   passwordOptional: 'Password (Optional)',
   
   // Phone Auth
@@ -385,6 +387,8 @@ export const en = {
   locationAccessDenied: 'Location access denied. Please enable location services.',
   geolocationNotSupported: 'Geolocation is not supported by your browser.',
   nearbyUsers: 'Nearby Users',
+  searchByProfession: 'Search by profession',
+  professionFilterPlaceholder: 'e.g. Barber, Mechanic…',
   usersNearby: 'Users Nearby',
   noUsersNearby: 'No users found nearby',
   enableLocation: 'Enable Location',
@@ -403,13 +407,21 @@ export const en = {
   yourLocation: 'Your Location',
 
   // Guest comment (landing page - no login)
-  leaveCommentForNumber: 'Leave a comment for a number',
+  leaveCommentForNumber: 'Leave a comment',
+  leaveCommentTargetLabel: 'About what?',
+  leaveCommentTargetPhone: 'Phone number',
+  leaveCommentTargetCarNumber: 'Car / license plate number',
+  leaveCommentTargetPersonName: 'Person name',
   leaveCommentNumberPlaceholder: 'Phone number (e.g. +994501234567)',
+  leaveCommentCarPlaceholder: 'Car number (e.g. 10-AA-123)',
+  leaveCommentPersonPlaceholder: 'Name or nickname',
   leaveCommentTextPlaceholder: 'Your message...',
   leaveCommentSubmit: 'Send comment',
   leaveCommentSending: 'Sending...',
-  leaveCommentSuccess: 'Comment sent. The person will see it when they log in.',
+  leaveCommentSuccess: 'Comment sent. The number owner will get a notification.',
+  leaveCommentSuccessSearchOnly: 'Comment saved. It will only appear in search (no notification to anyone).',
   leaveCommentError: 'Could not send comment.',
   leaveCommentUserNotFound: 'No user found with this phone number.',
+  commentsByPhone: 'Comments by phone',
 };
 

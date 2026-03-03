@@ -270,7 +270,9 @@ export const az = {
   loggingIn: 'Daxil olunur...',
   registering: 'Qeydiyyat olunur...',
   createAccount: 'Hesab Yarad',
-  usernameOptional: 'İstifadəçi Adı (İstəyə Bağlı)',
+  usernameOptional: 'Ad (İstəyə bağlı)',
+  professionOptional: 'Peşə (İstəyə bağlı)',
+  professionPlaceholder: 'Məs: Bərbər, Usta, Sürücü…',
   passwordOptional: 'Şifrə (İstəyə Bağlı)',
   
   // Phone Auth
@@ -385,6 +387,8 @@ export const az = {
   locationAccessDenied: 'Məkan girişi rədd edildi. Zəhmət olmasa məkan xidmətlərini aktivləşdirin.',
   geolocationNotSupported: 'Brauzeriniz məkan xidmətlərini dəstəkləmir.',
   nearbyUsers: 'Yaxınlıqdakı İstifadəçilər',
+  searchByProfession: 'Peşəyə görə axtar',
+  professionFilterPlaceholder: 'Məs: Bərbər, Usta…',
   usersNearby: 'Yaxınlıqdakı İstifadəçilər',
   noUsersNearby: 'Yaxınlıqda istifadəçi tapılmadı',
   enableLocation: 'Məkanı Aktivləşdir',
@@ -403,14 +407,22 @@ export const az = {
   yourLocation: 'Sizin Məkanınız',
 
   // Qonaq şərh (ana səhifə - girişsiz)
-  leaveCommentForNumber: 'Bir nömrəyə şərh yaz',
+  leaveCommentForNumber: 'Şərh yaz',
+  leaveCommentTargetLabel: 'Nə haqqında?',
+  leaveCommentTargetPhone: 'Telefon nömrəsi',
+  leaveCommentTargetCarNumber: 'Avtomobil nömrəsi',
+  leaveCommentTargetPersonName: 'Şəxs adı',
   leaveCommentNumberPlaceholder: 'Telefon nömrəsi (məs. +994501234567)',
+  leaveCommentCarPlaceholder: 'Avtomobil nömrəsi (məs. 10-AA-123)',
+  leaveCommentPersonPlaceholder: 'Ad və ya ləqəb',
   leaveCommentTextPlaceholder: 'Mesajınız...',
   leaveCommentSubmit: 'Şərh göndər',
   leaveCommentSending: 'Göndərilir...',
-  leaveCommentSuccess: 'Şərh göndərildi. Nömrə sahibi giriş edəndə görəcək.',
+  leaveCommentSuccess: 'Şərh göndərildi. Nömrə sahibi giriş edəndə bildiriş alacaq.',
+  leaveCommentSuccessSearchOnly: 'Şərh saxlanıldı. Yalnız axtarış zamanı tapılacaq (heç kimə bildiriş getməyəcək).',
   leaveCommentError: 'Şərh göndərilə bilmədi.',
   leaveCommentUserNotFound: 'Bu nömrə ilə istifadəçi tapılmadı.',
+  commentsByPhone: 'Nömrəyə gələn şərhlər',
 };
 
 

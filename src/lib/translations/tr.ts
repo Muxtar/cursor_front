@@ -270,7 +270,9 @@ export const tr = {
   loggingIn: 'Giriş yapılıyor...',
   registering: 'Kayıt yapılıyor...',
   createAccount: 'Hesap Oluştur',
-  usernameOptional: 'Kullanıcı Adı (İsteğe Bağlı)',
+  usernameOptional: 'İsim (İsteğe Bağlı)',
+  professionOptional: 'Meslek (İsteğe Bağlı)',
+  professionPlaceholder: 'Örn: Berber, Usta, Şoför…',
   passwordOptional: 'Şifre (İsteğe Bağlı)',
   
   // Phone Auth
@@ -385,6 +387,8 @@ export const tr = {
   locationAccessDenied: 'Konum erişimi reddedildi. Lütfen konum hizmetlerini etkinleştirin.',
   geolocationNotSupported: 'Tarayıcınız konum hizmetlerini desteklemiyor.',
   nearbyUsers: 'Yakındaki Kullanıcılar',
+  searchByProfession: 'Mesleğe göre ara',
+  professionFilterPlaceholder: 'Örn: Berber, Usta…',
   usersNearby: 'Yakındaki Kullanıcılar',
   noUsersNearby: 'Yakında kullanıcı bulunamadı',
   enableLocation: 'Konumu Etkinleştir',
@@ -403,13 +407,21 @@ export const tr = {
   yourLocation: 'Konumunuz',
 
   // Misafir yorum (ana sayfa - girişsiz)
-  leaveCommentForNumber: 'Bir numaraya yorum yaz',
+  leaveCommentForNumber: 'Yorum yaz',
+  leaveCommentTargetLabel: 'Ney hakkında?',
+  leaveCommentTargetPhone: 'Telefon numarası',
+  leaveCommentTargetCarNumber: 'Araç plakası',
+  leaveCommentTargetPersonName: 'Kişi adı',
   leaveCommentNumberPlaceholder: 'Telefon numarası (örn. +994501234567)',
+  leaveCommentCarPlaceholder: 'Plaka (örn. 10-AA-123)',
+  leaveCommentPersonPlaceholder: 'Ad veya takma ad',
   leaveCommentTextPlaceholder: 'Mesajınız...',
   leaveCommentSubmit: 'Yorum gönder',
   leaveCommentSending: 'Gönderiliyor...',
-  leaveCommentSuccess: 'Yorum gönderildi. Numarayı kullanan giriş yaptığında görecek.',
+  leaveCommentSuccess: 'Yorum gönderildi. Numara sahibi bildirim alacak.',
+  leaveCommentSuccessSearchOnly: 'Yorum kaydedildi. Sadece arama sonuçlarında görünecek (kimseye bildirim gitmez).',
   leaveCommentError: 'Yorum gönderilemedi.',
   leaveCommentUserNotFound: 'Bu numarayla kullanıcı bulunamadı.',
+  commentsByPhone: 'Numaraya gelen yorumlar',
 };
 

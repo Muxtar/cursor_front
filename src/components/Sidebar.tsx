@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi } from '@/lib/api';
+import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi, type ProfileCommentTargetType } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 
 interface SidebarProps {
@@ -55,6 +55,11 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   const [commentTargetUserId, setCommentTargetUserId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
+  const [showLeaveCommentModal, setShowLeaveCommentModal] = useState(false);
+  const [leaveCommentTargetType, setLeaveCommentTargetType] = useState<ProfileCommentTargetType>('phone');
+  const [leaveCommentTargetValue, setLeaveCommentTargetValue] = useState('');
+  const [leaveCommentText, setLeaveCommentText] = useState('');
+  const [sendingLeaveComment, setSendingLeaveComment] = useState(false);
   const [showProposalFromContactModal, setShowProposalFromContactModal] = useState(false);
   const [proposalTargetUserId, setProposalTargetUserId] = useState<string | null>(null);
   const [proposalSearchResults, setProposalSearchResults] = useState<any[]>([]);
@@ -656,14 +661,34 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     try {
       setSendingComment(true);
       await profileCommentApi.create(commentTargetUserId, commentText.trim());
-      alert('Comment posted successfully (anonymous)');
+      alert(t('leaveCommentSuccess'));
       setShowCommentModal(false);
       setCommentText('');
       setCommentTargetUserId(null);
     } catch (error: any) {
-      alert('Failed to post comment: ' + (error?.message || ''));
+      alert(t('leaveCommentError') + ': ' + (error?.message || ''));
     } finally {
       setSendingComment(false);
+    }
+  };
+
+  const handleLeaveCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = leaveCommentTargetValue.trim();
+    const txt = leaveCommentText.trim();
+    if (!val || !txt) return;
+    try {
+      setSendingLeaveComment(true);
+      await profileCommentApi.createWithTarget(leaveCommentTargetType, val, txt);
+      alert(leaveCommentTargetType === 'phone' ? t('leaveCommentSuccess') : t('leaveCommentSuccessSearchOnly'));
+      setShowLeaveCommentModal(false);
+      setLeaveCommentTargetValue('');
+      setLeaveCommentText('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(t('leaveCommentError') + ': ' + msg);
+    } finally {
+      setSendingLeaveComment(false);
     }
   };
 
@@ -987,6 +1012,18 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                         <span>{t('settings')}</span>
                       </div>
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => { setShowMenuDropdown(false); setShowLeaveCommentModal(true); }}
+                      className={`block w-full text-left px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <span>{t('leaveCommentForNumber')}</span>
+                      </div>
+                    </button>
                     <Link
                       href="/comments"
                       onClick={() => setShowMenuDropdown(false)}
@@ -996,7 +1033,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
-                        <span>Comments by phone</span>
+                        <span>{t('commentsByPhone')}</span>
                       </div>
                     </Link>
                     <button
@@ -2108,16 +2145,16 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         </div>
       )}
 
-      {/* Comment Modal */}
+      {/* Comment Modal (for a specific contact - phone only) */}
       {showCommentModal && commentTargetUserId && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowCommentModal(false); setCommentText(''); setCommentTargetUserId(null); }}>
           <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-96 shadow-xl`} onClick={(e) => e.stopPropagation()}>
-            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>Write Comment</h3>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('leaveCommentForNumber')}</h3>
             <form onSubmit={handleSendComment} className="space-y-4">
               <textarea
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Write your comment..."
+                placeholder={t('leaveCommentTextPlaceholder')}
                 rows={4}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
@@ -2137,7 +2174,69 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                   disabled={!commentText.trim() || sendingComment}
                   className="flex-1 py-2 rounded-lg font-medium bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {sendingComment ? 'Sending...' : 'Send Comment'}
+                  {sendingComment ? t('leaveCommentSending') : t('leaveCommentSubmit')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Leave comment modal (phone / car number / person name - same as guest form) */}
+      {showLeaveCommentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowLeaveCommentModal(false); setLeaveCommentTargetValue(''); setLeaveCommentText(''); }}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 w-96 shadow-xl max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <h3 className={`text-lg font-semibold mb-4 ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>{t('leaveCommentForNumber')}</h3>
+            <form onSubmit={handleLeaveCommentSubmit} className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>{t('leaveCommentTargetLabel')}</label>
+                <select
+                  value={leaveCommentTargetType}
+                  onChange={(e) => setLeaveCommentTargetType(e.target.value as ProfileCommentTargetType)}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  disabled={sendingLeaveComment}
+                >
+                  <option value="phone">{t('leaveCommentTargetPhone')}</option>
+                  <option value="car_number">{t('leaveCommentTargetCarNumber')}</option>
+                  <option value="person_name">{t('leaveCommentTargetPersonName')}</option>
+                </select>
+              </div>
+              <input
+                type={leaveCommentTargetType === 'phone' ? 'tel' : 'text'}
+                value={leaveCommentTargetValue}
+                onChange={(e) => setLeaveCommentTargetValue(e.target.value)}
+                placeholder={
+                  leaveCommentTargetType === 'phone'
+                    ? t('leaveCommentNumberPlaceholder')
+                    : leaveCommentTargetType === 'car_number'
+                      ? t('leaveCommentCarPlaceholder')
+                      : t('leaveCommentPersonPlaceholder')
+                }
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                disabled={sendingLeaveComment}
+              />
+              <textarea
+                value={leaveCommentText}
+                onChange={(e) => setLeaveCommentText(e.target.value)}
+                placeholder={t('leaveCommentTextPlaceholder')}
+                rows={3}
+                className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                disabled={sendingLeaveComment}
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowLeaveCommentModal(false); setLeaveCommentTargetValue(''); setLeaveCommentText(''); }}
+                  className={`flex-1 py-2 rounded-lg font-medium ${actualTheme === 'dark' ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'}`}
+                >
+                  {t('cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={!leaveCommentTargetValue.trim() || !leaveCommentText.trim() || sendingLeaveComment}
+                  className="flex-1 py-2 rounded-lg font-medium bg-green-500 hover:bg-green-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {sendingLeaveComment ? t('leaveCommentSending') : t('leaveCommentSubmit')}
                 </button>
               </div>
             </form>

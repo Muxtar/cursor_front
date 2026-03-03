@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/lib/translations';
-import { authApi } from '@/lib/api';
+import { api, authApi } from '@/lib/api';
 
 type Step = 'phone' | 'code' | 'details';
 
@@ -133,7 +133,7 @@ function normalizePhone(dialCode: string, local: string) {
 type PendingLogin = { token: string; user: any };
 
 export default function PhoneAuthWidget() {
-  const { registerWithCode, completeLoginWithStoredSession } = useAuth();
+  const { registerWithCode, completeLoginWithStoredSession, updateUser } = useAuth();
   const { t } = useLanguage();
 
   const [step, setStep] = useState<Step>('phone');
@@ -228,10 +228,10 @@ export default function PhoneAuthWidget() {
     try {
       const response: any = await authApi.verifyCode(fullPhone, code);
       setPendingLogin({ token: response.token, user: response.user });
-      // Only treat as existing user if they already have a name (username or display_name)
       const hasName = !!(response.user?.username?.trim?.() || response.user?.display_name?.trim?.());
       setIsExistingUser(hasName);
       if (response.user?.username) setUsername(response.user.username);
+      if (response.user?.profession) setProfession(response.user.profession);
       setStep('details');
     } catch (err: any) {
       const msg = (err?.message || '').toLowerCase();
@@ -265,12 +265,28 @@ export default function PhoneAuthWidget() {
   };
 
   /** Mevcut kullanıcı: sadece hesap tipi seçip Devam (token zaten verify’da alındı) */
-  const completeExistingUserLogin = (e: React.FormEvent) => {
+  const completeExistingUserLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pendingLogin) return;
-    completeLoginWithStoredSession(pendingLogin.token, pendingLogin.user);
-    setPendingLogin(null);
-    setIsExistingUser(null);
+    setError('');
+    setLoading(true);
+    try {
+      api.setToken(pendingLogin.token);
+      const updates: { username?: string; profession?: string } = {};
+      if (username !== (pendingLogin.user?.username ?? '')) updates.username = username;
+      if (profession !== (pendingLogin.user?.profession ?? '')) updates.profession = profession;
+      if (Object.keys(updates).length > 0) {
+        await updateUser(updates);
+        pendingLogin.user = { ...pendingLogin.user, ...updates };
+      }
+      completeLoginWithStoredSession(pendingLogin.token, pendingLogin.user);
+      setPendingLogin(null);
+      setIsExistingUser(null);
+    } catch (err: any) {
+      setError(err?.message || t('registrationFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const back = () => {
@@ -287,19 +303,19 @@ export default function PhoneAuthWidget() {
   };
 
   return (
-    <div className="w-[380px] rounded-2xl border border-gray-200/50 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 hover:shadow-3xl">
-      <div className="px-5 py-4 border-b border-gray-200/50 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
-        <div className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+    <div className="w-full max-w-[380px] min-w-0 rounded-2xl border border-gray-200/50 bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-xl shadow-2xl overflow-hidden transition-all duration-300 hover:shadow-3xl">
+      <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-gray-200/50 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
+        <div className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 truncate">
           {t('register')}
         </div>
-        <div className="text-xs text-gray-600 mt-1.5 font-medium">
+        <div className="text-xs text-gray-600 mt-1.5 font-medium line-clamp-2 break-words">
           {step === 'phone' && t('enterPhoneNumber')}
           {step === 'code' && t('enterCode')}
           {step === 'details' && t('setupProfile')}
         </div>
       </div>
 
-      <div className="p-5">
+      <div className="p-4 sm:p-5 min-w-0">
         {step === 'phone' && (
           <form onSubmit={sendCode} className="space-y-4">
             {/* Country selection - moved to top */}
@@ -351,12 +367,11 @@ export default function PhoneAuthWidget() {
               </div>
             </div>
 
-            {/* Info text below */}
-            <div className="text-[11px] text-gray-500 space-y-1 bg-gray-50 rounded-lg p-3 border border-gray-100">
-              <div>
+            <div className="text-[11px] text-gray-500 space-y-1 bg-gray-50 rounded-lg p-3 border border-gray-100 min-w-0">
+              <div className="break-words">
                 <span className="font-semibold">{t('selected')}:</span> <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
               </div>
-              <div>
+              <div className="break-all">
                 <span className="font-semibold">{t('willBeSentTo')}:</span> <span className="font-medium text-blue-600">{fullPhone}</span>
               </div>
             </div>
@@ -371,16 +386,16 @@ export default function PhoneAuthWidget() {
             <button
               type="submit"
               disabled={loading || !normalizeDialCode(dialCodeInput) || localPhone.replace(/[^\d]/g, '').length < 4}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl active:scale-[0.98] whitespace-nowrap overflow-hidden text-ellipsis"
             >
-              {loading ? t('sending') : t('sendCode')}
+              <span className="truncate block text-center">{loading ? t('sending') : t('sendCode')}</span>
             </button>
           </form>
         )}
 
         {step === 'code' && (
           <form onSubmit={verifyCode} className="space-y-4">
-            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100 break-all">
               {t('codeSentTo')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
             <div className="relative">
@@ -409,14 +424,14 @@ export default function PhoneAuthWidget() {
             <button
               type="submit"
               disabled={loading || code.length !== 6}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl active:scale-[0.98] whitespace-nowrap overflow-hidden text-ellipsis"
             >
-              {loading ? t('verifying') : t('continue')}
+              <span className="truncate block text-center">{loading ? t('verifying') : t('continue')}</span>
             </button>
             <button
               type="button"
               onClick={back}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md"
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md whitespace-nowrap"
             >
               {t('back')}
             </button>
@@ -425,7 +440,7 @@ export default function PhoneAuthWidget() {
 
         {step === 'details' && (
           <form onSubmit={isExistingUser ? completeExistingUserLogin : completeRegister} className="space-y-4">
-            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+            <div className="text-xs text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100 break-all">
               {t('newAccountFor')} <span className="font-semibold text-blue-700">{fullPhone}</span>
             </div>
 
@@ -436,28 +451,25 @@ export default function PhoneAuthWidget() {
               </div>
             </div>
 
-            {!isExistingUser && (
-              <>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder={t('usernameOptional')}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Peşə (optional)</label>
-                  <input
-                    value={profession}
-                    onChange={(e) => setProfession(e.target.value)}
-                    placeholder="Bərbər, Usta, ..."
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                  />
-                </div>
-              </>
-            )}
+            {/* Ad və peşə: həm yeni həm mövcud istifadəçi təyin edə bilər */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('usernameOptional')}</label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={t('usernameOptional')}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-700 uppercase tracking-wide">{t('professionOptional')}</label>
+              <input
+                value={profession}
+                onChange={(e) => setProfession(e.target.value)}
+                placeholder={t('professionPlaceholder')}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-white text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+              />
+            </div>
             {error && (
               <div className="text-xs text-red-700 bg-gradient-to-r from-red-50 to-red-100 border-2 border-red-200 rounded-xl p-3 animate-in fade-in slide-in-from-top-2">
                 {error}
@@ -466,14 +478,16 @@ export default function PhoneAuthWidget() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl active:scale-[0.98] whitespace-nowrap overflow-hidden text-ellipsis"
             >
-              {isExistingUser ? t('continue') : loading ? t('creating') : t('createAccount')}
+              <span className="truncate block text-center">
+                {isExistingUser ? t('continue') : loading ? t('creating') : t('createAccount')}
+              </span>
             </button>
             <button
               type="button"
               onClick={back}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md"
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-900 py-3 rounded-xl text-sm font-medium transition-all shadow-sm hover:shadow-md whitespace-nowrap"
             >
               {t('back')}
             </button>

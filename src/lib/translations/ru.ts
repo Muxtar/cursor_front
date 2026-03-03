@@ -270,7 +270,9 @@ export const ru = {
   loggingIn: 'Вход...',
   registering: 'Регистрация...',
   createAccount: 'Создать аккаунт',
-  usernameOptional: 'Имя пользователя (необязательно)',
+  usernameOptional: 'Имя (необязательно)',
+  professionOptional: 'Профессия (необязательно)',
+  professionPlaceholder: 'Напр.: Парикмахер, Мастер, Водитель…',
   passwordOptional: 'Пароль (необязательно)',
   
   // Phone Auth
@@ -385,6 +387,8 @@ export const ru = {
   locationAccessDenied: 'Доступ к местоположению запрещен. Пожалуйста, включите службы определения местоположения.',
   geolocationNotSupported: 'Геолокация не поддерживается вашим браузером.',
   nearbyUsers: 'Пользователи поблизости',
+  searchByProfession: 'Поиск по профессии',
+  professionFilterPlaceholder: 'Напр.: Парикмахер, Мастер…',
   usersNearby: 'Пользователи поблизости',
   noUsersNearby: 'Поблизости пользователи не найдены',
   enableLocation: 'Включить местоположение',
@@ -403,14 +407,22 @@ export const ru = {
   yourLocation: 'Ваше местоположение',
 
   // Гостевой комментарий (главная — без входа)
-  leaveCommentForNumber: 'Оставить комментарий по номеру',
+  leaveCommentForNumber: 'Оставить комментарий',
+  leaveCommentTargetLabel: 'О чём?',
+  leaveCommentTargetPhone: 'Номер телефона',
+  leaveCommentTargetCarNumber: 'Номер автомобиля',
+  leaveCommentTargetPersonName: 'Имя человека',
   leaveCommentNumberPlaceholder: 'Номер телефона (напр. +994501234567)',
+  leaveCommentCarPlaceholder: 'Номер авто (напр. 10-AA-123)',
+  leaveCommentPersonPlaceholder: 'Имя или прозвище',
   leaveCommentTextPlaceholder: 'Ваше сообщение...',
   leaveCommentSubmit: 'Отправить комментарий',
   leaveCommentSending: 'Отправка...',
-  leaveCommentSuccess: 'Комментарий отправлен. Владелец номера увидит его при входе.',
+  leaveCommentSuccess: 'Комментарий отправлен. Владелец номера получит уведомление.',
+  leaveCommentSuccessSearchOnly: 'Комментарий сохранён. Будет виден только при поиске (уведомлений никому не будет).',
   leaveCommentError: 'Не удалось отправить комментарий.',
   leaveCommentUserNotFound: 'Пользователь с этим номером не найден.',
+  commentsByPhone: 'Комментарии по номеру',
 };
 
 

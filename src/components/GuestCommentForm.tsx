@@ -2,28 +2,40 @@
 
 import { useState } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { profileCommentApi } from '@/lib/api';
+import { profileCommentApi, type ProfileCommentTargetType } from '@/lib/api';
 
 export default function GuestCommentForm() {
   const { t } = useLanguage();
-  const [phone, setPhone] = useState('');
+  const [targetType, setTargetType] = useState<ProfileCommentTargetType>('phone');
+  const [targetValue, setTargetValue] = useState('');
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const valuePlaceholder =
+    targetType === 'phone'
+      ? t('leaveCommentNumberPlaceholder')
+      : targetType === 'car_number'
+        ? t('leaveCommentCarPlaceholder')
+        : t('leaveCommentPersonPlaceholder');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedPhone = phone.trim();
+    const trimmedValue = targetValue.trim();
     const trimmedText = text.trim();
-    if (!trimmedPhone || !trimmedText) return;
+    if (!trimmedValue || !trimmedText) return;
     setMessage(null);
     setLoading(true);
     try {
-      await profileCommentApi.createByPhone(trimmedPhone, trimmedText);
-      setMessage({ type: 'success', text: t('leaveCommentSuccess') });
+      await profileCommentApi.createPublicWithTarget(targetType, trimmedValue, trimmedText);
+      setMessage({
+        type: 'success',
+        text: targetType === 'phone' ? t('leaveCommentSuccess') : t('leaveCommentSuccessSearchOnly'),
+      });
       setText('');
-    } catch (err: any) {
-      const msg = err?.message || '';
+      if (targetType !== 'phone') setTargetValue('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
       setMessage({
         type: 'error',
         text: msg.toLowerCase().includes('not found') ? t('leaveCommentUserNotFound') : t('leaveCommentError'),
@@ -34,14 +46,27 @@ export default function GuestCommentForm() {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto mt-8 p-4 sm:p-6 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm">
+    <div className="w-full max-w-md mx-auto mt-6 sm:mt-8 p-4 sm:p-6 bg-gray-50 rounded-2xl border border-gray-200 shadow-sm min-w-0">
       <h2 className="text-lg font-semibold text-gray-800 mb-3">{t('leaveCommentForNumber')}</h2>
       <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t('leaveCommentTargetLabel')}</label>
+          <select
+            value={targetType}
+            onChange={(e) => setTargetType(e.target.value as ProfileCommentTargetType)}
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 bg-white"
+            disabled={loading}
+          >
+            <option value="phone">{t('leaveCommentTargetPhone')}</option>
+            <option value="car_number">{t('leaveCommentTargetCarNumber')}</option>
+            <option value="person_name">{t('leaveCommentTargetPersonName')}</option>
+          </select>
+        </div>
         <input
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder={t('leaveCommentNumberPlaceholder')}
+          type={targetType === 'phone' ? 'tel' : 'text'}
+          value={targetValue}
+          onChange={(e) => setTargetValue(e.target.value)}
+          placeholder={valuePlaceholder}
           className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 placeholder-gray-500"
           disabled={loading}
         />
@@ -55,7 +80,7 @@ export default function GuestCommentForm() {
         />
         <button
           type="submit"
-          disabled={loading || !phone.trim() || !text.trim()}
+          disabled={loading || !targetValue.trim() || !text.trim()}
           className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? t('leaveCommentSending') : t('leaveCommentSubmit')}
