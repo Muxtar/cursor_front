@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { chatApi, fileApi, messageApi, typingApi, contactApi, userApi, callApi, getFileBaseUrl } from '@/lib/api';
 import { WebSocketClient } from '@/lib/websocket';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -72,6 +73,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const { t } = useLanguage();
   const { user } = useAuth();
   const { actualTheme } = useTheme();
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -3507,9 +3509,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               </svg>
             </button>
           )}
+          {/* Avatar — direct chat: click opens profile; avatar click shows full image */}
           <button
             onClick={() => {
-              if (chatInfo?.type === 'direct' && otherPartyInfo?.avatar) {
+              if (chatInfo?.type === 'direct' && !chatInfo?.other_party_anonymous && otherPartyInfo?.id) {
+                router.push(`/profile/${otherPartyInfo.id}`);
+              } else if (chatInfo?.type === 'direct' && otherPartyInfo?.avatar) {
                 setShowAvatarModal(true);
               }
             }}
@@ -3519,18 +3524,26 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               <img
                 src={otherPartyInfo.avatar}
                 alt={otherPartyInfo.username || 'User'}
-                className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover cursor-pointer"
+                className="w-9 h-9 md:w-10 md:h-10 rounded-full object-cover cursor-pointer hover:opacity-80 transition"
               />
             ) : (
-              <div className={`w-9 h-9 md:w-10 md:h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center font-semibold text-sm md:text-base ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
+              <div className={`w-9 h-9 md:w-10 md:h-10 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'} rounded-full flex items-center justify-center font-semibold text-sm md:text-base ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'} ${chatInfo?.type === 'direct' && !chatInfo?.other_party_anonymous ? 'cursor-pointer hover:opacity-80 transition' : ''}`}>
                 {chatInfo?.type === 'direct' && otherPartyInfo?.username
                   ? otherPartyInfo.username[0]?.toUpperCase()
                   : (chatInfo?.other_party_anonymous ? 'A' : chatInfo?.group_name?.[0]) || 'U'}
               </div>
             )}
           </button>
+          {/* Name — direct non-anonymous chat: click opens profile */}
           <div className="min-w-0 flex-1">
-            <h2 className={`text-base md:text-lg font-semibold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            <h2
+              onClick={() => {
+                if (chatInfo?.type === 'direct' && !chatInfo?.other_party_anonymous && otherPartyInfo?.id) {
+                  router.push(`/profile/${otherPartyInfo.id}`);
+                }
+              }}
+              className={`text-base md:text-lg font-semibold truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'} ${chatInfo?.type === 'direct' && !chatInfo?.other_party_anonymous && otherPartyInfo?.id ? 'cursor-pointer hover:underline' : ''}`}
+            >
               {chatInfo?.type === 'direct' && otherPartyInfo?.username
                 ? otherPartyInfo.username
                 : (chatInfo?.other_party_anonymous ? t('anonymous') : (chatInfo?.group_name || t('chats')))}
@@ -3538,6 +3551,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             {chatInfo?.type === 'group' && Array.isArray(chatInfo?.members) && (
               <p className={`text-[11px] ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                 {chatInfo.members.length} {t('contactsTab').toLowerCase()}
+              </p>
+            )}
+            {chatInfo?.type === 'direct' && !chatInfo?.other_party_anonymous && otherPartyInfo?.id && !isTyping && (
+              <p className={`text-[11px] ${actualTheme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
+                Profili gör →
               </p>
             )}
             {isTyping && (

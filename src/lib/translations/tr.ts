@@ -422,6 +422,6 @@ export const tr = {
   leaveCommentSuccessSearchOnly: 'Yorum kaydedildi. Sadece arama sonuçlarında görünecek (kimseye bildirim gitmez).',
   leaveCommentError: 'Yorum gönderilemedi.',
   leaveCommentUserNotFound: 'Bu numarayla kullanıcı bulunamadı.',
-  commentsByPhone: 'Numaraya gelen yorumlar',
+  commentsByPhone: 'Yorumlar',
 };
 

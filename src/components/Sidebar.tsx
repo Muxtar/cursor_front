@@ -6,7 +6,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi, type ProfileCommentTargetType } from '@/lib/api';
+import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi, notificationsApi, type ProfileCommentTargetType } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
 
 interface SidebarProps {
@@ -47,6 +47,9 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   const [showProposalsDropdown, setShowProposalsDropdown] = useState(false);
   const [incomingProposalsCount, setIncomingProposalsCount] = useState(0);
   const [lastProposalsCountFetch, setLastProposalsCountFetch] = useState(0);
+  const [commentNotifCount, setCommentNotifCount] = useState(0);
+  // contact user_id → comment count (lazy, loaded when contacts tab opens)
+  const [contactCommentCounts, setContactCommentCounts] = useState<Record<string, number>>({});
   const [showChangePhotoModal, setShowChangePhotoModal] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [showNewProposalModal, setShowNewProposalModal] = useState(false);
@@ -109,13 +112,42 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
           setFavoriteChatIds(new Set());
         }
       }
-      // Refresh online status every 10 seconds
+      loadCommentNotifCount();
+      // Refresh online status every 10 seconds; refresh comment notif count every 30s
       const interval = setInterval(() => {
         loadOnlineUsers();
       }, 10000);
-      return () => clearInterval(interval);
+      const notifInterval = setInterval(() => {
+        loadCommentNotifCount();
+      }, 30000);
+      return () => { clearInterval(interval); clearInterval(notifInterval); };
     }
   }, [user]);
+
+  const loadCommentNotifCount = async () => {
+    try {
+      const data: any = await notificationsApi.unreadCount();
+      setCommentNotifCount(data?.unread_count || 0);
+    } catch { /* silent */ }
+  };
+
+  const loadContactCommentCounts = async (contactList: any[]) => {
+    const phonesToCheck = contactList
+      .map((c: any) => c.user?.phone_number)
+      .filter(Boolean);
+    if (phonesToCheck.length === 0) return;
+    const counts: Record<string, number> = {};
+    await Promise.allSettled(
+      phonesToCheck.map(async (phone: string) => {
+        try {
+          const data: any = await profileCommentApi.search(phone);
+          const arr = Array.isArray(data) ? data : [];
+          if (arr.length > 0) counts[phone] = arr.length;
+        } catch { /* silent */ }
+      })
+    );
+    setContactCommentCounts(prev => ({ ...prev, ...counts }));
+  };
 
   const loadOnlineUsers = async () => {
     try {
@@ -970,6 +1002,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                       onClick={() => {
                         setActiveTab('contacts');
                         setShowMenuDropdown(false);
+                        loadContactCommentCounts(contacts);
                       }}
                       className={`w-full text-left px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition flex items-center space-x-3 border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'} ${
                         activeTab === 'contacts' ? actualTheme === 'dark' ? 'bg-gray-600' : 'bg-gray-100' : ''
@@ -1026,14 +1059,21 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                     </button>
                     <Link
                       href="/comments"
-                      onClick={() => setShowMenuDropdown(false)}
+                      onClick={() => { setShowMenuDropdown(false); setCommentNotifCount(0); }}
                       className={`block px-4 py-3 text-sm ${actualTheme === 'dark' ? 'text-white hover:bg-gray-600' : 'text-gray-700 hover:bg-gray-100'} transition border-t ${actualTheme === 'dark' ? 'border-gray-600' : 'border-gray-200'}`}
                     >
-                      <div className="flex items-center space-x-3">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        <span>{t('commentsByPhone')}</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          <span>{t('commentsByPhone')}</span>
+                        </div>
+                        {commentNotifCount > 0 && (
+                          <span className="min-w-[20px] h-5 flex items-center justify-center text-[11px] font-bold bg-red-500 text-white rounded-full px-1.5">
+                            {commentNotifCount > 99 ? '99+' : commentNotifCount}
+                          </span>
+                        )}
                       </div>
                     </Link>
                     <button
@@ -1717,9 +1757,20 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                          {displayName}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className={`text-sm md:text-base font-medium truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                            {displayName}
+                          </p>
+                          {displaySub && contactCommentCounts[displaySub] > 0 && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); router.push(`/comments?q=${encodeURIComponent(displaySub)}`); }}
+                              className="flex-shrink-0 min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-full transition"
+                              title={`${contactCommentCounts[displaySub]} yorum var`}
+                            >
+                              {contactCommentCounts[displaySub] > 99 ? '99+' : contactCommentCounts[displaySub]}
+                            </button>
+                          )}
+                        </div>
                         <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
                           {displaySub || (contactUserId ? '' : 'Not in app')}
                         </p>

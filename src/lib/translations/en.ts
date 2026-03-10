@@ -422,6 +422,6 @@ export const en = {
   leaveCommentSuccessSearchOnly: 'Comment saved. It will only appear in search (no notification to anyone).',
   leaveCommentError: 'Could not send comment.',
   leaveCommentUserNotFound: 'No user found with this phone number.',
-  commentsByPhone: 'Comments by phone',
+  commentsByPhone: 'Comments',
 };
 

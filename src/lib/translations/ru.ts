@@ -422,7 +422,7 @@ export const ru = {
   leaveCommentSuccessSearchOnly: 'Комментарий сохранён. Будет виден только при поиске (уведомлений никому не будет).',
   leaveCommentError: 'Не удалось отправить комментарий.',
   leaveCommentUserNotFound: 'Пользователь с этим номером не найден.',
-  commentsByPhone: 'Комментарии по номеру',
+  commentsByPhone: 'Комментарии',
 };
 
 

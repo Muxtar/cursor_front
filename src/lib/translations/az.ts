@@ -422,7 +422,7 @@ export const az = {
   leaveCommentSuccessSearchOnly: 'Şərh saxlanıldı. Yalnız axtarış zamanı tapılacaq (heç kimə bildiriş getməyəcək).',
   leaveCommentError: 'Şərh göndərilə bilmədi.',
   leaveCommentUserNotFound: 'Bu nömrə ilə istifadəçi tapılmadı.',
-  commentsByPhone: 'Nömrəyə gələn şərhlər',
+  commentsByPhone: 'Şərhlər',
 };
 
 
