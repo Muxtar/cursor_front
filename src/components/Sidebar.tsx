@@ -21,7 +21,7 @@ interface SidebarProps {
 export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClose }: SidebarProps) {
   const { user, logout, updateUser } = useAuth();
   const { actualTheme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const pathname = usePathname();
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
@@ -222,14 +222,15 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
+    const locale = language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US';
     if (days === 0) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false });
     } else if (days === 1) {
-      return 'Yesterday';
+      return t('yesterday');
     } else if (days < 7) {
-      return date.toLocaleDateString('en-US', { weekday: 'short' });
+      return date.toLocaleDateString(locale, { weekday: 'short' });
     } else {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
     }
   };
 
@@ -1235,7 +1236,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                           </div>
                           <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                             <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {new Date(p.created_at).toLocaleDateString(language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </p>
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1328,7 +1329,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                                  '⏳ ' + (p.status || 'pending')}
                               </span>
                               <p className={`text-xs ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                                {new Date(p.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {new Date(p.created_at).toLocaleDateString(language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
                               </p>
                             </div>
                             <button

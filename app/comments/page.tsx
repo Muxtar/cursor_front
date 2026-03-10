@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { profileCommentApi, notificationsApi } from '@/lib/api';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -23,22 +24,6 @@ interface MyComment {
   text: string;
   created_at: string;
 }
-
-const TARGET_LABELS: Record<TargetType, string> = {
-  phone: '📞 Telefon numarası',
-  car_number: '🚗 Araç plakası',
-  person_name: '👤 Kişi adı',
-  company: '🏢 Şirket adı',
-  other: '🔖 Diğer',
-};
-
-const TARGET_PLACEHOLDERS: Record<TargetType, string> = {
-  phone: '+994 50 123 45 67',
-  car_number: '10-AA-123',
-  person_name: 'Ad Soyad veya takma ad',
-  company: 'Şirket adı',
-  other: 'Herhangi bir metin',
-};
 
 const TYPE_COLORS: Record<string, string> = {
   phone: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
@@ -74,6 +59,7 @@ function CommentsPageInner() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { actualTheme } = useTheme();
+  const { t, language } = useLanguage();
   const dark = actualTheme === 'dark';
 
   // Tabs: write | search | mine
@@ -99,11 +85,26 @@ function CommentsPageInner() {
   const [myCommentCount, setMyCommentCount] = useState(0);
   const [loadingMine, setLoadingMine] = useState(false);
 
+  // ── Type labels (dynamic, depend on t()) ─────────────────────────────────
+  const TARGET_LABELS: Record<TargetType, string> = {
+    phone: t('commentsTypeLabelPhone'),
+    car_number: t('commentsTypeLabelCar'),
+    person_name: t('commentsTypeLabelPerson'),
+    company: t('commentsTypeLabelCompany'),
+    other: t('commentsTypeLabelOther'),
+  };
+
+  const TARGET_PLACEHOLDERS: Record<TargetType, string> = {
+    phone: t('commentsTypePlaceholderPhone'),
+    car_number: t('commentsTypePlaceholderCar'),
+    person_name: t('commentsTypePlaceholderPerson'),
+    company: t('commentsTypePlaceholderCompany'),
+    other: t('commentsTypePlaceholderOther'),
+  };
+
   useEffect(() => {
     if (!user) { router.push('/login'); return; }
-    // Load comment count on my number for badge
     loadMyCount();
-    // Pre-fill search from URL param
     const q = searchParams.get('q');
     if (q) {
       setSearchQuery(q);
@@ -128,16 +129,15 @@ function CommentsPageInner() {
       const userId = (user as any).id || (user as any)._id;
       const data: any = await profileCommentApi.list(userId);
       setMyComments(Array.isArray(data) ? data : []);
-      // Mark notifications as read
       await notificationsApi.markRead([]);
       setMyCommentCount(0);
     } catch { /* silent */ }
     finally { setLoadingMine(false); }
   };
 
-  const handleTabChange = (t: 'write' | 'search' | 'mine') => {
-    setTab(t);
-    if (t === 'mine') loadMyComments();
+  const handleTabChange = (tab2: 'write' | 'search' | 'mine') => {
+    setTab(tab2);
+    if (tab2 === 'mine') loadMyComments();
   };
 
   // ── Write ───────────────────────────────────────────────────────────────────
@@ -145,22 +145,17 @@ function CommentsPageInner() {
     e.preventDefault();
     setWriteError('');
     setWriteSuccess('');
-    if (!writeTarget.trim()) { setWriteError('Hedef değeri giriniz.'); return; }
-    if (!writeText.trim()) { setWriteError('Yorum metni giriniz.'); return; }
+    if (!writeTarget.trim()) { setWriteError(t('commentsWriteErrorTarget')); return; }
+    if (!writeText.trim()) { setWriteError(t('commentsWriteErrorText')); return; }
     setWriteSaving(true);
     try {
-      // Map company/other to 'person_name' (backend only supports phone/car_number/person_name)
       const backendType = writeType === 'company' || writeType === 'other' ? 'person_name' : writeType;
       await profileCommentApi.createWithTarget(backendType as any, writeTarget.trim(), writeText.trim());
-      setWriteSuccess(
-        writeType === 'phone'
-          ? 'Yorum gönderildi! Numara sahibi bildirim alacak.'
-          : 'Yorum kaydedildi. Arama sonuçlarında görünecek.'
-      );
+      setWriteSuccess(writeType === 'phone' ? t('commentsWriteSuccessPhone') : t('commentsWriteSuccessOther'));
       setWriteTarget('');
       setWriteText('');
     } catch (err: any) {
-      setWriteError(err?.message || 'Yorum gönderilemedi.');
+      setWriteError(err?.message || t('commentsWriteErrorFail'));
     } finally { setWriteSaving(false); }
   };
 
@@ -174,7 +169,7 @@ function CommentsPageInner() {
       const data: any = await profileCommentApi.search(q.trim());
       setSearchResults(Array.isArray(data) ? data : []);
     } catch (err: any) {
-      setSearchError(err?.message || 'Arama başarısız.');
+      setSearchError(err?.message || t('commentsSearchError'));
       setSearchResults([]);
     } finally { setSearching(false); }
   }, []);
@@ -184,9 +179,12 @@ function CommentsPageInner() {
     handleSearchWith(searchQuery);
   };
 
+  // date locale based on selected language
+  const dateLocale = language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US';
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <AppLayout title="Yorumlar">
+    <AppLayout title={t('commentsPageTitle')}>
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
 
         {/* Header */}
@@ -200,26 +198,26 @@ function CommentsPageInner() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>Yorumlar</h1>
+            <h1 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>{t('commentsPageTitle')}</h1>
           </div>
 
           {/* Tabs */}
-          <div className={`max-w-3xl mx-auto px-4 flex gap-1 pb-0`}>
-            {(['search', 'write', 'mine'] as const).map(t => (
+          <div className="max-w-3xl mx-auto px-4 flex gap-1 pb-0">
+            {(['search', 'write', 'mine'] as const).map(tabKey => (
               <button
-                key={t}
-                onClick={() => handleTabChange(t)}
+                key={tabKey}
+                onClick={() => handleTabChange(tabKey)}
                 className={`relative px-4 py-2.5 text-sm font-medium border-b-2 transition ${
-                  tab === t
+                  tab === tabKey
                     ? (dark ? 'border-green-400 text-green-400' : 'border-green-600 text-green-700')
                     : (dark ? 'border-transparent text-gray-400 hover:text-gray-200' : 'border-transparent text-gray-500 hover:text-gray-700')
                 }`}
               >
-                {t === 'search' && '🔍 Ara'}
-                {t === 'write' && '✍️ Yorum Yaz'}
-                {t === 'mine' && (
+                {tabKey === 'search' && t('commentsTabSearch')}
+                {tabKey === 'write' && t('commentsTabWrite')}
+                {tabKey === 'mine' && (
                   <>
-                    🔔 Bana Gelenler
+                    {t('commentsTabMine')}
                     {myCommentCount > 0 && (
                       <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full px-1">
                         {myCommentCount > 99 ? '99+' : myCommentCount}
@@ -238,14 +236,14 @@ function CommentsPageInner() {
           {tab === 'search' && (
             <div className="space-y-5">
               <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Telefon numarası, araç plakası, şirket adı veya kişi adı yazarak arama yapın.
+                {t('commentsSearchHint')}
               </p>
 
               <form onSubmit={handleSearch} className="flex gap-2">
                 <input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Arama yap… (örn. +994501234567, 10-AA-123, Acme Ltd)"
+                  placeholder={t('commentsSearchPlaceholder')}
                   className={`flex-1 px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
                     dark ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900'
                   }`}
@@ -262,7 +260,7 @@ function CommentsPageInner() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   )}
-                  Ara
+                  {t('commentsSearchBtn')}
                 </button>
               </form>
 
@@ -274,12 +272,12 @@ function CommentsPageInner() {
                 <div>
                   <p className={`text-sm font-medium mb-3 ${dark ? 'text-gray-300' : 'text-gray-600'}`}>
                     {searchResults.length === 0
-                      ? 'Sonuç bulunamadı.'
-                      : `${searchResults.length} yorum bulundu`}
+                      ? t('commentsNoResult')
+                      : `${searchResults.length} ${t('commentsResultsCount')}`}
                   </p>
                   <div className="space-y-3">
                     {searchResults.map(c => (
-                      <CommentCard key={c.id} comment={c} dark={dark} showTarget />
+                      <CommentCard key={c.id} comment={c} dark={dark} showTarget dateLocale={dateLocale} cardTypePhone={t('commentsCardTypePhone')} cardTypeCar={t('commentsCardTypeCar')} cardTypePerson={t('commentsCardTypePerson')} />
                     ))}
                   </div>
                 </div>
@@ -291,7 +289,7 @@ function CommentsPageInner() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Arama yapmak için yukarıya bir değer girin
+                    {t('commentsSearchPrompt')}
                   </p>
                 </div>
               )}
@@ -301,16 +299,16 @@ function CommentsPageInner() {
           {/* ── WRITE TAB ───────────────────────────────────────────────────── */}
           {tab === 'write' && (
             <div className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl p-5 space-y-4`}>
-              <h2 className={`text-base font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>Yeni Yorum Yaz</h2>
+              <h2 className={`text-base font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>{t('commentsWriteTitle')}</h2>
               <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Herhangi bir numara, plaka, kişi veya şirket hakkında anonim yorum yazabilirsiniz.
+                {t('commentsWriteDesc')}
               </p>
 
               <form onSubmit={handleWrite} className="space-y-4">
                 {/* Type selector */}
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Neyle ilgili?
+                    {t('commentsWriteAbout')}
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {(Object.keys(TARGET_LABELS) as TargetType[]).map(type => (
@@ -345,7 +343,7 @@ function CommentsPageInner() {
                   />
                   {writeType === 'phone' && (
                     <p className={`text-xs mt-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Telefon numarası sahibi bildirim alacak.
+                      {t('commentsWritePhoneHint')}
                     </p>
                   )}
                 </div>
@@ -353,13 +351,13 @@ function CommentsPageInner() {
                 {/* Comment text */}
                 <div>
                   <label className={`block text-sm font-medium mb-1.5 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Yorum <span className="text-red-500">*</span>
+                    {t('commentsWriteCommentLabel')} <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     value={writeText}
                     onChange={e => { setWriteText(e.target.value); setWriteError(''); }}
                     rows={4}
-                    placeholder="Yorumunuzu yazın..."
+                    placeholder={t('commentsWriteCommentPlaceholder')}
                     className={`w-full px-4 py-2.5 border rounded-lg text-sm resize-none outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
                       dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                     }`}
@@ -385,7 +383,7 @@ function CommentsPageInner() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
                   )}
-                  {writeSaving ? 'Gönderiliyor...' : 'Yorum Gönder'}
+                  {writeSaving ? t('commentsWriteSubmitting') : t('commentsWriteSubmit')}
                 </button>
               </form>
             </div>
@@ -395,7 +393,7 @@ function CommentsPageInner() {
           {tab === 'mine' && (
             <div className="space-y-4">
               <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Telefon numaranıza yazılan yorumlar aşağıda görünür.
+                {t('commentsMineTitle')}
               </p>
 
               {loadingMine ? (
@@ -408,7 +406,7 @@ function CommentsPageInner() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
                   <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Henüz numaranıza yorum yapılmadı.
+                    {t('commentsMineEmpty')}
                   </p>
                 </div>
               ) : (
@@ -417,7 +415,7 @@ function CommentsPageInner() {
                     <div key={c.id} className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl p-4`}>
                       <p className={`text-sm leading-relaxed ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{c.text}</p>
                       <p className={`text-xs mt-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {new Date(c.created_at).toLocaleString('tr-TR')}
+                        {new Date(c.created_at).toLocaleString(dateLocale)}
                       </p>
                     </div>
                   ))}
@@ -433,16 +431,32 @@ function CommentsPageInner() {
 }
 
 // ─── Comment Card ───────────────────────────────────────────────────────────────
-function CommentCard({ comment, dark, showTarget }: { comment: Comment; dark: boolean; showTarget?: boolean }) {
+function CommentCard({
+  comment, dark, showTarget, dateLocale, cardTypePhone, cardTypeCar, cardTypePerson
+}: {
+  comment: Comment;
+  dark: boolean;
+  showTarget?: boolean;
+  dateLocale: string;
+  cardTypePhone: string;
+  cardTypeCar: string;
+  cardTypePerson: string;
+}) {
   const typeColor = TYPE_COLORS[comment.target_type] || TYPE_COLORS.other;
   const typeIcon = TYPE_ICON[comment.target_type] || '🔖';
+
+  const typeLabel =
+    comment.target_type === 'car_number' ? cardTypeCar :
+    comment.target_type === 'phone' ? cardTypePhone :
+    comment.target_type === 'person_name' ? cardTypePerson :
+    comment.target_type;
 
   return (
     <div className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl p-4 space-y-2`}>
       {showTarget && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>
-            {typeIcon} {comment.target_type === 'car_number' ? 'Araç' : comment.target_type === 'phone' ? 'Telefon' : comment.target_type === 'person_name' ? 'Kişi' : comment.target_type}
+            {typeIcon} {typeLabel}
           </span>
           <span className={`text-sm font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>
             {comment.target_value}
@@ -451,7 +465,7 @@ function CommentCard({ comment, dark, showTarget }: { comment: Comment; dark: bo
       )}
       <p className={`text-sm leading-relaxed ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
       <p className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-        {new Date(comment.created_at).toLocaleString('tr-TR')}
+        {new Date(comment.created_at).toLocaleString(dateLocale)}
       </p>
     </div>
   );

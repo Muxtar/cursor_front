@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, COMPANY_CATEGORY_LABELS } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
 import AppLayout from '@/components/AppLayout';
@@ -30,9 +31,10 @@ interface CompanyModalProps {
   onSaved: () => void;
   editing?: Company | null;
   theme: string;
+  t: (key: any) => string;
 }
 
-function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
+function CompanyModal({ onClose, onSaved, editing, theme, t }: CompanyModalProps) {
   const dark = theme === 'dark';
   const [name, setName] = useState(editing?.name || '');
   const [category, setCategory] = useState(editing?.category || '');
@@ -44,8 +46,8 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!name.trim()) { setError('Şirket adı zorunludur.'); return; }
-    if (!category) { setError('Kategori seçiniz.'); return; }
+    if (!name.trim()) { setError(t('profileCompanyErrorName')); return; }
+    if (!category) { setError(t('profileCompanyCategoryRequired')); return; }
     setSaving(true);
     try {
       const payload = {
@@ -62,7 +64,7 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
       onSaved();
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Kaydedilemedi');
+      setError(err?.message || t('profileCompanyErrorSave'));
     } finally {
       setSaving(false);
     }
@@ -80,7 +82,7 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
         {/* Header */}
         <div className={`flex items-center justify-between px-5 py-4 border-b ${dark ? 'border-gray-700' : 'border-gray-200'}`}>
           <h3 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>
-            {editing ? 'Şirketi Düzenle' : 'Yeni Şirket Ekle'}
+            {editing ? t('profileCompanyEditTitle') : t('profileCompanyAddTitle')}
           </h3>
           <button onClick={onClose} className={`${dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'}`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,12 +100,12 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
           {/* Name */}
           <div>
             <label className={`block text-sm font-medium mb-1 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Şirket Adı <span className="text-red-500">*</span>
+              {t('profileCompanyNameLabel')} <span className="text-red-500">*</span>
             </label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Şirket adını girin"
+              placeholder={t('profileCompanyNamePlaceholder')}
               className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none ${
                 dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
               }`}
@@ -113,7 +115,7 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
           {/* Category */}
           <div>
             <label className={`block text-sm font-medium mb-1 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Kategori <span className="text-red-500">*</span>
+              {t('profileCompanyCategoryLabel')} <span className="text-red-500">*</span>
             </label>
             <select
               value={category}
@@ -122,7 +124,7 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
                 dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
               }`}
             >
-              <option value="">— Kategori seçin —</option>
+              <option value="">{t('profileCompanyCategorySelect')}</option>
               {CATEGORIES.map(cat => (
                 <option key={cat} value={cat}>{COMPANY_CATEGORY_LABELS[cat]}</option>
               ))}
@@ -132,13 +134,13 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
           {/* Description */}
           <div>
             <label className={`block text-sm font-medium mb-1 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Açıklama <span className={`text-xs font-normal ${dark ? 'text-gray-500' : 'text-gray-400'}`}>(isteğe bağlı)</span>
+              {t('profileCompanyDescLabel')} <span className={`text-xs font-normal ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('profileCompanyOptional')}</span>
             </label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               rows={3}
-              placeholder="Şirket hakkında kısa bilgi"
+              placeholder={t('profileCompanyDescLabel')}
               className={`w-full px-4 py-2.5 border rounded-lg text-sm resize-none focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none ${
                 dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
               }`}
@@ -148,12 +150,12 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
           {/* Website */}
           <div>
             <label className={`block text-sm font-medium mb-1 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-              Website <span className={`text-xs font-normal ${dark ? 'text-gray-500' : 'text-gray-400'}`}>(isteğe bağlı)</span>
+              Website <span className={`text-xs font-normal ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{t('profileCompanyOptional')}</span>
             </label>
             <input
               value={website}
               onChange={e => setWebsite(e.target.value)}
-              placeholder="https://sirketiniz.com"
+              placeholder="https://example.com"
               type="url"
               className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none ${
                 dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
@@ -170,14 +172,14 @@ function CompanyModal({ onClose, onSaved, editing, theme }: CompanyModalProps) {
                 dark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              İptal
+              {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-green-500 hover:bg-green-600 text-white transition disabled:opacity-50"
             >
-              {saving ? 'Kaydediliyor...' : (editing ? 'Güncelle' : 'Ekle')}
+              {saving ? t('saving') : (editing ? t('profileCompanyUpdate') : t('profileCompanyAddBtn'))}
             </button>
           </div>
         </form>
@@ -194,9 +196,10 @@ interface CompanyCardProps {
   theme: string;
   onEdit: (c: Company) => void;
   onDelete: (id: string) => void;
+  t: (key: any) => string;
 }
 
-function CompanyCard({ company, isOwn, theme, onEdit, onDelete }: CompanyCardProps) {
+function CompanyCard({ company, isOwn, theme, onEdit, onDelete, t }: CompanyCardProps) {
   const dark = theme === 'dark';
   const categoryLabel = COMPANY_CATEGORY_LABELS[company.category] || company.category;
 
@@ -219,7 +222,7 @@ function CompanyCard({ company, isOwn, theme, onEdit, onDelete }: CompanyCardPro
             <button
               onClick={() => onEdit(company)}
               className={`p-1.5 rounded-lg transition ${dark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-              title="Düzenle"
+              title={t('profileCompanyEdit')}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -228,7 +231,7 @@ function CompanyCard({ company, isOwn, theme, onEdit, onDelete }: CompanyCardPro
             <button
               onClick={() => onDelete(company.id)}
               className={`p-1.5 rounded-lg transition ${dark ? 'hover:bg-red-900/40 text-gray-400 hover:text-red-400' : 'hover:bg-red-50 text-gray-500 hover:text-red-500'}`}
-              title="Sil"
+              title={t('profileCompanyDelete')}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -270,6 +273,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const { actualTheme } = useTheme();
+  const { t, language } = useLanguage();
   const userId = params.id as string;
 
   const [profileUser, setProfileUser] = useState<any>(null);
@@ -366,8 +370,8 @@ export default function ProfilePage() {
   const handleInlineAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     setInlineError('');
-    if (!inlineName.trim()) { setInlineError('Şirket adı zorunludur.'); return; }
-    if (!inlineCategory) { setInlineError('Kategori seçiniz.'); return; }
+    if (!inlineName.trim()) { setInlineError(t('profileCompanyErrorName')); return; }
+    if (!inlineCategory) { setInlineError(t('profileCompanyCategoryRequired')); return; }
     setInlineSaving(true);
     try {
       await companyApi.createCompany({ name: inlineName.trim(), category: inlineCategory });
@@ -375,7 +379,7 @@ export default function ProfilePage() {
       setInlineCategory('');
       await loadCompanies();
     } catch (err: any) {
-      setInlineError(err?.message || 'Eklenemedi');
+      setInlineError(err?.message || t('profileCompanyErrorSave'));
     } finally {
       setInlineSaving(false);
     }
@@ -387,13 +391,13 @@ export default function ProfilePage() {
   };
 
   const handleDeleteCompany = async (companyId: string) => {
-    if (!confirm('Bu şirketi silmek istediğinize emin misiniz?')) return;
+    if (!confirm(t('profileCompanyConfirmDelete'))) return;
     setDeletingCompanyId(companyId);
     try {
       await companyApi.deleteCompany(companyId);
       setCompanies(prev => prev.filter(c => c.id !== companyId));
     } catch (err: any) {
-      alert('Silinemedi: ' + (err?.message || 'Bilinmeyen hata'));
+      alert(t('profileCompanyErrorDelete') + (err?.message || ''));
     } finally {
       setDeletingCompanyId(null);
     }
@@ -515,9 +519,10 @@ export default function ProfilePage() {
   }
 
   const dark = actualTheme === 'dark';
+  const dateLocale = language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US';
 
   return (
-    <AppLayout title="Profile">
+    <AppLayout title={t('profile')}>
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
@@ -531,12 +536,12 @@ export default function ProfilePage() {
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                <span className="text-sm sm:text-base">Back</span>
+                <span className="text-sm sm:text-base">{t('back')}</span>
               </button>
               <div className="flex items-center space-x-3 sm:space-x-4 flex-shrink-0">
-                <Link href="/chat" className={`text-sm ${dark ? 'text-gray-300' : 'text-gray-600'} hover:opacity-80`}>Chat</Link>
+                <Link href="/chat" className={`text-sm ${dark ? 'text-gray-300' : 'text-gray-600'} hover:opacity-80`}>{t('chat')}</Link>
                 {isOwnProfile && (
-                  <Link href="/settings" className={`text-sm ${dark ? 'text-gray-300' : 'text-gray-600'} hover:opacity-80`}>Settings</Link>
+                  <Link href="/settings" className={`text-sm ${dark ? 'text-gray-300' : 'text-gray-600'} hover:opacity-80`}>{t('settings')}</Link>
                 )}
               </div>
             </div>
@@ -586,11 +591,11 @@ export default function ProfilePage() {
                 <div className={`flex flex-wrap items-center gap-x-6 gap-y-1 text-sm ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
                   <div>
                     <span className={`font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>{products.length}</span>
-                    <span className="ml-1">Ürün</span>
+                    <span className="ml-1">{t('profileProductStat')}</span>
                   </div>
                   <div>
                     <span className={`font-semibold ${dark ? 'text-white' : 'text-gray-900'}`}>{companies.length}</span>
-                    <span className="ml-1">Şirket</span>
+                    <span className="ml-1">{t('profileCompanyStat')}</span>
                   </div>
                   {profileUser.phone_number && !profileUser.hide_phone_number && (
                     <div className="min-w-0 truncate">
@@ -605,12 +610,12 @@ export default function ProfilePage() {
                 {isOwnProfile ? (
                   <Link href="/explore/create"
                     className="bg-green-500 text-white px-6 py-2.5 rounded-lg hover:bg-green-600 transition-colors text-center w-full sm:w-auto text-sm font-medium">
-                    + Ürün Ekle
+                    {t('profileProductAdd')}
                   </Link>
                 ) : (
                   <button onClick={() => setShowProposalModal(true)}
                     className="bg-green-500 text-white px-6 py-2.5 rounded-lg hover:bg-green-600 transition-colors w-full sm:w-auto text-sm font-medium">
-                    Teklif Gönder
+                    {t('sendProposal')}
                   </button>
                 )}
               </div>
@@ -625,7 +630,7 @@ export default function ProfilePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
               <h2 className={`text-xl sm:text-2xl font-bold ${dark ? 'text-white' : 'text-gray-900'}`}>
-                {isOwnProfile ? 'Şirketlerim' : 'Şirketler'}
+                {isOwnProfile ? t('profileCompaniesTitle') : t('profileCompaniesOther')}
               </h2>
               {companies.length > 0 && (
                 <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>({companies.length})</span>
@@ -635,14 +640,14 @@ export default function ProfilePage() {
             {/* Inline add form — only for own profile */}
             {isOwnProfile && (
               <div className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl shadow-sm p-4 mb-4`}>
-                <p className={`text-sm font-medium mb-3 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>Yeni Şirket Ekle</p>
+                <p className={`text-sm font-medium mb-3 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{t('profileCompanyAdd')}</p>
                 <form onSubmit={handleInlineAddCompany}>
                   <div className="flex flex-col sm:flex-row gap-3">
                     {/* Name input */}
                     <input
                       value={inlineName}
                       onChange={e => { setInlineName(e.target.value); setInlineError(''); }}
-                      placeholder="Şirket adı"
+                      placeholder={t('profileCompanyNamePlaceholder')}
                       className={`flex-1 px-4 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
                         dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                       }`}
@@ -655,7 +660,7 @@ export default function ProfilePage() {
                         dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
                       }`}
                     >
-                      <option value="">— Kategori —</option>
+                      <option value="">{t('profileCompanyCategorySelect')}</option>
                       {CATEGORIES.map(cat => (
                         <option key={cat} value={cat}>{COMPANY_CATEGORY_LABELS[cat]}</option>
                       ))}
@@ -673,7 +678,7 @@ export default function ProfilePage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                       )}
-                      {inlineSaving ? 'Ekleniyor...' : 'Ekle'}
+                      {inlineSaving ? t('profileCompanyAdding') : t('profileCompanyAddBtn')}
                     </button>
                   </div>
                   {inlineError && (
@@ -690,7 +695,7 @@ export default function ProfilePage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
                 <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {isOwnProfile ? 'Henüz şirket eklemediniz.' : 'Bu kullanıcının şirketi yok.'}
+                  {isOwnProfile ? t('profileCompanyEmptyOwn') : t('profileCompanyEmptyOther')}
                 </p>
               </div>
             ) : (
@@ -703,6 +708,7 @@ export default function ProfilePage() {
                     theme={actualTheme}
                     onEdit={handleOpenEditCompany}
                     onDelete={handleDeleteCompany}
+                    t={t}
                   />
                 ))}
               </div>
@@ -713,20 +719,20 @@ export default function ProfilePage() {
           <div>
             <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
               <h2 className={`text-xl sm:text-2xl font-bold truncate ${dark ? 'text-white' : 'text-gray-900'}`}>
-                {isOwnProfile ? 'Ürünlerim' : 'Ürünler'}
+                {isOwnProfile ? t('profileProductsTitle') : t('profileProductsOther')}
               </h2>
               {products.length > 0 && (
-                <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{products.length} ürün</span>
+                <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{products.length} {t('profileProductsCount')}</span>
               )}
             </div>
             {products.length === 0 ? (
               <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-6 sm:p-12 text-center`}>
                 <p className={`text-lg mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {isOwnProfile ? 'Henüz ürün eklemediniz.' : 'Bu kullanıcının ürünü yok.'}
+                  {isOwnProfile ? t('profileProductsEmptyOwn') : t('profileProductsEmptyOther')}
                 </p>
                 {isOwnProfile && (
                   <Link href="/explore/create" className="inline-block bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
-                    İlk Ürünü Ekle
+                    {t('profileProductAddFirst')}
                   </Link>
                 )}
               </div>
@@ -747,28 +753,28 @@ export default function ProfilePage() {
             <div className="space-y-6" id="proposals-received">
               {/* Received */}
               <div>
-                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>Gelen Teklifler</h2>
+                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsReceivedTitle')}</h2>
                 <p className={`text-sm mb-3 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Kabul ettiğinizde gönderenle sohbet açılır.
+                  {t('profileProposalsReceivedDesc')}
                 </p>
                 <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending').length === 0 ? (
-                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Bekleyen teklif yok</p>
+                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoPending')}</p>
                   ) : (
                     proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending')
                       .map((p: any) => (
                         <div key={p.id || p._id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
                           <p className={`font-medium break-words ${dark ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
                           <p className={`mt-1 break-words ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
-                          <p className={`text-xs mt-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString()}</p>
+                          <p className={`text-xs mt-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
                           <div className="flex flex-wrap gap-2 mt-3">
                             <button onClick={() => handleAcceptProposal(p.id || p._id)} disabled={acceptingId === (p.id || p._id)}
                               className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm">
-                              {acceptingId === (p.id || p._id) ? 'Açılıyor...' : 'Kabul Et'}
+                              {acceptingId === (p.id || p._id) ? t('profileProposalAccepting') : t('accept')}
                             </button>
                             <button onClick={() => handleRejectProposal(p.id || p._id)}
                               className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm">
-                              Reddet
+                              {t('reject')}
                             </button>
                           </div>
                         </div>
@@ -779,10 +785,10 @@ export default function ProfilePage() {
 
               {/* Sent */}
               <div id="proposals-sent">
-                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>Gönderilen Teklifler</h2>
+                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsSentTitle')}</h2>
                 <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id)).length === 0 ? (
-                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Gönderilen teklif yok</p>
+                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoSent')}</p>
                   ) : (
                     proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id))
                       .map((p: any) => {
@@ -794,12 +800,12 @@ export default function ProfilePage() {
                             <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
                               {p.status}
                             </span>
-                            <p className={`text-xs mt-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString()}</p>
+                            <p className={`text-xs mt-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
                             {p.status === 'pending' && (
                               <div className="flex flex-wrap gap-2 mt-3">
                                 <button type="button" onClick={() => handleDeleteProposal(pid)} disabled={deletingProposalId === pid}
                                   className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-sm">
-                                  {deletingProposalId === pid ? 'Siliniyor...' : 'Sil'}
+                                  {deletingProposalId === pid ? t('profileCompanyDeleting') : t('delete')}
                                 </button>
                               </div>
                             )}
@@ -814,36 +820,34 @@ export default function ProfilePage() {
 
           {/* ── Comments ────────────────────────────────────────────── */}
           <div>
-            <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>Yorumlar</h2>
+            <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileCommentsTitle')}</h2>
             <p className={`text-sm mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {isOwnProfile
-                ? 'Size yapılan yorumlar. Yazarlar anonimdir, cevap vererek sohbet başlatabilirsiniz.'
-                : 'Yorumlar anonimdir. Sadece profil sahibi kim yazdığını görebilir.'}
+              {isOwnProfile ? t('profileCommentsDescOwn') : t('profileCommentsDescOther')}
             </p>
             {!isOwnProfile && (
               <form onSubmit={handleAddComment} className="mb-6">
                 <textarea value={newCommentText} onChange={e => setNewCommentText(e.target.value)}
-                  placeholder="Anonim yorum yaz..." rows={3}
+                  placeholder={t('profileCommentsWritePlaceholder')} rows={3}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 resize-none ${dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
                 />
                 <button type="submit" disabled={sendingComment || !newCommentText.trim()}
                   className="mt-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
-                  {sendingComment ? 'Gönderiliyor...' : 'Anonim Yorum Gönder'}
+                  {sendingComment ? t('profileCommentsSending') : t('profileCommentsSendBtn')}
                 </button>
               </form>
             )}
             <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
               {comments.length === 0 ? (
-                <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Henüz yorum yok.</p>
+                <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileCommentsNone')}</p>
               ) : (
                 comments.map(comment => (
                   <div key={comment.id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
                     <p className={`break-words ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
-                      <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString()}</span>
+                      <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString(dateLocale)}</span>
                       {isOwnProfile && (
                         <button onClick={() => handleReplyToComment(comment.id)} className="text-sm text-green-500 hover:text-green-600 font-medium">
-                          Yanıtla / Yazara ulaş
+                          {t('profileCommentsReply')}
                         </button>
                       )}
                     </div>
@@ -859,7 +863,7 @@ export default function ProfilePage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowQRCode(false)}>
             <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl p-4 sm:p-6 max-w-sm w-full`} onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-800'}`}>QR Kod</h3>
+                <h3 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-800'}`}>{t('profileQRCodeTitle')}</h3>
                 <button onClick={() => setShowQRCode(false)} className={`${dark ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}>
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -869,7 +873,7 @@ export default function ProfilePage() {
               <div className="flex justify-center mb-4">
                 <img src={`data:image/png;base64,${profileUser.qr_code}`} alt="QR Code" className="w-64 h-64 border-2 border-gray-300 rounded" />
               </div>
-              <p className={`text-sm text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>Bu QR kodu paylaşarak kişilere kendinizi ekletin</p>
+              <p className={`text-sm text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileQRCodeDesc')}</p>
             </div>
           </div>
         )}
@@ -879,7 +883,7 @@ export default function ProfilePage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowProposalModal(false)}>
             <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-800'}`}>Teklif Gönder</h3>
+                <h3 className={`text-lg font-semibold ${dark ? 'text-white' : 'text-gray-800'}`}>{t('profileProposalSendTitle')}</h3>
                 <button onClick={() => setShowProposalModal(false)} className={`${dark ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}>
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -888,18 +892,18 @@ export default function ProfilePage() {
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>Mesajınız</label>
+                  <label className={`block text-sm font-medium mb-2 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{t('profileProposalMessageLabel')}</label>
                   <textarea value={proposalContent} onChange={e => setProposalContent(e.target.value)} rows={4}
                     className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none ${dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-                    placeholder="Teklifinizi yazın..." />
+                    placeholder={t('profileProposalPlaceholder')} />
                 </div>
                 <label className={`flex items-center gap-2 cursor-pointer ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
                   <input type="checkbox" checked={proposalChatAnonymous} onChange={e => setProposalChatAnonymous(e.target.checked)} className="rounded border-gray-400" />
-                  <span className="text-sm">Kabul edilirse anonim sohbet aç</span>
+                  <span className="text-sm">{t('profileProposalAnonymousChat')}</span>
                 </label>
                 <button onClick={handleSendProposal} disabled={sendingProposal || !proposalContent.trim()}
                   className={`w-full py-3 rounded-lg font-semibold transition ${sendingProposal || !proposalContent.trim() ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'} text-white`}>
-                  {sendingProposal ? 'Gönderiliyor...' : 'Teklif Gönder'}
+                  {sendingProposal ? t('profileProposalSending') : t('profileProposalSendTitle')}
                 </button>
               </div>
             </div>
@@ -913,6 +917,7 @@ export default function ProfilePage() {
             editing={editingCompany}
             onClose={() => { setShowCompanyModal(false); setEditingCompany(null); }}
             onSaved={loadCompanies}
+            t={t}
           />
         )}
       </div>
