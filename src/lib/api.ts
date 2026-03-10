@@ -437,6 +437,52 @@ export const settingsApi = {
   getDataUsage: () => api.get('/settings/data-usage'),
 };
 
+// Company API
+export const companyApi = {
+  /** Kendi şirketlerini getir */
+  getMyCompanies: () => api.get('/companies/me'),
+  /** Başka bir kullanıcının şirketlerini getir (profil sayfasında) */
+  getUserCompanies: (userId: string) => api.get(`/companies/user/${userId}`),
+  /** Yeni şirket ekle */
+  createCompany: (data: {
+    name: string;
+    category: string;
+    description?: string;
+    website?: string;
+  }) => api.post('/companies', data),
+  /** Şirket güncelle */
+  updateCompany: (companyId: string, data: {
+    name?: string;
+    category?: string;
+    description?: string;
+    website?: string;
+  }) => api.put(`/companies/${companyId}`, data),
+  /** Şirket sil */
+  deleteCompany: (companyId: string) => api.delete(`/companies/${companyId}`),
+  /** Tüm kategorileri getir */
+  getCategories: () => api.get('/companies/categories'),
+};
+
+// Company category labels
+export const COMPANY_CATEGORY_LABELS: Record<string, string> = {
+  technology:     'Teknoloji',
+  finance:        'Finans',
+  healthcare:     'Sağlık',
+  education:      'Eğitim',
+  retail:         'Perakende',
+  manufacturing:  'Üretim',
+  construction:   'İnşaat',
+  real_estate:    'Emlak',
+  transportation: 'Ulaşım',
+  food_beverage:  'Gıda & İçecek',
+  entertainment:  'Eğlence',
+  marketing:      'Pazarlama',
+  consulting:     'Danışmanlık',
+  agriculture:    'Tarım',
+  energy:         'Enerji',
+  other:          'Diğer',
+};
+
 // Product API
 export const productApi = {
   createProduct: (data: {

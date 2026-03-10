@@ -1643,10 +1643,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
 
         setLocalStream(stream);
+        localStreamRef.current = stream; // Sync ref immediately so handleCallAnswered can find it
         // Small delay to ensure stream is ready
         await new Promise(resolve => setTimeout(resolve, 100));
         await initializePeerConnection(stream, 'voice');
-        
+
         // NOTE: Offer will be sent ONLY after call_answered event is received
         // This ensures callee has accepted the call and is ready for WebRTC connection
         // See handleCallAnswered() for offer sending logic
@@ -1960,16 +1961,25 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const callType = callTypeOverride || activeCall?.type || activeCall?.call_type || 'voice';
       
-      // Create RTCPeerConnection with STUN servers
-      // Note: TURN servers can be added here for better NAT traversal
+      // Build ICE server list - STUN always included, TURN added when env vars are set
+      const iceServers: RTCIceServer[] = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ];
+      const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+      if (turnUrl) {
+        iceServers.push({
+          urls: turnUrl,
+          username: process.env.NEXT_PUBLIC_TURN_USERNAME || '',
+          credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '',
+        });
+        console.log('✅ TURN server configured:', turnUrl);
+      } else {
+        console.warn('⚠️ No TURN server configured. Calls may fail across different networks/NATs. Set NEXT_PUBLIC_TURN_URL to fix.');
+      }
       const configuration: RTCConfiguration = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          // TURN servers can be added here if available
-          // { urls: 'turn:your-turn-server.com:3478', username: 'user', credential: 'pass' },
-        ],
+        iceServers,
         iceCandidatePoolSize: 10, // Pre-gather ICE candidates
       };
 
@@ -1984,6 +1994,48 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
+
+      // Renegotiation handler: triggered by ICE restarts or track changes.
+      // Initial offer is sent manually after call_answered - skip the first trigger.
+      pc.onnegotiationneeded = async () => {
+        // If no local description yet, the initial offer hasn't been sent.
+        // sendOfferIfReady() handles that path after call_answered arrives.
+        if (!pc.localDescription) return;
+        // Polite peer (callee) never initiates offers
+        if (isPoliteRef.current) return;
+        // Guard against concurrent negotiation
+        if (makingOfferRef.current || settingLocalDescriptionRef.current) return;
+
+        const currentCall = activeCallRef.current;
+        if (!currentCall) return;
+        const callId = currentCall.call_id || currentCall.id;
+
+        try {
+          makingOfferRef.current = true;
+          const offer = await pc.createOffer();
+          settingLocalDescriptionRef.current = true;
+          await pc.setLocalDescription(offer);
+          settingLocalDescriptionRef.current = false;
+
+          if (ws && callId) {
+            ws.send({
+              type: 'webrtc_offer',
+              chat_id: chatId,
+              call_id: callId,
+              offer: JSON.stringify(offer),
+              message_id: generateMessageId(),
+              sender_id: user?.id || user?._id || '',
+              timestamp: Date.now(),
+            });
+            console.log('📤 WebRTC re-offer sent (renegotiation/ICE restart)');
+          }
+        } catch (err) {
+          console.error('❌ Failed to renegotiate:', err);
+        } finally {
+          makingOfferRef.current = false;
+          settingLocalDescriptionRef.current = false;
+        }
+      };
 
       // Karşı taraftan gelen ses/video
       pc.ontrack = (event) => {
@@ -2022,40 +2074,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         
         // Use event.streams if available, otherwise create new stream from track
         if (event.streams && event.streams.length > 0) {
-          // Use the first stream from the event
           const remoteStream = event.streams[0];
-          const streamRef = remoteStream as MediaStream;
-          console.log(`✅ Received remote stream with ${streamRef.getTracks().length} tracks`);
-          
+          console.log(`✅ Received remote stream with ${remoteStream.getTracks().length} tracks`);
+
           // Ensure all tracks are enabled
-          streamRef.getTracks().forEach(track => {
+          remoteStream.getTracks().forEach(track => {
             if (!track.enabled) {
               console.log(`⚠️ Enabling ${track.kind} track`);
               track.enabled = true;
             }
             console.log(`📊 Track ${track.kind}: enabled=${track.enabled}, readyState=${track.readyState}`);
           });
-          
-          // Force update remote stream - this will trigger useEffect to update video element
+
+          // Single source of truth: update state only. useEffect will update the video element.
           console.log('🔄 Setting remote stream state...');
           setRemoteStream(remoteStream);
-          
-          // Also try to update video element directly if it exists
-          setTimeout(() => {
-            const videoEl = remoteVideoRef.current;
-            if (videoEl && videoEl.srcObject !== remoteStream) {
-              console.log('🔄 Directly updating remote video element srcObject...');
-              videoEl.srcObject = remoteStream;
-              videoEl.play().catch(err => {
-                if (err.name !== 'AbortError') {
-                  console.warn('⚠️ Failed to play remote video directly:', err);
-                }
-              });
-            }
-          }, 100);
-          
-          // Note: Video element update will be handled by useEffect
-          // Don't update here to avoid conflicts
         } else {
           // Fallback: create stream from track (for browsers that don't provide streams)
           setRemoteStream((prev) => {
@@ -2064,7 +2097,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               next.addTrack(event.track);
               console.log(`✅ Added ${event.track.kind} track to remote stream. Total tracks: ${next.getTracks().length}`);
             }
-            
             // Ensure all tracks are enabled
             next.getTracks().forEach(track => {
               if (!track.enabled) {
@@ -2072,22 +2104,6 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 track.enabled = true;
               }
             });
-            
-            // Force update
-            console.log('🔄 Setting remote stream state (fallback)...');
-            setTimeout(() => {
-              const videoEl = remoteVideoRef.current;
-              if (videoEl && videoEl.srcObject !== next) {
-                console.log('🔄 Directly updating remote video element srcObject (fallback)...');
-                videoEl.srcObject = next;
-                videoEl.play().catch(err => {
-                  if (err.name !== 'AbortError') {
-                    console.warn('⚠️ Failed to play remote video directly (fallback):', err);
-                  }
-                });
-              }
-            }, 100);
-            
             return next;
           });
         }
@@ -2109,7 +2125,17 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             console.warn('⚠️ Cannot send ICE candidate: no call_id available');
           }
         } else if (event.candidate === null) {
-          console.log('✅ ICE gathering complete');
+          console.log('✅ ICE gathering complete - sending end-of-candidates signal');
+          // Notify the remote peer that ICE gathering is done
+          const callIdForEoc = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
+          if (callIdForEoc && ws) {
+            ws.send({
+              type: 'webrtc_ice',
+              chat_id: chatId,
+              call_id: callIdForEoc,
+              candidate: null,
+            });
+          }
         }
       };
 
