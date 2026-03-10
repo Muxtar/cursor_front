@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,6 +58,18 @@ const TYPE_ICON: Record<string, string> = {
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
 export default function CommentsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-green-500 border-t-transparent" />
+      </div>
+    }>
+      <CommentsPageInner />
+    </Suspense>
+  );
+}
+
+function CommentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
