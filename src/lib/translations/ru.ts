@@ -523,6 +523,12 @@ export const ru = {
   profileQRCodeTitle: 'QR-код',
   profileQRCodeDesc: 'Поделитесь этим QR-кодом, чтобы вас добавили в контакты',
   yesterday: 'Вчера',
+
+  // Voice / Video Call UI
+  voiceCall: 'Голосовой звонок',
+  calling: 'Идёт вызов...',
+  callConnecting: 'Подключение...',
+  callFailed: 'Ошибка звонка',
 };
 
 

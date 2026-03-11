@@ -523,6 +523,12 @@ export const az = {
   profileQRCodeTitle: 'QR Kod',
   profileQRCodeDesc: 'Bu QR kodu paylaşaraq insanların sizi kontaktlara əlavə etməsinə imkan verin',
   yesterday: 'Dünən',
+
+  // Voice / Video Call UI
+  voiceCall: 'Səsli Zəng',
+  calling: 'Zəng edilir...',
+  callConnecting: 'Qoşulur...',
+  callFailed: 'Zəng Alınmadı',
 };
 
 

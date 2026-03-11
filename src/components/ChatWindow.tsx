@@ -104,6 +104,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [localStream, setLocalStreamStateRaw] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  // Call connection status: 'ringing' | 'connecting' | 'connected' | 'failed'
+  const [callStatus, setCallStatus] = useState<'ringing' | 'connecting' | 'connected' | 'failed'>('ringing');
+  const [callDuration, setCallDuration] = useState(0); // seconds
+  const callDurationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const callConnectedTimeRef = useRef<number | null>(null);
   
   // Wrapped setters with logging to track when state is cleared
   const setActiveCall = (value: any) => {
@@ -291,16 +296,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   useEffect(() => {
-    // Ringtone çalma koşulları:
-    // 1. Gelen arama varsa (callee) - her zaman çal
-    // 2. Aktif arama var ama remote stream yoksa (caller veya callee bağlantı kurulmamış) - çal
+    // Ringtone kuralları:
+    // 1. incomingCall var → callee ringtone (karşı taraf aramayı bekliyor)
+    // 2. activeCall var + remoteStream yok + CALLER biz isek → caller ringtone
+    // NOT: Callee (arama kabul eden) artık ringtone duymaz — bağlantı beklenir
+    const myId = String(user?.id || user?._id || '');
+    const callerId = activeCall?.caller_id || activeCall?.callerId;
+    const weAreTheCaller = !!callerId && String(callerId) === myId;
+
     const hasIncomingCall = !!incomingCall;
-    const hasActiveCallWithoutConnection = !!activeCall && !remoteStream;
-    const shouldRing = hasIncomingCall || hasActiveCallWithoutConnection;
-    
+    // Only caller hears ringback; callee who accepted doesn't ring
+    const callerWaitingForAnswer = !!activeCall && !remoteStream && weAreTheCaller;
+    const shouldRing = hasIncomingCall || callerWaitingForAnswer;
+
     // Prevent infinite loops - only change if state actually changed
     const wasPlaying = isPlayingRingtoneRef.current;
-    
+
     if (!shouldRing) {
       if (wasPlaying) {
         stopRingtone();
@@ -311,9 +322,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
     // Only start ringtone if we're not already playing
     if (!wasPlaying) {
-      // Ringtone tipi: gelen arama varsa 'callee', yoksa 'caller' (arayan kişi)
       const kind: RingtoneKind = hasIncomingCall ? 'callee' : 'caller';
-      console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, activeCall: ${!!activeCall}, remoteStream: ${!!remoteStream})`);
+      console.log(`🔔 Playing ringtone: ${kind} (incomingCall: ${hasIncomingCall}, weAreCaller: ${weAreTheCaller})`);
       playRingtone(kind);
       isPlayingRingtoneRef.current = true;
     }
@@ -325,7 +335,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         isPlayingRingtoneRef.current = false;
       }
     };
-  }, [incomingCall, activeCall, remoteStream]);
+  }, [incomingCall, activeCall, remoteStream, user]);
 
   // Local video stream'i video element'e bağla
   useEffect(() => {
@@ -2188,7 +2198,32 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           case 'connected':
             iceConnected = true;
             clearTimeout(iceTimeoutId);
+            setCallStatus('connected');
+            // Start call duration timer
+            callConnectedTimeRef.current = Date.now();
+            if (callDurationIntervalRef.current) clearInterval(callDurationIntervalRef.current);
+            callDurationIntervalRef.current = setInterval(() => {
+              if (callConnectedTimeRef.current) {
+                setCallDuration(Math.floor((Date.now() - callConnectedTimeRef.current) / 1000));
+              }
+            }, 1000);
             console.log('✅ WebRTC connected!');
+            // FALLBACK: If ontrack hasn't fired yet, try to get remote stream from receivers
+            setTimeout(() => {
+              if (!remoteStream) {
+                const receivers = pc.getReceivers();
+                const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio' && r.track.readyState === 'live');
+                if (audioReceivers.length > 0) {
+                  console.log('🔧 Fallback: building remoteStream from receivers after connected');
+                  const fallbackStream = new MediaStream();
+                  audioReceivers.forEach(r => fallbackStream.addTrack(r.track));
+                  setRemoteStream(fallbackStream);
+                }
+              }
+            }, 500);
+            break;
+          case 'connecting':
+            setCallStatus('connecting');
             break;
           case 'disconnected':
             console.warn('⚠️ WebRTC disconnected');
@@ -2202,7 +2237,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           case 'failed':
             console.error('❌ WebRTC connection failed');
             clearTimeout(iceTimeoutId);
-            // Try ICE restart once; if it fails again stopVideoCall will be triggered
+            setCallStatus('failed');
+            // Try ICE restart once
             if (activeCallRef.current) {
               console.log('🔄 Attempting ICE restart after failure...');
               setTimeout(() => {
@@ -2420,11 +2456,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       isStartingVideoCallRef.current = false;
       settingRemoteDescriptionRef.current = false;
       settingLocalDescriptionRef.current = false;
-      
+
       // Reset Perfect Negotiation state
       isPoliteRef.current = false;
       makingOfferRef.current = false;
-      
+
+      // Reset call status & duration
+      setCallStatus('ringing');
+      setCallDuration(0);
+      callConnectedTimeRef.current = null;
+      if (callDurationIntervalRef.current) {
+        clearInterval(callDurationIntervalRef.current);
+        callDurationIntervalRef.current = null;
+      }
+
       // Clear deduplication caches
       processedMessageIdsRef.current.clear();
       processedSDPHashesRef.current.clear();
@@ -3482,17 +3527,38 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       {activeCall && (activeCall.type === 'voice' || activeCall.call_type === 'voice') && !(activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (
         <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center">
           <div className="text-center mb-8">
-            <div className={`w-32 h-32 ${actualTheme === 'dark' ? 'bg-gray-700' : 'bg-gray-600'} rounded-full flex items-center justify-center mx-auto mb-4`}>
-              {otherPartyInfo?.avatar ? (
-                <img src={otherPartyInfo.avatar} alt={otherPartyInfo.username} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                <span className="text-6xl text-white font-semibold">
-                  {otherPartyInfo?.username?.[0]?.toUpperCase() || 'U'}
-                </span>
+            {/* Avatar with animated ring when connecting */}
+            <div className={`relative w-36 h-36 mx-auto mb-4 ${callStatus === 'connected' ? '' : 'animate-pulse'}`}>
+              {callStatus !== 'connected' && (
+                <span className="absolute inset-0 rounded-full border-4 border-blue-400 opacity-50 animate-ping" />
               )}
+              <div className={`w-36 h-36 ${callStatus === 'connected' ? 'bg-green-700' : 'bg-gray-600'} rounded-full flex items-center justify-center overflow-hidden`}>
+                {otherPartyInfo?.avatar ? (
+                  <img src={otherPartyInfo.avatar} alt={otherPartyInfo.username} className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-6xl text-white font-semibold">
+                    {otherPartyInfo?.username?.[0]?.toUpperCase() || 'U'}
+                  </span>
+                )}
+              </div>
             </div>
-            <h3 className="text-2xl font-semibold text-white mb-2">{otherPartyInfo?.username || 'Voice Call'}</h3>
-            <p className="text-gray-400">Calling...</p>
+            <h3 className="text-2xl font-semibold text-white mb-2">{otherPartyInfo?.username || t('voiceCall')}</h3>
+            {/* Dynamic status text based on WebRTC connection state */}
+            {callStatus === 'connected' ? (
+              <p className="text-green-400 font-medium">
+                {(() => {
+                  const m = Math.floor(callDuration / 60);
+                  const s = callDuration % 60;
+                  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                })()}
+              </p>
+            ) : callStatus === 'connecting' ? (
+              <p className="text-yellow-400 animate-pulse">{t('callConnecting')}</p>
+            ) : callStatus === 'failed' ? (
+              <p className="text-red-400">{t('callFailed')}</p>
+            ) : (
+              <p className="text-gray-400 animate-pulse">{t('calling')}</p>
+            )}
           </div>
           
           {/* Voice Call Controls */}

@@ -523,5 +523,11 @@ export const en = {
   profileQRCodeTitle: 'QR Code',
   profileQRCodeDesc: 'Share this QR code to let others add you as a contact',
   yesterday: 'Yesterday',
+
+  // Voice / Video Call UI
+  voiceCall: 'Voice Call',
+  calling: 'Calling...',
+  callConnecting: 'Connecting...',
+  callFailed: 'Call Failed',
 };
 

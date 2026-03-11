@@ -523,5 +523,11 @@ export const tr = {
   profileQRCodeTitle: 'QR Kod',
   profileQRCodeDesc: 'Bu QR kodu paylaşarak kişilere kendinizi ekletin',
   yesterday: 'Dün',
+
+  // Voice / Video Call UI
+  voiceCall: 'Sesli Arama',
+  calling: 'Arıyor...',
+  callConnecting: 'Bağlanıyor...',
+  callFailed: 'Arama Başarısız',
 };
 
