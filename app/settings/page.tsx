@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { settingsApi } from '@/lib/api';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -39,6 +39,7 @@ export default function SettingsPage() {
   const { t } = useLanguage();
   const { actualTheme } = useTheme();
   const router = useRouter();
+  useLayoutTitle(t('settings'));
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>('account');
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -96,7 +97,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppLayout title={t('settings')}>
+    <>
       <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Settings Sidebar - Mobile: Full width, Desktop: Fixed width */}
       <div className={`${showSettingsSidebar ? 'block' : 'hidden'} md:block w-full md:w-80 flex-shrink-0 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-r ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex flex-col`}>
@@ -213,6 +214,6 @@ export default function SettingsPage() {
         </div>
       </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

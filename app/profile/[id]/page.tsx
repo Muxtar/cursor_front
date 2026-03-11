@@ -7,7 +7,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, COMPANY_CATEGORY_LABELS } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -275,6 +275,7 @@ export default function ProfilePage() {
   const { actualTheme } = useTheme();
   const { t, language } = useLanguage();
   const userId = params.id as string;
+  useLayoutTitle(t('profile'));
 
   const [profileUser, setProfileUser] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
@@ -493,7 +494,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <AppLayout title="Profile">
+      <>
         <div className="flex-1 flex flex-col min-w-0">
           <div className={`flex-shrink-0 border-b ${actualTheme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} px-3 py-3 sm:py-4`}>
             <div className="flex items-center gap-2">
@@ -505,7 +506,7 @@ export default function ProfilePage() {
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-green-500 border-t-transparent" />
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
@@ -522,7 +523,7 @@ export default function ProfilePage() {
   const dateLocale = language === 'tr' ? 'tr-TR' : language === 'ru' ? 'ru-RU' : language === 'az' ? 'az-AZ' : 'en-US';
 
   return (
-    <AppLayout title={t('profile')}>
+    <>
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
@@ -921,6 +922,6 @@ export default function ProfilePage() {
           />
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }

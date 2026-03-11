@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { phoneCommentApi, searchApi } from '@/lib/api';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 
 type Tab = 'phone' | 'profession';
 
 export default function SearchPage() {
   const { user } = useAuth();
   const router = useRouter();
+  useLayoutTitle('Axtarış');
   const [tab, setTab] = useState<Tab>('phone');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [professionQuery, setProfessionQuery] = useState('');
@@ -94,7 +95,7 @@ export default function SearchPage() {
   };
 
   return (
-    <AppLayout title="Axtarış">
+    <>
       <main className="p-4 md:p-6 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Axtarış</h1>
 
@@ -236,6 +237,6 @@ export default function SearchPage() {
           </>
         )}
       </main>
-    </AppLayout>
+    </>
   );
 }

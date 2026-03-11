@@ -6,7 +6,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { productApi } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -25,6 +25,7 @@ export default function ExplorePage() {
   const { t } = useLanguage();
   const { actualTheme } = useTheme();
   const router = useRouter();
+  useLayoutTitle(t('explore') || 'Explore');
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -79,7 +80,7 @@ export default function ExplorePage() {
   }
 
   return (
-    <AppLayout title={t('explore') || 'Explore'}>
+    <>
       {/* Header */}
       <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -178,7 +179,7 @@ export default function ExplorePage() {
           </>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }
 

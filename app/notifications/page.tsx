@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { notificationsApi, profileCommentApi } from '@/lib/api';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 
 // ─── Notification type icon helper ───────────────────────────────────────────
@@ -89,6 +89,7 @@ function relativeTime(dateStr: string): string {
 export default function NotificationsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  useLayoutTitle('Bildirişlər');
   const [list, setList] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -147,7 +148,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <AppLayout title="Bildirişlər">
+    <>
       <div className="max-w-2xl mx-auto px-4 py-5 md:px-6">
 
         {/* ─── Header ─── */}
@@ -348,6 +349,6 @@ export default function NotificationsPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }

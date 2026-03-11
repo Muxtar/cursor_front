@@ -5,12 +5,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { fileApi } from '@/lib/api';
 import { useTheme } from '@/contexts/ThemeContext';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 
 export default function CreateStoryPage() {
   const { user } = useAuth();
   const { actualTheme } = useTheme();
   const router = useRouter();
+  useLayoutTitle('Create Story');
   const [media, setMedia] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
@@ -62,7 +63,7 @@ export default function CreateStoryPage() {
   }
 
   return (
-    <AppLayout title="Create Story">
+    <>
       <div className="flex-1 overflow-y-auto">
       <div className={`max-w-2xl mx-auto p-4 md:p-6 ${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg mt-4 md:mt-8`}>
         <div className="flex items-center justify-between mb-6">
@@ -178,7 +179,7 @@ export default function CreateStoryPage() {
         </div>
       </div>
       </div>
-    </AppLayout>
+    </>
   );
 }
 

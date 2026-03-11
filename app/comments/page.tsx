@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import AppLayout from '@/components/AppLayout';
+import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -61,6 +61,7 @@ function CommentsPageInner() {
   const { actualTheme } = useTheme();
   const { t, language } = useLanguage();
   const dark = actualTheme === 'dark';
+  useLayoutTitle(t('commentsPageTitle'));
 
   // Tabs: write | search | mine
   const [tab, setTab] = useState<'write' | 'search' | 'mine'>('search');
@@ -184,7 +185,7 @@ function CommentsPageInner() {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <AppLayout title={t('commentsPageTitle')}>
+    <>
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
 
         {/* Header */}
@@ -426,7 +427,7 @@ function CommentsPageInner() {
 
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }
 
