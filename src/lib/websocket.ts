@@ -11,7 +11,7 @@ const getWsUrl = (): string => {
   // 2. Runtime detection (sadece browser'da - sadece localhost için)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    
+
     // Local development - sadece localhost için localhost backend kullan
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'ws://localhost:8080/ws';
@@ -24,7 +24,7 @@ const getWsUrl = (): string => {
     console.error('2. Şu değişkeni ekleyin:');
     console.error('   NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws');
     console.error('3. REDEPLOY yapın (Deployments → Redeploy)');
-    
+
     // Geçici olarak Railway backend URL'ini kullan
     return 'wss://cursurback-production.up.railway.app/ws';
   }
@@ -58,6 +58,14 @@ export class WebSocketClient {
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
   /** Queue for messages sent before connection is open; flushed on open */
   private sendQueue: any[] = [];
+  /**
+   * Application-level ping interval.
+   * Sends a {type:"ping"} message every 30s to keep Railway's reverse-proxy
+   * from closing an otherwise-idle WebSocket connection.
+   * (The backend also sends protocol-level WebSocket pings every ~49s.)
+   */
+  private pingIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly PING_INTERVAL_MS = 30_000; // 30 seconds
 
   constructor(wsUrl?: string, token?: string) {
     // Runtime'da URL'i dinamik olarak al (build-time'da set edilmemişse)
@@ -82,6 +90,7 @@ export class WebSocketClient {
           console.log('✅ WebSocket connected successfully');
           this.reconnectAttempts = 0;
           this.flushSendQueue();
+          this.startPingInterval();
           if (!resolved) {
             resolved = true;
             resolve();
@@ -125,6 +134,7 @@ export class WebSocketClient {
 
         this.ws.onclose = (event) => {
           console.log(`WebSocket disconnected (code: ${event.code}, reason: ${event.reason || 'none'})`);
+          this.stopPingInterval();
           if (!resolved && event.code !== 1000) {
             // Only reject if not a normal closure and we haven't resolved yet
             resolved = true;
@@ -141,6 +151,22 @@ export class WebSocketClient {
         reject(error);
       }
     });
+  }
+
+  private startPingInterval() {
+    this.stopPingInterval();
+    this.pingIntervalId = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }, this.PING_INTERVAL_MS);
+  }
+
+  private stopPingInterval() {
+    if (this.pingIntervalId !== null) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
+    }
   }
 
   private flushSendQueue() {
@@ -201,6 +227,7 @@ export class WebSocketClient {
   }
 
   disconnect() {
+    this.stopPingInterval();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -208,8 +235,3 @@ export class WebSocketClient {
     this.listeners.clear();
   }
 }
-
-
-
-
-

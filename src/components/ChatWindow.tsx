@@ -104,6 +104,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [localStream, setLocalStreamStateRaw] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  // Ref that always holds the current remoteStream value — used inside WebRTC callbacks
+  // to avoid stale-closure bugs (state captured at closure creation time stays null).
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   // Call connection status: 'ringing' | 'connecting' | 'connected' | 'failed'
   const [callStatus, setCallStatus] = useState<'ringing' | 'connecting' | 'connected' | 'failed'>('ringing');
   const [callDuration, setCallDuration] = useState(0); // seconds
@@ -336,6 +339,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
     };
   }, [incomingCall, activeCall, remoteStream, user]);
+
+  // Keep remoteStreamRef in sync with the React state so WebRTC callbacks (which
+  // close over the initial null) can always read the current value via the ref.
+  useEffect(() => {
+    remoteStreamRef.current = remoteStream;
+  }, [remoteStream]);
 
   // Local video stream'i video element'e bağla
   useEffect(() => {
@@ -603,22 +612,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       });
       
       audioElement.srcObject = audioStream;
-      
-      // Force play audio
+
+      // Force play audio — handle browser autoplay policy:
+      // If the element was already "unlocked" by a prior muted play() during user gesture,
+      // an unmuted play() will succeed even without an active gesture.
       const playAudio = async () => {
         try {
           if (audioElement && audioElement.paused) {
+            audioElement.muted = false;
             await audioElement.play();
             console.log('✅ Remote audio playing');
           }
         } catch (err: any) {
-          // Silently ignore AbortError - this happens when stream changes quickly
-          if (err.name !== 'AbortError') {
+          if (err.name === 'AbortError') return; // stream changed quickly — harmless
+          if (err.name === 'NotAllowedError') {
+            // Autoplay was blocked. Try once more with muted=true (always allowed),
+            // then immediately unmute so audio actually plays.
+            console.warn('⚠️ Autoplay blocked — retrying muted then unmuting');
+            try {
+              audioElement.muted = true;
+              await audioElement.play();
+              audioElement.muted = false;
+              console.log('✅ Remote audio playing (muted→unmute trick)');
+            } catch (innerErr) {
+              console.warn('⚠️ Muted retry also failed:', innerErr);
+            }
+          } else {
             console.warn('⚠️ Failed to play remote audio:', err);
           }
         }
       };
-      
+
       playAudio();
     } else if (audioElement && !remoteStream) {
       audioElement.srcObject = null;
@@ -1617,6 +1641,18 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setActiveCall(callData);
       activeCallRef.current = callData; // Update ref immediately
       
+      // 🔓 Autoplay unlock: we're still inside the user-gesture (button click).
+      // Play the audio element muted now so the browser marks it as "user-initiated".
+      // Later, when remoteStream is set and we call play() unmuted, it will be allowed.
+      if (remoteAudioRef.current) {
+        try {
+          remoteAudioRef.current.muted = true;
+          remoteAudioRef.current.play().catch(() => {
+            // Expected: no srcObject yet — just unlocking the element.
+          });
+        } catch (_) { /* ignore */ }
+      }
+
       // Start audio stream and WebRTC connection
       try {
         // Try with enhanced audio first
@@ -2208,9 +2244,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               }
             }, 1000);
             console.log('✅ WebRTC connected!');
-            // FALLBACK: If ontrack hasn't fired yet, try to get remote stream from receivers
+            // FALLBACK: If ontrack hasn't fired yet, build remoteStream from PC receivers.
+            // Use remoteStreamRef (not the stale `remoteStream` closure) to get current value.
             setTimeout(() => {
-              if (!remoteStream) {
+              if (!remoteStreamRef.current) {
                 const receivers = pc.getReceivers();
                 const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio' && r.track.readyState === 'live');
                 if (audioReceivers.length > 0) {
@@ -2218,6 +2255,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                   const fallbackStream = new MediaStream();
                   audioReceivers.forEach(r => fallbackStream.addTrack(r.track));
                   setRemoteStream(fallbackStream);
+                } else {
+                  console.warn('⚠️ Fallback: no live audio receivers found — remote side may not be sending audio');
                 }
               }
             }, 500);
@@ -2297,6 +2336,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
 
     isAcceptingCallRef.current = true;
+
+    // 🔓 Autoplay unlock: call play() on the audio element RIGHT NOW while we
+    // still have a user-gesture context (the Accept button click).
+    // A muted play() is always allowed and "unlocks" the element so that a later
+    // unmuted play() (when remoteStream arrives) succeeds even without a gesture.
+    if (remoteAudioRef.current) {
+      try {
+        remoteAudioRef.current.muted = true;
+        remoteAudioRef.current.play().catch(() => {
+          // Expected: no srcObject yet — we just want to unlock the element.
+        });
+      } catch (_) { /* ignore */ }
+    }
 
     try {
       // Preserve caller_id from callData to ensure we can identify caller vs callee
