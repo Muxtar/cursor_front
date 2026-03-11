@@ -613,29 +613,31 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       
       audioElement.srcObject = audioStream;
 
-      // Force play audio — handle browser autoplay policy:
-      // If the element was already "unlocked" by a prior muted play() during user gesture,
-      // an unmuted play() will succeed even without an active gesture.
+      // Strategy: the element was already playing muted (autoPlay + muted=true in JSX,
+      // or from the pre-unlock call in acceptCall/startVoiceCall which ran during user gesture).
+      // All we need to do is unmute — no extra play() call required for muted→live transition.
+      // We also call play() as a safety net in case autoPlay hasn't started yet.
       const playAudio = async () => {
         try {
-          if (audioElement && audioElement.paused) {
-            audioElement.muted = false;
+          audioElement.muted = false; // always unmute first (was muted for autoplay policy)
+          if (audioElement.paused) {
             await audioElement.play();
             console.log('✅ Remote audio playing');
+          } else {
+            console.log('✅ Remote audio already playing (unmuted)');
           }
         } catch (err: any) {
           if (err.name === 'AbortError') return; // stream changed quickly — harmless
           if (err.name === 'NotAllowedError') {
-            // Autoplay was blocked. Try once more with muted=true (always allowed),
-            // then immediately unmute so audio actually plays.
-            console.warn('⚠️ Autoplay blocked — retrying muted then unmuting');
+            // Still blocked: keep muted and let autoPlay handle it, then try unmuting
+            console.warn('⚠️ Autoplay blocked even with muted trick — keeping muted and retrying');
+            audioElement.muted = true;
             try {
-              audioElement.muted = true;
               await audioElement.play();
               audioElement.muted = false;
-              console.log('✅ Remote audio playing (muted→unmute trick)');
+              console.log('✅ Remote audio playing (muted→unmute fallback)');
             } catch (innerErr) {
-              console.warn('⚠️ Muted retry also failed:', innerErr);
+              console.warn('⚠️ Muted fallback also failed:', innerErr);
             }
           } else {
             console.warn('⚠️ Failed to play remote audio:', err);
@@ -1019,10 +1021,33 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
     
     try {
-      // Ensure tracks are added
+      // Ensure tracks are added — if no senders yet, add now
       if (pc.getSenders().length === 0) {
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
         console.log('📤 Added local tracks to PC before offer');
+      }
+
+      // SANITY CHECK: Verify we actually have audio tracks.
+      // Without audio tracks in the offer SDP, ontrack never fires on the remote side
+      // and audio never flows — even if WebRTC shows "connected".
+      const audioSenders = pc.getSenders().filter(s => s.track?.kind === 'audio' && s.track.readyState === 'live');
+      if (audioSenders.length === 0) {
+        console.error('❌ CRITICAL: No live audio sender before creating offer! Trying to re-add tracks...', {
+          senders: pc.getSenders().map(s => ({ kind: s.track?.kind, readyState: s.track?.readyState })),
+          streamTracks: stream.getTracks().map(t => ({ kind: t.kind, readyState: t.readyState, enabled: t.enabled })),
+        });
+        // Re-add any live audio tracks from the stream
+        stream.getAudioTracks().forEach(track => {
+          if (track.readyState === 'live') {
+            const existing = pc.getSenders().find(s => s.track === track);
+            if (!existing) {
+              pc.addTrack(track, stream);
+              console.log('🔧 Re-added audio track to PC');
+            }
+          }
+        });
+      } else {
+        console.log('✅ Audio senders ready:', audioSenders.length, 'sender(s)');
       }
 
       // PERFECT NEGOTIATION: Mark that we're making an offer (impolite)
@@ -1641,9 +1666,8 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setActiveCall(callData);
       activeCallRef.current = callData; // Update ref immediately
       
-      // 🔓 Autoplay unlock: we're still inside the user-gesture (button click).
-      // Play the audio element muted now so the browser marks it as "user-initiated".
-      // Later, when remoteStream is set and we call play() unmuted, it will be allowed.
+      // 🔓 Autoplay unlock (user gesture = clicking the voice call button).
+      // The audio element is ALWAYS mounted so this ref is always valid here.
       if (remoteAudioRef.current) {
         try {
           remoteAudioRef.current.muted = true;
@@ -1652,6 +1676,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           });
         } catch (_) { /* ignore */ }
       }
+      try {
+        const ACtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (ACtx) {
+          const ctx = new ACtx();
+          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+          else ctx.close().catch(() => {});
+        }
+      } catch (_) { /* ignore */ }
 
       // Start audio stream and WebRTC connection
       try {
@@ -2177,29 +2209,34 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
+        const myId = String(user?.id || user?._id || '');
+        const callId = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
         if (event.candidate && ws) {
-          const callId = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
           if (callId) {
             ws.send({
               type: 'webrtc_ice',
               chat_id: chatId,
               call_id: callId,
               candidate: JSON.stringify(event.candidate),
+              sender_id: myId,
+              message_id: generateMessageId(),
+              timestamp: Date.now(),
             });
-            console.log('📤 ICE candidate sent');
+            console.log('📤 ICE candidate sent', { type: event.candidate.type, protocol: event.candidate.protocol });
           } else {
             console.warn('⚠️ Cannot send ICE candidate: no call_id available');
           }
         } else if (event.candidate === null) {
           console.log('✅ ICE gathering complete - sending end-of-candidates signal');
-          // Notify the remote peer that ICE gathering is done
-          const callIdForEoc = activeCallRef.current?.call_id || activeCallRef.current?.id || activeCall?.call_id || activeCall?.id;
-          if (callIdForEoc && ws) {
+          if (callId && ws) {
             ws.send({
               type: 'webrtc_ice',
               chat_id: chatId,
-              call_id: callIdForEoc,
+              call_id: callId,
               candidate: null,
+              sender_id: myId,
+              message_id: generateMessageId(),
+              timestamp: Date.now(),
             });
           }
         }
@@ -2337,18 +2374,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
     isAcceptingCallRef.current = true;
 
-    // 🔓 Autoplay unlock: call play() on the audio element RIGHT NOW while we
-    // still have a user-gesture context (the Accept button click).
-    // A muted play() is always allowed and "unlocks" the element so that a later
-    // unmuted play() (when remoteStream arrives) succeeds even without a gesture.
+    // 🔓 Autoplay unlock (user gesture = clicking Accept).
+    // The audio element is ALWAYS mounted (not conditional), so this ref is always valid.
+    // Playing muted with no srcObject is always allowed and marks the element as
+    // "user-initiated" so a later unmuted play() (when remoteStream arrives) succeeds.
     if (remoteAudioRef.current) {
       try {
         remoteAudioRef.current.muted = true;
         remoteAudioRef.current.play().catch(() => {
-          // Expected: no srcObject yet — we just want to unlock the element.
+          // Expected: no srcObject yet — just unlocking the element for future play.
         });
       } catch (_) { /* ignore */ }
     }
+    // Also resume AudioContext if it was suspended (needed for ringtone + some browsers)
+    try {
+      const ACtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (ACtx) {
+        const ctx = new ACtx();
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        else ctx.close().catch(() => {});
+      }
+    } catch (_) { /* ignore */ }
 
     try {
       // Preserve caller_id from callData to ensure we can identify caller vs callee
@@ -3570,10 +3616,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         </div>
       )}
 
-      {/* Sesli aramada karşı tarafın sesini çalmak için gizli audio */}
-      {activeCall && (
-        <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-      )}
+      {/* Remote audio element — always mounted (NOT conditional on activeCall).
+          Rendering it unconditionally ensures remoteAudioRef.current is never null,
+          so the autoplay-unlock calls in acceptCall / startVoiceCall actually reach it.
+          Starting with muted=true means autoPlay is always permitted by browser policy;
+          we unmute in JS as soon as we assign srcObject. */}
+      <audio ref={remoteAudioRef} autoPlay playsInline muted className="hidden" />
 
       {/* Voice Call UI */}
       {activeCall && (activeCall.type === 'voice' || activeCall.call_type === 'voice') && !(activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (
