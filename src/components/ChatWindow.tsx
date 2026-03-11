@@ -990,30 +990,32 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
         console.log('📤 Added local tracks to PC before offer');
       }
-      
+
       // PERFECT NEGOTIATION: Mark that we're making an offer (impolite)
       makingOfferRef.current = true;
       isPoliteRef.current = false;
-      
+
       console.log('📤 Creating offer (caller, after call answered)...');
       const offer = await pc.createOffer();
       settingLocalDescriptionRef.current = true;
       await pc.setLocalDescription(offer);
       settingLocalDescriptionRef.current = false;
       console.log(`✅ Local description set (offer after answer) state=${pc.signalingState} (call_id=${callId})`);
-      
+
       if (ws && callId) {
         ws.send({
           type: 'webrtc_offer',
           chat_id: chatId,
           call_id: callId,
           offer: JSON.stringify(offer),
-          message_id: generateMessageId(), // Generate unique messageId
+          message_id: generateMessageId(),
           sender_id: user?.id || user?._id || '',
           timestamp: Date.now(),
         });
         console.log('📤 WebRTC offer sent (caller, after call answered)');
       }
+      // Reset after successful offer — allows future renegotiation (e.g. ICE restart)
+      makingOfferRef.current = false;
     } catch (err) {
       console.error('❌ Failed to create offer after call answered:', err);
       makingOfferRef.current = false;
@@ -1963,12 +1965,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const callType = callTypeOverride || activeCall?.type || activeCall?.call_type || 'voice';
       
-      // Build ICE server list - STUN always included, TURN added when env vars are set
+      // Build ICE server list — multiple STUN servers + optional TURN
       const iceServers: RTCIceServer[] = [
+        // Google STUN (primary)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
+        // Cloudflare STUN (backup)
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        // Free Open Relay TURN servers (work across symmetric NATs)
+        // These are public relay servers provided by Open Relay Project
+        {
+          urls: [
+            'turn:a.relay.metered.ca:80',
+            'turn:a.relay.metered.ca:443',
+            'turns:a.relay.metered.ca:443',
+          ],
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
       ];
+
+      // Optional: override / add custom TURN via env vars
       const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
       if (turnUrl) {
         iceServers.push({
@@ -1976,13 +1993,14 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           username: process.env.NEXT_PUBLIC_TURN_USERNAME || '',
           credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '',
         });
-        console.log('✅ TURN server configured:', turnUrl);
-      } else {
-        console.warn('⚠️ No TURN server configured. Calls may fail across different networks/NATs. Set NEXT_PUBLIC_TURN_URL to fix.');
+        console.log('✅ Custom TURN server configured:', turnUrl);
       }
+
       const configuration: RTCConfiguration = {
         iceServers,
-        iceCandidatePoolSize: 10, // Pre-gather ICE candidates
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle',   // Bundle all media in one transport
+        rtcpMuxPolicy: 'require',     // Multiplex RTCP with RTP
       };
 
       const pc = new RTCPeerConnection(configuration);
@@ -2141,39 +2159,61 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       };
 
+      // ICE connection timeout — if connection not established in 15s, end call
+      let iceConnected = false;
+      const iceTimeoutId = setTimeout(() => {
+        if (!iceConnected && pc === peerConnectionRef.current) {
+          const state = pc.connectionState;
+          if (state !== 'connected' && state !== 'closed') {
+            console.error('❌ ICE connection timed out after 15s — ending call');
+            const currentCall = activeCallRef.current;
+            const callIdForTimeout = currentCall?.call_id || currentCall?.id;
+            if (callIdForTimeout && ws) {
+              ws.send({ type: 'webrtc_ice', chat_id: chatId, call_id: callIdForTimeout, candidate: null });
+            }
+            stopVideoCall('ice_timeout');
+            if (callIdForTimeout) {
+              callApi.endCall(String(callIdForTimeout)).catch(() => {});
+            }
+          }
+        }
+      }, 15000);
+
       // Handle connection state changes
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
         console.log('🔌 Peer connection state:', state);
-        
+
         switch (state) {
           case 'connected':
+            iceConnected = true;
+            clearTimeout(iceTimeoutId);
             console.log('✅ WebRTC connected!');
             break;
           case 'disconnected':
             console.warn('⚠️ WebRTC disconnected');
-            // Try to reconnect
             setTimeout(() => {
-              if (pc.connectionState === 'disconnected' && activeCall) {
+              if (pc.connectionState === 'disconnected' && activeCallRef.current) {
                 console.log('🔄 Attempting to reconnect...');
-                // Restart ICE
                 pc.restartIce();
               }
             }, 2000);
             break;
           case 'failed':
             console.error('❌ WebRTC connection failed');
-            // Try to restart ICE
-            if (activeCall && localStream) {
-              console.log('🔄 Attempting to recover connection...');
+            clearTimeout(iceTimeoutId);
+            // Try ICE restart once; if it fails again stopVideoCall will be triggered
+            if (activeCallRef.current) {
+              console.log('🔄 Attempting ICE restart after failure...');
               setTimeout(() => {
                 if (pc.connectionState === 'failed') {
                   pc.restartIce();
                 }
-              }, 2000);
+              }, 1000);
             }
             break;
           case 'closed':
+            clearTimeout(iceTimeoutId);
             console.log('🔌 WebRTC connection closed');
             break;
         }
@@ -2183,7 +2223,12 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       pc.oniceconnectionstatechange = () => {
         const state = pc.iceConnectionState;
         console.log('🧊 ICE connection state:', state);
-        
+
+        if (state === 'connected' || state === 'completed') {
+          iceConnected = true;
+          clearTimeout(iceTimeoutId);
+        }
+
         if (state === 'failed') {
           console.warn('⚠️ ICE connection failed, restarting ICE...');
           pc.restartIce();
@@ -2216,18 +2261,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }
 
     isAcceptingCallRef.current = true;
-    
+
     try {
-      await callApi.answerCall(callId);
       // Preserve caller_id from callData to ensure we can identify caller vs callee
-      const answeredCallData = { 
-        ...(callData || {}), 
+      const answeredCallData = {
+        ...(callData || {}),
         type: callType,
-        call_type: callType, // Also set call_type for consistency
-        caller_id: callData?.caller_id || callData?.callerId, // Ensure caller_id is preserved
+        call_type: callType,
+        caller_id: callData?.caller_id || callData?.callerId,
       };
+
+      // Set UI state immediately (user sees "call active" right away)
       setActiveCall(answeredCallData);
-      activeCallRef.current = answeredCallData; // Update ref immediately
+      activeCallRef.current = answeredCallData;
       setIncomingCall(null);
 
       // Clear any existing peer connection
@@ -2236,27 +2282,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         peerConnectionRef.current = null;
       }
       iceCandidateQueueRef.current = [];
-      
-      // Only clear remoteStream if it exists (to prevent unnecessary re-renders)
-      // setRemoteStream(null); // Removed to prevent loop
 
-      // Start media stream based on call type
+      // CRITICAL FIX: Setup media + peer connection BEFORE calling answerCall API.
+      // This ensures the callee is fully ready (PC initialized, tracks added) before
+      // the backend notifies the caller. Without this, the caller can send a WebRTC
+      // offer before the callee has a peer connection to receive it.
       if (callType === 'video') {
-        // Video call - start video stream
-        // Only start if not already starting or if we don't have a stream
         if (!isStartingVideoCallRef.current && (!localStream || localStream.getVideoTracks().length === 0)) {
           const stream = await startVideoCall();
           if (stream) {
-            // Ensure stream is set in both state and ref
             setLocalStream(stream);
             localStreamRef.current = stream;
           }
         } else if (localStream && localStream.getVideoTracks().length > 0) {
-          // We already have a stream, ensure it's in ref and initialize peer connection
           localStreamRef.current = localStream;
           await initializePeerConnection(localStream, 'video');
         } else {
-          // No stream yet, start one
           const stream = await startVideoCall();
           if (stream) {
             setLocalStream(stream);
@@ -2264,7 +2305,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }
         }
       } else {
-        // Voice call
+        // Voice call: get microphone first
         let stream: MediaStream | null = null;
         const audioStrategies = [
           { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } },
@@ -2289,16 +2330,27 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
 
         setLocalStream(stream);
-        localStreamRef.current = stream; // Update ref immediately
-        // Small delay to ensure stream is ready
-        await new Promise(resolve => setTimeout(resolve, 100));
+        localStreamRef.current = stream;
+        await new Promise(resolve => setTimeout(resolve, 50));
         await initializePeerConnection(stream, 'voice');
       }
+
+      // NOW notify the caller we're ready — this triggers call_answered → caller sends offer.
+      // At this point our peer connection is initialized and listening for the offer.
+      console.log('✅ Media and peer connection ready, notifying caller...');
+      await callApi.answerCall(callId);
+      console.log('✅ answerCall API done — waiting for WebRTC offer from caller');
     } catch (error) {
       console.error('Failed to answer call:', error);
       alert('Failed to answer call');
       setActiveCall(null);
+      activeCallRef.current = null;
       setIncomingCall(null);
+      // Clean up peer connection on failure
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
     } finally {
       isAcceptingCallRef.current = false;
     }
