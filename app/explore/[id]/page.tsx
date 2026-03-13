@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { productApi, commentApi, likeApi } from '@/lib/api';
+import { productApi, commentApi, likeApi, chatApi } from '@/lib/api';
 import CommentSection from '@/components/CommentSection';
 import Link from 'next/link';
 
@@ -65,6 +65,19 @@ export default function ProductDetailPage() {
       }
     } catch (error) {
       console.error('Failed to toggle like:', error);
+    }
+  };
+
+  const handleMessageSeller = async () => {
+    if (!user || !product) return;
+    const ownerId = product.owner_id || product.owner?.id || product.owner?._id;
+    if (!ownerId) return;
+    try {
+      const res: any = await chatApi.createChat({ type: 'direct', member_ids: [String(ownerId)] });
+      const chatId = res?.chat?.id || res?.chat?._id || res?.id || res?._id;
+      router.push(chatId ? `/chat?open=${chatId}` : '/chat');
+    } catch {
+      router.push('/chat');
     }
   };
 
@@ -221,7 +234,7 @@ export default function ProductDetailPage() {
                     (e.target as HTMLImageElement).src = '/default-avatar.png';
                   }}
                 />
-                <div>
+                <div className="flex-1">
                   <h3 className="font-semibold text-lg">{product.owner?.username}</h3>
                   <Link
                     href={`/profile/${product.owner?.id}`}
@@ -230,6 +243,19 @@ export default function ProductDetailPage() {
                     View Profile →
                   </Link>
                 </div>
+                {/* Message Seller — hidden for own products */}
+                {user && String(product.owner_id || product.owner?.id) !== String(user.id || (user as any)._id) && (
+                  <button
+                    onClick={handleMessageSeller}
+                    className="flex items-center gap-2 bg-green-500 hover:bg-green-600 active:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    Message Seller
+                  </button>
+                )}
               </div>
             </div>
 

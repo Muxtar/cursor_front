@@ -313,11 +313,25 @@ export default function ProfilePage() {
   const [inlineSaving, setInlineSaving] = useState(false);
   const [inlineError, setInlineError] = useState('');
 
+  // ── Tab navigation ───────────────────────────────────────────────────────────
+  // Default: other users see "products" tab first; own profile defaults to "about"
+  const [activeTab, setActiveTab] = useState<'about' | 'products' | 'companies'>('about');
+
+  // ── Social accounts ──────────────────────────────────────────────────────────
+  const [socialAccounts, setSocialAccounts] = useState<{ platform: string; url: string; username?: string }[]>([]);
+  const [showSocialForm, setShowSocialForm] = useState(false);
+  const [newSocialPlatform, setNewSocialPlatform] = useState('instagram');
+  const [newSocialUrl, setNewSocialUrl] = useState('');
+  const [savingSocial, setSavingSocial] = useState(false);
+  const [deletingSocialIdx, setDeletingSocialIdx] = useState<number | null>(null);
+
   useEffect(() => {
     if (!currentUser) { router.push('/login'); return; }
     if (!userId) return;
     const isOwn = currentUser.id === userId || (currentUser as any)._id === userId;
     setIsOwnProfile(isOwn);
+    // Other users land on "products" tab by default
+    setActiveTab(isOwn ? 'about' : 'products');
     loadProfile();
     loadProducts();
     loadComments();
@@ -329,8 +343,10 @@ export default function ProfilePage() {
     if (!userId) return;
     try {
       const isOwn = currentUser?.id === userId || (currentUser as any)?._id === userId;
-      const data = isOwn ? await userApi.getMe() : await userApi.getUserById(userId);
+      const data: any = isOwn ? await userApi.getMe() : await userApi.getUserById(userId);
       setProfileUser(data);
+      // Load social accounts from profile
+      setSocialAccounts(Array.isArray(data?.social_accounts) ? data.social_accounts : []);
     } catch (error) {
       console.error('Failed to load profile:', error);
     } finally {
@@ -401,6 +417,59 @@ export default function ProfilePage() {
       alert(t('profileCompanyErrorDelete') + (err?.message || ''));
     } finally {
       setDeletingCompanyId(null);
+    }
+  };
+
+  // ── Social account actions ───────────────────────────────────────────────────
+
+  const SOCIAL_PLATFORMS = [
+    { value: 'instagram', label: 'Instagram' },
+    { value: 'facebook', label: 'Facebook' },
+    { value: 'linkedin', label: 'LinkedIn' },
+    { value: 'twitter', label: 'Twitter / X' },
+    { value: 'youtube', label: 'YouTube' },
+    { value: 'tiktok', label: 'TikTok' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  const SOCIAL_COLORS: Record<string, string> = {
+    instagram: 'bg-pink-500',
+    facebook: 'bg-blue-600',
+    linkedin: 'bg-blue-700',
+    twitter: 'bg-sky-500',
+    youtube: 'bg-red-600',
+    tiktok: 'bg-gray-900',
+    other: 'bg-gray-500',
+  };
+
+  const handleAddSocialAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSocialUrl.trim()) return;
+    setSavingSocial(true);
+    try {
+      const newAccount = { platform: newSocialPlatform, url: newSocialUrl.trim() };
+      const updated = [...socialAccounts, newAccount];
+      await userApi.updateMe({ social_accounts: updated });
+      setSocialAccounts(updated);
+      setNewSocialUrl('');
+      setShowSocialForm(false);
+    } catch (err: any) {
+      alert('Could not save: ' + (err?.message || ''));
+    } finally {
+      setSavingSocial(false);
+    }
+  };
+
+  const handleRemoveSocialAccount = async (idx: number) => {
+    setDeletingSocialIdx(idx);
+    try {
+      const updated = socialAccounts.filter((_, i) => i !== idx);
+      await userApi.updateMe({ social_accounts: updated });
+      setSocialAccounts(updated);
+    } catch (err: any) {
+      alert('Could not remove: ' + (err?.message || ''));
+    } finally {
+      setDeletingSocialIdx(null);
     }
   };
 
@@ -623,6 +692,124 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          {/* ── Tab navigation ──────────────────────────────────────── */}
+          <div className={`flex gap-1 p-1 rounded-xl ${dark ? 'bg-gray-800' : 'bg-gray-100'}`}>
+            {(['about', 'products', 'companies'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab
+                    ? 'bg-green-500 text-white shadow-sm'
+                    : dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                {tab === 'about' && '👤 About'}
+                {tab === 'products' && `🛍 Products${products.length > 0 ? ` (${products.length})` : ''}`}
+                {tab === 'companies' && `🏢 Companies${companies.length > 0 ? ` (${companies.length})` : ''}`}
+              </button>
+            ))}
+          </div>
+
+          {/* ── ABOUT TAB ───────────────────────────────────────────── */}
+          {activeTab === 'about' && (
+            <>
+              {/* Social accounts section */}
+              <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-md p-4 sm:p-6`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className={`text-lg font-bold ${dark ? 'text-white' : 'text-gray-900'}`}>
+                    🔗 Social Accounts
+                  </h2>
+                  {isOwnProfile && !showSocialForm && (
+                    <button
+                      onClick={() => setShowSocialForm(true)}
+                      className="flex items-center gap-1 text-sm text-green-500 hover:text-green-600 font-medium"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add
+                    </button>
+                  )}
+                </div>
+
+                {/* Add form (own profile only) */}
+                {isOwnProfile && showSocialForm && (
+                  <form onSubmit={handleAddSocialAccount} className="mb-4 flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={newSocialPlatform}
+                      onChange={e => setNewSocialPlatform(e.target.value)}
+                      className={`px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-green-500 ${
+                        dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    >
+                      {SOCIAL_PLATFORMS.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="url"
+                      value={newSocialUrl}
+                      onChange={e => setNewSocialUrl(e.target.value)}
+                      placeholder="https://instagram.com/username"
+                      required
+                      className={`flex-1 px-3 py-2 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-green-500 ${
+                        dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    />
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={savingSocial}
+                        className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+                        {savingSocial ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => { setShowSocialForm(false); setNewSocialUrl(''); }}
+                        className={`px-4 py-2 rounded-lg text-sm ${dark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {socialAccounts.length === 0 ? (
+                  <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {isOwnProfile ? 'No social accounts added yet. Click Add to link your profiles.' : 'No social accounts shared.'}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {socialAccounts.map((acc, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <a
+                          href={acc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-white text-sm font-medium hover:opacity-90 transition ${SOCIAL_COLORS[acc.platform] || 'bg-gray-500'}`}
+                        >
+                          <span className="capitalize">{acc.platform}</span>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </a>
+                        {isOwnProfile && (
+                          <button
+                            onClick={() => handleRemoveSocialAccount(idx)}
+                            disabled={deletingSocialIdx === idx}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-xs transition ${dark ? 'bg-gray-700 text-gray-400 hover:bg-red-900/40 hover:text-red-400' : 'bg-gray-100 text-gray-500 hover:bg-red-50 hover:text-red-500'} disabled:opacity-40`}
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── COMPANIES TAB ───────────────────────────────────────── */}
+          {activeTab === 'companies' && (
+          <div>
           {/* ── Companies section ───────────────────────────────────── */}
           <div>
             {/* Section title */}

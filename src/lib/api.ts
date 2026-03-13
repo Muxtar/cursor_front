@@ -376,6 +376,24 @@ export const typingApi = {
   getTyping: (chatId: string) => api.get(`/typing/${chatId}`),
 };
 
+// Story API
+export const storyApi = {
+  /** Create a story — type "media" (media_url required) or "product" (product_id required). */
+  createStory: (data: {
+    type: 'media' | 'product';
+    media_url?: string;
+    media_type?: 'image' | 'video';
+    text?: string;
+    product_id?: string;
+  }) => api.post('/stories', data),
+  /** Get all active (non-expired) stories grouped by user. */
+  getFeed: () => api.get('/stories'),
+  /** Get stories for a specific user. */
+  getUserStories: (userId: string) => api.get(`/stories/user/${userId}`),
+  /** Delete own story. */
+  deleteStory: (storyId: string) => api.delete(`/stories/${storyId}`),
+};
+
 // Group API
 export const groupApi = {
   createGroup: (data: { group_name: string; group_icon?: string; member_ids?: string[] }) =>
