@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, COMPANY_CATEGORY_LABELS } from '@/lib/api';
+import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, storyApi, COMPANY_CATEGORY_LABELS } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
+import StoryViewer from '@/components/StoryViewer';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 
@@ -298,7 +299,7 @@ export default function ProfilePage() {
   const [showQRCode, setShowQRCode] = useState(false);
 
   // Comments
-  const [comments, setComments] = useState<{ id: string; text: string; created_at: string }[]>([]);
+  const [comments, setComments] = useState<{ id: string; text: string; like_count: number; dislike_count: number; created_at: string }[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
 
@@ -315,7 +316,16 @@ export default function ProfilePage() {
 
   // ── Tab navigation ───────────────────────────────────────────────────────────
   // Default: other users see "products" tab first; own profile defaults to "about"
-  const [activeTab, setActiveTab] = useState<'about' | 'products' | 'companies'>('about');
+  const [activeTab, setActiveTab] = useState<'about' | 'products' | 'companies' | 'stories'>('about');
+
+  // ── Stories tab ──────────────────────────────────────────────────────────────
+  const [profileStories, setProfileStories] = useState<any[]>([]);
+  const [loadingStories, setLoadingStories] = useState(false);
+  const [showStoryViewer, setShowStoryViewer] = useState(false);
+  const [storyViewerIndex, setStoryViewerIndex] = useState(0);
+
+  // ── Profile comment reactions (local state) ──────────────────────────────────
+  const [commentReactions, setCommentReactions] = useState<Record<string, { liked: boolean; disliked: boolean }>>({});
 
   // ── Social accounts ──────────────────────────────────────────────────────────
   const [socialAccounts, setSocialAccounts] = useState<{ platform: string; url: string; username?: string }[]>([]);
@@ -338,6 +348,17 @@ export default function ProfilePage() {
     loadCompanies();
     if (isOwn) loadProposals();
   }, [currentUser, userId]);
+
+  // Fetch stories when stories tab is activated
+  useEffect(() => {
+    if (activeTab === 'stories' && userId) {
+      setLoadingStories(true);
+      storyApi.getUserStories(userId)
+        .then((res: any) => setProfileStories(Array.isArray(res) ? res : (res?.stories || [])))
+        .catch(() => setProfileStories([]))
+        .finally(() => setLoadingStories(false));
+    }
+  }, [activeTab, userId]);
 
   const loadProfile = async () => {
     if (!userId) return;
@@ -503,6 +524,44 @@ export default function ProfilePage() {
     } catch (error: any) {
       alert('Failed to start conversation: ' + (error?.message || 'Unknown error'));
     }
+  };
+
+  const handleLikeProfileComment = async (commentId: string) => {
+    const current = commentReactions[commentId] || { liked: false, disliked: false };
+    try {
+      if (current.liked) {
+        await profileCommentApi.unlikeComment(commentId);
+        setCommentReactions(prev => ({ ...prev, [commentId]: { liked: false, disliked: false } }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, like_count: Math.max(0, (c.like_count || 0) - 1) } : c));
+      } else {
+        await profileCommentApi.likeComment(commentId);
+        // Remove dislike if existed
+        if (current.disliked) {
+          setComments(prev => prev.map(c => c.id === commentId ? { ...c, dislike_count: Math.max(0, (c.dislike_count || 0) - 1) } : c));
+        }
+        setCommentReactions(prev => ({ ...prev, [commentId]: { liked: true, disliked: false } }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, like_count: (c.like_count || 0) + 1 } : c));
+      }
+    } catch (error) { console.error('Failed to toggle profile comment like:', error); }
+  };
+
+  const handleDislikeProfileComment = async (commentId: string) => {
+    const current = commentReactions[commentId] || { liked: false, disliked: false };
+    try {
+      if (current.disliked) {
+        await profileCommentApi.undislikeComment(commentId);
+        setCommentReactions(prev => ({ ...prev, [commentId]: { liked: false, disliked: false } }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, dislike_count: Math.max(0, (c.dislike_count || 0) - 1) } : c));
+      } else {
+        await profileCommentApi.dislikeComment(commentId);
+        // Remove like if existed
+        if (current.liked) {
+          setComments(prev => prev.map(c => c.id === commentId ? { ...c, like_count: Math.max(0, (c.like_count || 0) - 1) } : c));
+        }
+        setCommentReactions(prev => ({ ...prev, [commentId]: { liked: false, disliked: true } }));
+        setComments(prev => prev.map(c => c.id === commentId ? { ...c, dislike_count: (c.dislike_count || 0) + 1 } : c));
+      }
+    } catch (error) { console.error('Failed to toggle profile comment dislike:', error); }
   };
 
   const handleSendProposal = async () => {
@@ -702,7 +761,7 @@ export default function ProfilePage() {
 
           {/* ── Tab navigation ──────────────────────────────────────── */}
           <div className={`flex gap-1 p-1 rounded-xl ${dark ? 'bg-gray-800' : 'bg-gray-100'}`}>
-            {(['about', 'products', 'companies'] as const).map(tab => (
+            {(['about', 'products', 'companies', 'stories'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -715,6 +774,7 @@ export default function ProfilePage() {
                 {tab === 'about' && '👤 About'}
                 {tab === 'products' && `🛍 Products${products.length > 0 ? ` (${products.length})` : ''}`}
                 {tab === 'companies' && `🏢 Companies${companies.length > 0 ? ` (${companies.length})` : ''}`}
+                {tab === 'stories' && `📖 Stories${profileStories.length > 0 ? ` (${profileStories.length})` : ''}`}
               </button>
             ))}
           </div>
@@ -910,19 +970,44 @@ export default function ProfilePage() {
                   {comments.length === 0 ? (
                     <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileCommentsNone')}</p>
                   ) : (
-                    comments.map(comment => (
-                      <div key={comment.id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                        <p className={`break-words ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
-                          <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString(dateLocale)}</span>
-                          {isOwnProfile && (
-                            <button onClick={() => handleReplyToComment(comment.id)} className="text-sm text-green-500 hover:text-green-600 font-medium">
-                              {t('profileCommentsReply')}
-                            </button>
-                          )}
+                    comments.map(comment => {
+                      const reaction = commentReactions[comment.id] || { liked: false, disliked: false };
+                      return (
+                        <div key={comment.id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                          <p className={`break-words ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
+                            <div className="flex items-center gap-3">
+                              <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString(dateLocale)}</span>
+                              {/* Like button */}
+                              <button
+                                onClick={() => handleLikeProfileComment(comment.id)}
+                                className={`flex items-center gap-1 text-xs transition-colors ${reaction.liked ? 'text-green-500' : dark ? 'text-gray-400 hover:text-green-400' : 'text-gray-500 hover:text-green-500'}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill={reaction.liked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                                </svg>
+                                <span>{comment.like_count || 0}</span>
+                              </button>
+                              {/* Dislike button */}
+                              <button
+                                onClick={() => handleDislikeProfileComment(comment.id)}
+                                className={`flex items-center gap-1 text-xs transition-colors ${reaction.disliked ? 'text-red-500' : dark ? 'text-gray-400 hover:text-red-400' : 'text-gray-500 hover:text-red-500'}`}
+                              >
+                                <svg className="w-3.5 h-3.5" fill={reaction.disliked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                                </svg>
+                                <span>{comment.dislike_count || 0}</span>
+                              </button>
+                            </div>
+                            {isOwnProfile && (
+                              <button onClick={() => handleReplyToComment(comment.id)} className="text-sm text-green-500 hover:text-green-600 font-medium">
+                                {t('profileCommentsReply')}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -1052,6 +1137,91 @@ export default function ProfilePage() {
                     />
                   ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STORIES TAB ───────────────────────────────────────────── */}
+          {activeTab === 'stories' && (
+            <div className="space-y-4">
+              {/* Create story button for own profile */}
+              {isOwnProfile && (
+                <button
+                  onClick={() => router.push('/story/create')}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Yeni Story Paylaş
+                </button>
+              )}
+
+              {loadingStories ? (
+                <div className="flex justify-center py-12">
+                  <span className="animate-spin w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full inline-block" />
+                </div>
+              ) : profileStories.length === 0 ? (
+                <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-10 text-center`}>
+                  <div className="text-4xl mb-3">📖</div>
+                  <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {isOwnProfile ? 'Hələ story paylaşmamısınız. Yuxarıdakı düyməyə basın!' : 'Bu istifadəçinin aktiv storysi yoxdur.'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    {profileStories.map((story: any, idx: number) => {
+                      const thumbUrl = story.media_url || story.product?.media_urls?.[0] || story.thumbnail_url;
+                      return (
+                        <div
+                          key={story.id || story._id || idx}
+                          onClick={() => { setStoryViewerIndex(idx); setShowStoryViewer(true); }}
+                          className="relative aspect-square rounded-xl overflow-hidden cursor-pointer group"
+                        >
+                          {thumbUrl ? (
+                            <img
+                              src={thumbUrl}
+                              alt="story"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            />
+                          ) : (
+                            <div className={`w-full h-full flex items-center justify-center text-2xl ${dark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                              🛍
+                            </div>
+                          )}
+                          {/* Type indicator */}
+                          {story.type === 'product' && (
+                            <div className="absolute top-1 right-1 bg-black/60 rounded-full p-1">
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Story Viewer */}
+                  {showStoryViewer && profileStories.length > 0 && (
+                    <StoryViewer
+                      stories={profileStories.map((s: any) => ({
+                        id: s.id || s._id || '',
+                        user_id: s.user_id || '',
+                        user_name: s.user_name || profileUser?.username || '',
+                        user_avatar: s.user_avatar || profileUser?.avatar,
+                        media_url: s.media_url || s.product?.media_urls?.[0] || '',
+                        media_type: s.media_type || 'image',
+                        text: s.text,
+                        created_at: s.created_at,
+                        expires_at: s.expires_at,
+                      }))}
+                      initialIndex={storyViewerIndex}
+                      onClose={() => setShowStoryViewer(false)}
+                    />
+                  )}
+                </>
               )}
             </div>
           )}

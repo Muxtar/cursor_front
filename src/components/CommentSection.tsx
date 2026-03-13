@@ -13,7 +13,9 @@ interface Comment {
     avatar: string;
   };
   like_count: number;
+  dislike_count: number;
   is_liked: boolean;
+  is_disliked: boolean;
   replies?: Comment[];
   created_at: string;
 }
@@ -84,13 +86,32 @@ export default function CommentSection({
 
       if (comment.is_liked) {
         await likeApi.unlikeComment(commentId);
-        updateCommentLike(commentId, false);
+        updateCommentLike(commentId, false, false);
       } else {
         await likeApi.likeComment(commentId);
-        updateCommentLike(commentId, true);
+        // Mutual exclusion: clear dislike if was disliked
+        updateCommentLike(commentId, true, false);
       }
     } catch (error) {
       console.error('Failed to toggle comment like:', error);
+    }
+  };
+
+  const handleDislikeComment = async (commentId: string) => {
+    try {
+      const comment = findComment(comments, commentId);
+      if (!comment) return;
+
+      if (comment.is_disliked) {
+        await likeApi.undislikeComment(commentId);
+        updateCommentDislike(commentId, false, false);
+      } else {
+        await likeApi.dislikeComment(commentId);
+        // Mutual exclusion: clear like if was liked
+        updateCommentDislike(commentId, true, false);
+      }
+    } catch (error) {
+      console.error('Failed to toggle comment dislike:', error);
     }
   };
 
@@ -105,7 +126,7 @@ export default function CommentSection({
     return null;
   };
 
-  const updateCommentLike = (commentId: string, isLiked: boolean) => {
+  const updateCommentLike = (commentId: string, isLiked: boolean, keepDislike: boolean) => {
     setComments((prev) =>
       prev.map((comment) => {
         if (comment.id === commentId) {
@@ -113,6 +134,9 @@ export default function CommentSection({
             ...comment,
             is_liked: isLiked,
             like_count: isLiked ? comment.like_count + 1 : comment.like_count - 1,
+            // When liking, clear dislike state (mutual exclusion)
+            is_disliked: keepDislike ? comment.is_disliked : false,
+            dislike_count: (!keepDislike && comment.is_disliked) ? comment.dislike_count - 1 : comment.dislike_count,
           };
         }
         if (comment.replies) {
@@ -124,6 +148,42 @@ export default function CommentSection({
                     ...reply,
                     is_liked: isLiked,
                     like_count: isLiked ? reply.like_count + 1 : reply.like_count - 1,
+                    is_disliked: keepDislike ? reply.is_disliked : false,
+                    dislike_count: (!keepDislike && reply.is_disliked) ? reply.dislike_count - 1 : reply.dislike_count,
+                  }
+                : reply
+            ),
+          };
+        }
+        return comment;
+      })
+    );
+  };
+
+  const updateCommentDislike = (commentId: string, isDisliked: boolean, keepLike: boolean) => {
+    setComments((prev) =>
+      prev.map((comment) => {
+        if (comment.id === commentId) {
+          return {
+            ...comment,
+            is_disliked: isDisliked,
+            dislike_count: isDisliked ? comment.dislike_count + 1 : comment.dislike_count - 1,
+            // When disliking, clear like state (mutual exclusion)
+            is_liked: keepLike ? comment.is_liked : false,
+            like_count: (!keepLike && comment.is_liked) ? comment.like_count - 1 : comment.like_count,
+          };
+        }
+        if (comment.replies) {
+          return {
+            ...comment,
+            replies: comment.replies.map((reply) =>
+              reply.id === commentId
+                ? {
+                    ...reply,
+                    is_disliked: isDisliked,
+                    dislike_count: isDisliked ? reply.dislike_count + 1 : reply.dislike_count - 1,
+                    is_liked: keepLike ? reply.is_liked : false,
+                    like_count: (!keepLike && reply.is_liked) ? reply.like_count - 1 : reply.like_count,
                   }
                 : reply
             ),
@@ -222,27 +282,30 @@ export default function CommentSection({
                   )}
                 </div>
                 <p className="text-gray-700 mt-1">{comment.content}</p>
-                <div className="flex items-center space-x-4 mt-2">
+                <div className="flex items-center space-x-3 mt-2">
+                  {/* Like button */}
                   <button
                     onClick={() => handleLikeComment(comment.id)}
                     className={`flex items-center space-x-1 text-sm ${
-                      comment.is_liked ? 'text-red-500' : 'text-gray-500'
-                    } hover:text-red-500`}
+                      comment.is_liked ? 'text-green-500' : 'text-gray-500'
+                    } hover:text-green-500`}
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill={comment.is_liked ? 'currentColor' : 'none'}
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                      />
+                    <svg className="w-4 h-4" fill={comment.is_liked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
                     </svg>
                     <span>{comment.like_count}</span>
+                  </button>
+                  {/* Dislike button */}
+                  <button
+                    onClick={() => handleDislikeComment(comment.id)}
+                    className={`flex items-center space-x-1 text-sm ${
+                      comment.is_disliked ? 'text-red-500' : 'text-gray-500'
+                    } hover:text-red-500`}
+                  >
+                    <svg className="w-4 h-4" fill={comment.is_disliked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                    </svg>
+                    <span>{comment.dislike_count}</span>
                   </button>
                   {user && (
                     <button
@@ -320,27 +383,30 @@ export default function CommentSection({
                             )}
                           </div>
                           <p className="text-sm text-gray-700 mt-1">{reply.content}</p>
-                          <button
-                            onClick={() => handleLikeComment(reply.id)}
-                            className={`flex items-center space-x-1 text-xs mt-1 ${
-                              reply.is_liked ? 'text-red-500' : 'text-gray-500'
-                            } hover:text-red-500`}
-                          >
-                            <svg
-                              className="w-3 h-3"
-                              fill={reply.is_liked ? 'currentColor' : 'none'}
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                          <div className="flex items-center space-x-3 mt-1">
+                            <button
+                              onClick={() => handleLikeComment(reply.id)}
+                              className={`flex items-center space-x-1 text-xs ${
+                                reply.is_liked ? 'text-green-500' : 'text-gray-500'
+                              } hover:text-green-500`}
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                              />
-                            </svg>
-                            <span>{reply.like_count}</span>
-                          </button>
+                              <svg className="w-3 h-3" fill={reply.is_liked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                              </svg>
+                              <span>{reply.like_count}</span>
+                            </button>
+                            <button
+                              onClick={() => handleDislikeComment(reply.id)}
+                              className={`flex items-center space-x-1 text-xs ${
+                                reply.is_disliked ? 'text-red-500' : 'text-gray-500'
+                              } hover:text-red-500`}
+                            >
+                              <svg className="w-3 h-3" fill={reply.is_disliked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                              </svg>
+                              <span>{reply.dislike_count}</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}

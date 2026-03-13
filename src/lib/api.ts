@@ -341,6 +341,10 @@ export const profileCommentApi = {
     api.get(`/public/profile-comments/search?q=${encodeURIComponent(q)}`),
   delete: (commentId: string) => api.delete(`/profile-comments/${commentId}`),
   reply: (commentId: string) => api.post(`/profile-comments/${commentId}/reply`),
+  likeComment: (commentId: string) => api.post(`/profile-comments/${commentId}/like`),
+  unlikeComment: (commentId: string) => api.delete(`/profile-comments/${commentId}/like`),
+  dislikeComment: (commentId: string) => api.post(`/profile-comments/${commentId}/dislike`),
+  undislikeComment: (commentId: string) => api.delete(`/profile-comments/${commentId}/dislike`),
 };
 
 // Message API
@@ -541,5 +545,7 @@ export const likeApi = {
   unlikeProduct: (productId: string) => api.delete(`/products/${productId}/like`),
   likeComment: (commentId: string) => api.post(`/comments/${commentId}/like`),
   unlikeComment: (commentId: string) => api.delete(`/comments/${commentId}/like`),
+  dislikeComment: (commentId: string) => api.post(`/comments/${commentId}/dislike`),
+  undislikeComment: (commentId: string) => api.delete(`/comments/${commentId}/dislike`),
   getProductLikes: (productId: string) => api.get(`/products/${productId}/likes`),
 };
