@@ -1974,6 +1974,113 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         </div>
       )}
 
+      {/* New Group Chat Modal */}
+      {showNewGroupModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowNewGroupModal(false)}>
+          <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg w-96 max-h-[85vh] flex flex-col overflow-hidden`} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className={`p-4 border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex items-center justify-between flex-shrink-0`}>
+              <h2 className={`text-lg font-semibold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-800'}`}>New Group Chat</h2>
+              <button onClick={() => setShowNewGroupModal(false)} className={`${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'} hover:opacity-80`}>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+              {/* Group name input */}
+              <input
+                type="text"
+                placeholder="Group name (required)"
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                }`}
+                autoFocus
+              />
+
+              {/* Member search */}
+              <input
+                type="text"
+                placeholder="Search users to add..."
+                value={groupMemberQuery}
+                onChange={e => handleGroupMemberSearch(e.target.value)}
+                className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm ${
+                  actualTheme === 'dark' ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                }`}
+              />
+
+              {/* Selected members pills */}
+              {selectedGroupMembers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedGroupMembers.map(m => (
+                    <span key={m.id || m._id} className="flex items-center gap-1 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                      {m.username || m.phone_number}
+                      <button onClick={() => toggleGroupMember(m)} className="hover:opacity-70 ml-0.5">✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Search results */}
+              {groupMemberResults.length > 0 && (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {groupMemberResults.map(result => {
+                    const rid = String(result.id || result._id);
+                    const isSelected = selectedGroupMembers.some(m => String(m.id || m._id) === rid);
+                    return (
+                      <button
+                        key={rid}
+                        onClick={() => toggleGroupMember(result)}
+                        className={`w-full p-2.5 text-left rounded-lg transition flex items-center gap-3 ${
+                          isSelected
+                            ? actualTheme === 'dark' ? 'bg-green-900/40' : 'bg-green-50'
+                            : actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 ${isSelected ? 'bg-green-500' : actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'}`}>
+                          {isSelected ? '✓' : (result.username?.[0]?.toUpperCase() || 'U')}
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-medium text-sm truncate ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{result.username || result.phone_number}</p>
+                          {result.phone_number && result.username && (
+                            <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{result.phone_number}</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {groupMemberQuery && groupMemberResults.length === 0 && (
+                <p className={`text-sm text-center py-2 ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No users found</p>
+              )}
+            </div>
+
+            {/* Create button */}
+            <div className={`p-4 border-t ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} flex-shrink-0`}>
+              <button
+                onClick={handleCreateGroup}
+                disabled={!groupName.trim() || selectedGroupMembers.length === 0 || creatingGroup}
+                className="w-full py-2.5 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {creatingGroup ? (
+                  <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                )}
+                {creatingGroup ? 'Creating...' : `Create Group${selectedGroupMembers.length > 0 ? ` (${selectedGroupMembers.length})` : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Contact Modal */}
       {showAddContactModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => { setShowAddContactModal(false); setAddContactByNumber(false); setNewContactPhone(''); setNewContactName(''); }}>

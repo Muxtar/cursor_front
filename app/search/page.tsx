@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { phoneCommentApi, searchApi } from '@/lib/api';
+import { phoneCommentApi, searchApi, userApi, chatApi } from '@/lib/api';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 
-type Tab = 'phone' | 'profession';
+type Tab = 'phone' | 'profession' | 'users';
 
 export default function SearchPage() {
   const { user } = useAuth();
@@ -22,6 +22,10 @@ export default function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [newCommentText, setNewCommentText] = useState('');
   const [newCommentRating, setNewCommentRating] = useState<number | null>(null);
+  // ── Find Users tab ─────────────────────────────────────────────────────────
+  const [userQuery, setUserQuery] = useState('');
+  const [userResults, setUserResults] = useState<any[]>([]);
+  const [startingChatId, setStartingChatId] = useState<string | null>(null);
 
   if (!user) {
     router.push('/login');
@@ -94,12 +98,41 @@ export default function SearchPage() {
     }
   };
 
+  const handleSearchUsers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userQuery.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const res: any = await userApi.searchUsers(userQuery.trim());
+      setUserResults(Array.isArray(res) ? res : (res?.users || []));
+    } catch (err: any) {
+      setError(err?.message || 'Axtarış uğursuz');
+      setUserResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartChat = async (targetUserId: string) => {
+    setStartingChatId(targetUserId);
+    try {
+      const res: any = await chatApi.createChat({ type: 'direct', member_ids: [targetUserId] });
+      const chatId = res?.chat?.id || res?.chat?._id || res?.id || res?._id;
+      router.push(chatId ? `/chat?open=${chatId}` : '/chat');
+    } catch {
+      router.push('/chat');
+    } finally {
+      setStartingChatId(null);
+    }
+  };
+
   return (
     <>
       <main className="p-4 md:p-6 max-w-2xl mx-auto">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Axtarış</h1>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-wrap">
           <button
             type="button"
             onClick={() => setTab('phone')}
@@ -107,7 +140,7 @@ export default function SearchPage() {
               tab === 'phone' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
             }`}
           >
-            Nömrəyə görə rəylər
+            📞 Nömrəyə görə rəylər
           </button>
           <button
             type="button"
@@ -116,7 +149,16 @@ export default function SearchPage() {
               tab === 'profession' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
             }`}
           >
-            Peşə + yaxınlıq
+            📍 Peşə + yaxınlıq
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTab('users'); setUserResults([]); setUserQuery(''); setError(null); }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+              tab === 'users' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
+            }`}
+          >
+            👤 İstifadəçi tap
           </button>
         </div>
 
@@ -233,6 +275,73 @@ export default function SearchPage() {
                   )}
                 </div>
               ))}
+            </div>
+          </>
+        )}
+
+        {tab === 'users' && (
+          <>
+            <form onSubmit={handleSearchUsers} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                placeholder="İstifadəçi adı ilə axtar..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
+                autoFocus
+              />
+              <button type="submit" disabled={loading || !userQuery.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
+                {loading ? (
+                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : 'Axtar'}
+              </button>
+            </form>
+
+            <div className="space-y-3">
+              {userResults.length === 0 && !loading && userQuery && (
+                <p className="text-gray-500 text-center py-4">İstifadəçi tapılmadı.</p>
+              )}
+              {userResults.map((u: any) => {
+                const uid = String(u.id || u._id);
+                return (
+                  <div key={uid} className="p-4 bg-white border border-gray-200 rounded-lg flex items-center gap-4">
+                    {/* Avatar */}
+                    <div className="flex-shrink-0">
+                      {u.avatar ? (
+                        <img src={u.avatar} alt={u.username} className="w-12 h-12 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white text-lg font-semibold">
+                          {u.username?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                      )}
+                    </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{u.username || u.phone_number}</p>
+                      {u.profession && <p className="text-sm text-gray-500 truncate">{u.profession}</p>}
+                    </div>
+                    {/* Actions */}
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => router.push(`/profile/${uid}`)}
+                        className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition"
+                      >
+                        Profil
+                      </button>
+                      <button
+                        onClick={() => handleStartChat(uid)}
+                        disabled={startingChatId === uid}
+                        className="px-3 py-1.5 text-xs font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 transition flex items-center gap-1"
+                      >
+                        {startingChatId === uid ? (
+                          <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : '💬'}
+                        Mesaj
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
