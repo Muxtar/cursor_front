@@ -84,6 +84,13 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTouchRef = useRef<{ clientX: number; clientY: number; chat: any } | null>(null);
   const justDidLongPressRef = useRef(false);
+  // ── New Group Chat modal ────────────────────────────────────────────────────
+  const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupMemberQuery, setGroupMemberQuery] = useState('');
+  const [groupMemberResults, setGroupMemberResults] = useState<any[]>([]);
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState<any[]>([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -527,6 +534,53 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     }
   };
 
+  const handleGroupMemberSearch = async (q: string) => {
+    setGroupMemberQuery(q);
+    if (!q.trim()) { setGroupMemberResults([]); return; }
+    try {
+      const res: any = await userApi.searchUsers(q.trim());
+      const results = Array.isArray(res) ? res : (res?.users || []);
+      setGroupMemberResults(results);
+    } catch { setGroupMemberResults([]); }
+  };
+
+  const toggleGroupMember = (member: any) => {
+    const memberId = String(member.id || member._id);
+    setSelectedGroupMembers(prev => {
+      const exists = prev.some(m => String(m.id || m._id) === memberId);
+      return exists ? prev.filter(m => String(m.id || m._id) !== memberId) : [...prev, member];
+    });
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim() || selectedGroupMembers.length === 0) return;
+    setCreatingGroup(true);
+    try {
+      const res: any = await chatApi.createChat({
+        type: 'group',
+        group_name: groupName.trim(),
+        member_ids: selectedGroupMembers.map(m => String(m.id || m._id)),
+      });
+      const chatId = res?.chat?.id || res?.chat?._id || res?.id || res?._id;
+      setShowNewGroupModal(false);
+      setGroupName('');
+      setGroupMemberQuery('');
+      setGroupMemberResults([]);
+      setSelectedGroupMembers([]);
+      loadChats();
+      if (chatId) {
+        if (onChatSelect) onChatSelect(chatId);
+        router.push(`/chat?open=${chatId}`);
+      } else {
+        router.push('/chat');
+      }
+    } catch (e: any) {
+      alert('Failed to create group: ' + (e?.message || ''));
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
   const handleCreateChat = async (userId: string) => {
     try {
       const chat: any = await chatApi.createChat({
@@ -962,6 +1016,15 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
               >
                 <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setShowNewGroupModal(true); setGroupName(''); setGroupMemberQuery(''); setGroupMemberResults([]); setSelectedGroupMembers([]); }}
+                className={`p-2 ${actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} rounded-full transition`}
+                title="New Group Chat"
+              >
+                <svg className={`w-5 h-5 ${actualTheme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </button>
               <button

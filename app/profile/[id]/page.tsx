@@ -425,20 +425,28 @@ export default function ProfilePage() {
   const SOCIAL_PLATFORMS = [
     { value: 'instagram', label: 'Instagram' },
     { value: 'facebook', label: 'Facebook' },
+    { value: 'tiktok', label: 'TikTok' },
     { value: 'linkedin', label: 'LinkedIn' },
     { value: 'twitter', label: 'Twitter / X' },
     { value: 'youtube', label: 'YouTube' },
-    { value: 'tiktok', label: 'TikTok' },
+    { value: 'telegram', label: 'Telegram' },
+    { value: 'whatsapp', label: 'WhatsApp' },
+    { value: 'github', label: 'GitHub' },
+    { value: 'website', label: 'Website' },
     { value: 'other', label: 'Other' },
   ];
 
   const SOCIAL_COLORS: Record<string, string> = {
     instagram: 'bg-pink-500',
     facebook: 'bg-blue-600',
+    tiktok: 'bg-gray-900',
     linkedin: 'bg-blue-700',
     twitter: 'bg-sky-500',
     youtube: 'bg-red-600',
-    tiktok: 'bg-gray-900',
+    telegram: 'bg-sky-500',
+    whatsapp: 'bg-green-500',
+    github: 'bg-gray-800',
+    website: 'bg-indigo-500',
     other: 'bg-gray-500',
   };
 
@@ -807,243 +815,246 @@ export default function ProfilePage() {
             </>
           )}
 
-          {/* ── COMPANIES TAB ───────────────────────────────────────── */}
-          {activeTab === 'companies' && (
-          <div>
-          {/* ── Companies section ───────────────────────────────────── */}
-          <div>
-            {/* Section title */}
-            <div className="flex items-center gap-2 mb-4">
-              <svg className={`w-5 h-5 flex-shrink-0 ${dark ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-              <h2 className={`text-xl sm:text-2xl font-bold ${dark ? 'text-white' : 'text-gray-900'}`}>
-                {isOwnProfile ? t('profileCompaniesTitle') : t('profileCompaniesOther')}
-              </h2>
-              {companies.length > 0 && (
-                <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>({companies.length})</span>
-              )}
-            </div>
-
-            {/* Inline add form — only for own profile */}
-            {isOwnProfile && (
-              <div className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl shadow-sm p-4 mb-4`}>
-                <p className={`text-sm font-medium mb-3 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{t('profileCompanyAdd')}</p>
-                <form onSubmit={handleInlineAddCompany}>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    {/* Name input */}
-                    <input
-                      value={inlineName}
-                      onChange={e => { setInlineName(e.target.value); setInlineError(''); }}
-                      placeholder={t('profileCompanyNamePlaceholder')}
-                      className={`flex-1 px-4 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
-                        dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
-                      }`}
-                    />
-                    {/* Category select */}
-                    <select
-                      value={inlineCategory}
-                      onChange={e => { setInlineCategory(e.target.value); setInlineError(''); }}
-                      className={`sm:w-52 px-4 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
-                        dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
-                      }`}
-                    >
-                      <option value="">{t('profileCompanyCategorySelect')}</option>
-                      {CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{COMPANY_CATEGORY_LABELS[cat]}</option>
-                      ))}
-                    </select>
-                    {/* Save button */}
-                    <button
-                      type="submit"
-                      disabled={inlineSaving}
-                      className="flex items-center justify-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50 flex-shrink-0"
-                    >
-                      {inlineSaving ? (
-                        <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+          {/* ── ABOUT TAB: Proposals + Comments ──────────────────────────── */}
+          {activeTab === 'about' && (
+            <>
+              {/* Proposals (own profile only) */}
+              {isOwnProfile && (
+                <div className="space-y-6" id="proposals-received">
+                  {/* Received */}
+                  <div>
+                    <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsReceivedTitle')}</h2>
+                    <p className={`text-sm mb-3 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {t('profileProposalsReceivedDesc')}
+                    </p>
+                    <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                      {proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending').length === 0 ? (
+                        <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoPending')}</p>
                       ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                      )}
-                      {inlineSaving ? t('profileCompanyAdding') : t('profileCompanyAddBtn')}
-                    </button>
-                  </div>
-                  {inlineError && (
-                    <p className="mt-2 text-sm text-red-500">{inlineError}</p>
-                  )}
-                </form>
-              </div>
-            )}
-
-            {/* Companies list */}
-            {companies.length === 0 ? (
-              <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-6 text-center`}>
-                <svg className={`w-12 h-12 mx-auto mb-3 ${dark ? 'text-gray-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-                <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {isOwnProfile ? t('profileCompanyEmptyOwn') : t('profileCompanyEmptyOther')}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {companies.map(company => (
-                  <CompanyCard
-                    key={company.id}
-                    company={company}
-                    isOwn={isOwnProfile}
-                    theme={actualTheme}
-                    onEdit={handleOpenEditCompany}
-                    onDelete={handleDeleteCompany}
-                    t={t}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── Products section ────────────────────────────────────── */}
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
-              <h2 className={`text-xl sm:text-2xl font-bold truncate ${dark ? 'text-white' : 'text-gray-900'}`}>
-                {isOwnProfile ? t('profileProductsTitle') : t('profileProductsOther')}
-              </h2>
-              {products.length > 0 && (
-                <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{products.length} {t('profileProductsCount')}</span>
-              )}
-            </div>
-            {products.length === 0 ? (
-              <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-6 sm:p-12 text-center`}>
-                <p className={`text-lg mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {isOwnProfile ? t('profileProductsEmptyOwn') : t('profileProductsEmptyOther')}
-                </p>
-                {isOwnProfile && (
-                  <Link href="/explore/create" className="inline-block bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
-                    {t('profileProductAddFirst')}
-                  </Link>
-                )}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                {products.map(product => (
-                  <ProductCard
-                    key={product.id}
-                    product={{ ...product, owner: { id: profileUser.id, username: profileUser.username, avatar: profileUser.avatar }, is_liked: false }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── Proposals (own profile only) ────────────────────────── */}
-          {isOwnProfile && (
-            <div className="space-y-6" id="proposals-received">
-              {/* Received */}
-              <div>
-                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsReceivedTitle')}</h2>
-                <p className={`text-sm mb-3 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {t('profileProposalsReceivedDesc')}
-                </p>
-                <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending').length === 0 ? (
-                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoPending')}</p>
-                  ) : (
-                    proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending')
-                      .map((p: any) => (
-                        <div key={p.id || p._id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                          <p className={`font-medium break-words ${dark ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
-                          <p className={`mt-1 break-words ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
-                          <p className={`text-xs mt-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            <button onClick={() => handleAcceptProposal(p.id || p._id)} disabled={acceptingId === (p.id || p._id)}
-                              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm">
-                              {acceptingId === (p.id || p._id) ? t('profileProposalAccepting') : t('accept')}
-                            </button>
-                            <button onClick={() => handleRejectProposal(p.id || p._id)}
-                              className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm">
-                              {t('reject')}
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                  )}
-                </div>
-              </div>
-
-              {/* Sent */}
-              <div id="proposals-sent">
-                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsSentTitle')}</h2>
-                <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id)).length === 0 ? (
-                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoSent')}</p>
-                  ) : (
-                    proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id))
-                      .map((p: any) => {
-                        const pid = typeof p.id === 'string' ? p.id : (p._id && typeof p._id === 'string' ? p._id : String(p.id ?? p._id ?? ''));
-                        return (
-                          <div key={pid} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                            <p className={`font-medium break-words ${dark ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
-                            <p className={`mt-1 break-words ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
-                            <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
-                              {p.status}
-                            </span>
-                            <p className={`text-xs mt-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
-                            {p.status === 'pending' && (
+                        proposals.filter((p: any) => String(p.receiver_id) === String(currentUser?.id || (currentUser as any)?._id) && p.status === 'pending')
+                          .map((p: any) => (
+                            <div key={p.id || p._id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                              <p className={`font-medium break-words ${dark ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                              <p className={`mt-1 break-words ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                              <p className={`text-xs mt-2 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
                               <div className="flex flex-wrap gap-2 mt-3">
-                                <button type="button" onClick={() => handleDeleteProposal(pid)} disabled={deletingProposalId === pid}
-                                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-sm">
-                                  {deletingProposalId === pid ? t('profileCompanyDeleting') : t('delete')}
+                                <button onClick={() => handleAcceptProposal(p.id || p._id)} disabled={acceptingId === (p.id || p._id)}
+                                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 text-sm">
+                                  {acceptingId === (p.id || p._id) ? t('profileProposalAccepting') : t('accept')}
+                                </button>
+                                <button onClick={() => handleRejectProposal(p.id || p._id)}
+                                  className="px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm">
+                                  {t('reject')}
                                 </button>
                               </div>
-                            )}
-                          </div>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Comments ────────────────────────────────────────────── */}
-          <div>
-            <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileCommentsTitle')}</h2>
-            <p className={`text-sm mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {isOwnProfile ? t('profileCommentsDescOwn') : t('profileCommentsDescOther')}
-            </p>
-            {!isOwnProfile && (
-              <form onSubmit={handleAddComment} className="mb-6">
-                <textarea value={newCommentText} onChange={e => setNewCommentText(e.target.value)}
-                  placeholder={t('profileCommentsWritePlaceholder')} rows={3}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 resize-none ${dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-                />
-                <button type="submit" disabled={sendingComment || !newCommentText.trim()}
-                  className="mt-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
-                  {sendingComment ? t('profileCommentsSending') : t('profileCommentsSendBtn')}
-                </button>
-              </form>
-            )}
-            <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
-              {comments.length === 0 ? (
-                <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileCommentsNone')}</p>
-              ) : (
-                comments.map(comment => (
-                  <div key={comment.id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                    <p className={`break-words ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
-                      <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString(dateLocale)}</span>
-                      {isOwnProfile && (
-                        <button onClick={() => handleReplyToComment(comment.id)} className="text-sm text-green-500 hover:text-green-600 font-medium">
-                          {t('profileCommentsReply')}
-                        </button>
+                            </div>
+                          ))
                       )}
                     </div>
                   </div>
-                ))
+
+                  {/* Sent */}
+                  <div id="proposals-sent">
+                    <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileProposalsSentTitle')}</h2>
+                    <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                      {proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id)).length === 0 ? (
+                        <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileProposalNoSent')}</p>
+                      ) : (
+                        proposals.filter((p: any) => String(p.sender_id) === String(currentUser?.id || (currentUser as any)?._id))
+                          .map((p: any) => {
+                            const pid = typeof p.id === 'string' ? p.id : (p._id && typeof p._id === 'string' ? p._id : String(p.id ?? p._id ?? ''));
+                            return (
+                              <div key={pid} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                                <p className={`font-medium break-words ${dark ? 'text-white' : 'text-gray-900'}`}>{p.title}</p>
+                                <p className={`mt-1 break-words ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{p.content}</p>
+                                <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs ${p.status === 'accepted' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : p.status === 'rejected' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'}`}>
+                                  {p.status}
+                                </span>
+                                <p className={`text-xs mt-1 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(p.created_at).toLocaleDateString(dateLocale)}</p>
+                                {p.status === 'pending' && (
+                                  <div className="flex flex-wrap gap-2 mt-3">
+                                    <button type="button" onClick={() => handleDeleteProposal(pid)} disabled={deletingProposalId === pid}
+                                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:opacity-50 text-sm">
+                                      {deletingProposalId === pid ? t('profileCompanyDeleting') : t('delete')}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Comments */}
+              <div>
+                <h2 className={`text-xl sm:text-2xl font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{t('profileCommentsTitle')}</h2>
+                <p className={`text-sm mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {isOwnProfile ? t('profileCommentsDescOwn') : t('profileCommentsDescOther')}
+                </p>
+                {!isOwnProfile && (
+                  <form onSubmit={handleAddComment} className="mb-6">
+                    <textarea value={newCommentText} onChange={e => setNewCommentText(e.target.value)}
+                      placeholder={t('profileCommentsWritePlaceholder')} rows={3}
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 resize-none ${dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                    />
+                    <button type="submit" disabled={sendingComment || !newCommentText.trim()}
+                      className="mt-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50">
+                      {sendingComment ? t('profileCommentsSending') : t('profileCommentsSendBtn')}
+                    </button>
+                  </form>
+                )}
+                <div className={`rounded-xl ${dark ? 'bg-gray-800' : 'bg-white'} shadow-sm divide-y ${dark ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                  {comments.length === 0 ? (
+                    <p className={`p-6 text-center ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('profileCommentsNone')}</p>
+                  ) : (
+                    comments.map(comment => (
+                      <div key={comment.id} className={`p-4 ${dark ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
+                        <p className={`break-words ${dark ? 'text-gray-200' : 'text-gray-800'}`}>{comment.text}</p>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
+                          <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{new Date(comment.created_at).toLocaleDateString(dateLocale)}</span>
+                          {isOwnProfile && (
+                            <button onClick={() => handleReplyToComment(comment.id)} className="text-sm text-green-500 hover:text-green-600 font-medium">
+                              {t('profileCommentsReply')}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── PRODUCTS TAB ─────────────────────────────────────────────── */}
+          {activeTab === 'products' && (
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
+                <h2 className={`text-xl sm:text-2xl font-bold truncate ${dark ? 'text-white' : 'text-gray-900'}`}>
+                  {isOwnProfile ? t('profileProductsTitle') : t('profileProductsOther')}
+                </h2>
+                {products.length > 0 && (
+                  <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{products.length} {t('profileProductsCount')}</span>
+                )}
+              </div>
+              {products.length === 0 ? (
+                <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-6 sm:p-12 text-center`}>
+                  <p className={`text-lg mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {isOwnProfile ? t('profileProductsEmptyOwn') : t('profileProductsEmptyOther')}
+                  </p>
+                  {isOwnProfile && (
+                    <Link href="/explore/create" className="inline-block bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">
+                      {t('profileProductAddFirst')}
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                  {products.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      product={{ ...product, owner: { id: profileUser.id, username: profileUser.username, avatar: profileUser.avatar }, is_liked: false }}
+                    />
+                  ))}
+                </div>
               )}
             </div>
-          </div>
+          )}
+
+          {/* ── COMPANIES TAB ────────────────────────────────────────────── */}
+          {activeTab === 'companies' && (
+            <div>
+              {/* Section title */}
+              <div className="flex items-center gap-2 mb-4">
+                <svg className={`w-5 h-5 flex-shrink-0 ${dark ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <h2 className={`text-xl sm:text-2xl font-bold ${dark ? 'text-white' : 'text-gray-900'}`}>
+                  {isOwnProfile ? t('profileCompaniesTitle') : t('profileCompaniesOther')}
+                </h2>
+                {companies.length > 0 && (
+                  <span className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>({companies.length})</span>
+                )}
+              </div>
+
+              {/* Inline add form — only for own profile */}
+              {isOwnProfile && (
+                <div className={`${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl shadow-sm p-4 mb-4`}>
+                  <p className={`text-sm font-medium mb-3 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>{t('profileCompanyAdd')}</p>
+                  <form onSubmit={handleInlineAddCompany}>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <input
+                        value={inlineName}
+                        onChange={e => { setInlineName(e.target.value); setInlineError(''); }}
+                        placeholder={t('profileCompanyNamePlaceholder')}
+                        className={`flex-1 px-4 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
+                          dark ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
+                        }`}
+                      />
+                      <select
+                        value={inlineCategory}
+                        onChange={e => { setInlineCategory(e.target.value); setInlineError(''); }}
+                        className={`sm:w-52 px-4 py-2.5 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent ${
+                          dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+                        }`}
+                      >
+                        <option value="">{t('profileCompanyCategorySelect')}</option>
+                        {CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>{COMPANY_CATEGORY_LABELS[cat]}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        disabled={inlineSaving}
+                        className="flex items-center justify-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-semibold rounded-lg transition disabled:opacity-50 flex-shrink-0"
+                      >
+                        {inlineSaving ? (
+                          <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        )}
+                        {inlineSaving ? t('profileCompanyAdding') : t('profileCompanyAddBtn')}
+                      </button>
+                    </div>
+                    {inlineError && (
+                      <p className="mt-2 text-sm text-red-500">{inlineError}</p>
+                    )}
+                  </form>
+                </div>
+              )}
+
+              {/* Companies list */}
+              {companies.length === 0 ? (
+                <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-6 text-center`}>
+                  <svg className={`w-12 h-12 mx-auto mb-3 ${dark ? 'text-gray-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {isOwnProfile ? t('profileCompanyEmptyOwn') : t('profileCompanyEmptyOther')}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {companies.map(company => (
+                    <CompanyCard
+                      key={company.id}
+                      company={company}
+                      isOwn={isOwnProfile}
+                      theme={actualTheme}
+                      onEdit={handleOpenEditCompany}
+                      onDelete={handleDeleteCompany}
+                      t={t}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── QR Code Modal ───────────────────────────────────────────── */}
