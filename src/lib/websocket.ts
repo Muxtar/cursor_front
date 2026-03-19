@@ -1,6 +1,6 @@
 // WebSocket URL: Railway'da NEXT_PUBLIC_WS_URL verin
 // Railway'da şu değişkeni ekleyin:
-// NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws
+// NEXT_PUBLIC_WS_URL=wss://back-end-node-production.up.railway.app/ws
 const getWsUrl = (): string => {
   // 1. Build-time env variable (Railway'da set edilmeli - ZORUNLU)
   const buildTimeUrl = process.env.NEXT_PUBLIC_WS_URL;
@@ -22,16 +22,16 @@ const getWsUrl = (): string => {
     console.error('🔧 ÇÖZÜM:');
     console.error('1. Railway Dashboard → Front-end Service → Variables');
     console.error('2. Şu değişkeni ekleyin:');
-    console.error('   NEXT_PUBLIC_WS_URL=wss://cursurback-production.up.railway.app/ws');
+    console.error('   NEXT_PUBLIC_WS_URL=wss://back-end-node-production.up.railway.app/ws');
     console.error('3. REDEPLOY yapın (Deployments → Redeploy)');
 
     // Geçici olarak Railway backend URL'ini kullan
-    return 'wss://cursurback-production.up.railway.app/ws';
+    return 'wss://back-end-node-production.up.railway.app/ws';
   }
 
   // Server-side (SSR) - build-time env variable zorunlu
   if (!process.env.NEXT_PUBLIC_WS_URL) {
-    return 'wss://cursurback-production.up.railway.app/ws'; // Fallback
+    return 'wss://back-end-node-production.up.railway.app/ws'; // Fallback
   }
   return process.env.NEXT_PUBLIC_WS_URL;
 };

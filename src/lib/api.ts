@@ -1,6 +1,6 @@
 // API URL: Railway'da NEXT_PUBLIC_API_URL ile override edebilirsiniz.
 // Varsayılan: Railway backend (build ve SSR hata vermesin diye fallback var)
-const DEFAULT_API_URL = 'https://cursurback-production.up.railway.app/api/v1';
+const DEFAULT_API_URL = 'https://back-end-node-production.up.railway.app/api/v1';
 
 const getApiUrl = (): string => {
   const buildTimeUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -396,6 +396,13 @@ export const storyApi = {
   getUserStories: (userId: string) => api.get(`/stories/user/${userId}`),
   /** Delete own story. */
   deleteStory: (storyId: string) => api.delete(`/stories/${storyId}`),
+  // Story interactions
+  likeStory: (storyId: string) => api.post(`/stories/${storyId}/like`),
+  unlikeStory: (storyId: string) => api.delete(`/stories/${storyId}/like`),
+  dislikeStory: (storyId: string) => api.post(`/stories/${storyId}/dislike`),
+  undislikeStory: (storyId: string) => api.delete(`/stories/${storyId}/dislike`),
+  addStoryComment: (storyId: string, text: string) => api.post(`/stories/${storyId}/comments`, { text }),
+  getStoryComments: (storyId: string) => api.get(`/stories/${storyId}/comments`),
 };
 
 // Group API
