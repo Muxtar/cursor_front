@@ -354,11 +354,23 @@ export default function ProfilePage() {
     if (activeTab === 'stories' && userId) {
       setLoadingStories(true);
       storyApi.getUserStories(userId)
-        .then((res: any) => setProfileStories(Array.isArray(res) ? res : (res?.stories || [])))
+        .then((res: any) => {
+          // Backend returns { stories: [...storyEnriched] }
+          const raw: any[] = Array.isArray(res?.stories) ? res.stories : (Array.isArray(res) ? res : []);
+          const enriched = raw.map((s: any) => ({
+            ...s,
+            user_name: profileUser?.username || 'User',
+            user_avatar: profileUser?.avatar || undefined,
+            // Fallback media_url for product stories
+            media_url: s.media_url || s.product?.media_urls?.[0] || '',
+            media_type: s.media_type || 'image',
+          }));
+          setProfileStories(enriched);
+        })
         .catch(() => setProfileStories([]))
         .finally(() => setLoadingStories(false));
     }
-  }, [activeTab, userId]);
+  }, [activeTab, userId, profileUser]);
 
   const loadProfile = async () => {
     if (!userId) return;

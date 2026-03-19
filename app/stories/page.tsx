@@ -15,8 +15,19 @@ export default function StoriesPage() {
   useEffect(() => {
     storyApi.getFeed()
       .then((res: any) => {
-        // Backend may return { stories: [...] } or a flat array
-        setStories(Array.isArray(res) ? res : (res?.stories || []));
+        // Backend returns { feed: [{ user_id, user_info: { username, avatar }, stories: [...] }] }
+        const rawFeed: any[] = Array.isArray(res?.feed) ? res.feed : [];
+        const flat = rawFeed.flatMap((group: any) =>
+          (group.stories || []).map((s: any) => ({
+            ...s,
+            user_name: group.user_info?.username || 'User',
+            user_avatar: group.user_info?.avatar || undefined,
+            // Fallback for product stories that have no media_url
+            media_url: s.media_url || s.product?.media_urls?.[0] || '',
+            media_type: s.media_type || 'image',
+          }))
+        );
+        setStories(flat);
       })
       .catch(() => setStories([]))
       .finally(() => setLoading(false));
