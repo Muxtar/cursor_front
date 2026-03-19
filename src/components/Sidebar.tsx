@@ -8,6 +8,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { chatApi, contactApi, userApi, fileApi, proposalApi, profileCommentApi, notificationsApi, type ProfileCommentTargetType } from '@/lib/api';
 import BottomNav from '@/components/BottomNav';
+import type { WebSocketClient } from '@/lib/websocket';
 
 interface SidebarProps {
   onChatSelect?: (chatId: string | null) => void;
@@ -16,9 +17,11 @@ interface SidebarProps {
   mobileOpen?: boolean;
   /** Callback to close sidebar (e.g. when used as mobile overlay) */
   onClose?: () => void;
+  /** WebSocket client for real-time chat list updates */
+  ws?: WebSocketClient | null;
 }
 
-export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClose }: SidebarProps) {
+export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClose, ws }: SidebarProps) {
   const { user, logout, updateUser } = useAuth();
   const { actualTheme } = useTheme();
   const { t, language } = useLanguage();
@@ -519,6 +522,84 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       console.error('Failed to load chats:', error);
     }
   };
+
+  // Stable ref so WS callbacks always call the latest loadChats without stale closures
+  const loadChatsRef = useRef(loadChats);
+  loadChatsRef.current = loadChats;
+
+  // Real-time chat list updates via WebSocket
+  useEffect(() => {
+    if (!ws) return;
+
+    // new_chat: another user created a chat/group that includes me → reload list
+    const onNewChat = () => {
+      loadChatsRef.current();
+    };
+
+    // message: a message arrived in any chat → update last message preview + unread count
+    const onMessage = (data: any) => {
+      const chatId = data?.chat_id;
+      if (!chatId) return;
+      const senderId = data?.sender_id;
+      const meId = String(myId || '');
+
+      setChats(prev => {
+        const chatExists = prev.some(c => (c.id || c._id?.toString()) === chatId);
+        if (!chatExists) {
+          // Unknown chat (e.g. first message in newly created chat) → reload all
+          loadChatsRef.current();
+          return prev;
+        }
+        // Update the existing chat entry
+        const updated = prev.map(c => {
+          if ((c.id || c._id?.toString()) !== chatId) return c;
+          const isSender = senderId && senderId === meId;
+          return {
+            ...c,
+            updated_at: data.timestamp || new Date().toISOString(),
+            last_message: data.content != null ? {
+              content: data.content,
+              message_type: data.message_type || 'text',
+              sender_id: senderId,
+              created_at: data.timestamp || new Date().toISOString(),
+            } : c.last_message,
+            unread_count: isSender ? (c.unread_count || 0) : (c.unread_count || 0) + 1,
+          };
+        });
+        // Re-sort by last activity
+        return [...updated].sort((a, b) => {
+          const tA = new Date(a.updated_at || a.last_message?.created_at || 0).getTime();
+          const tB = new Date(b.updated_at || b.last_message?.created_at || 0).getTime();
+          return tB - tA;
+        });
+      });
+    };
+
+    // group_deleted: a group was fully deleted — remove it from the list immediately
+    const onGroupDeleted = (data: any) => {
+      const chatId = data?.chat_id;
+      if (chatId) {
+        setChats(prev => prev.filter(c => (c.id || c._id?.toString()) !== chatId));
+      }
+    };
+
+    // chat_updated: a member left a direct chat → reload to reflect updated member list
+    const onChatUpdated = () => {
+      loadChatsRef.current();
+    };
+
+    ws.on('new_chat', onNewChat);
+    ws.on('message', onMessage);
+    ws.on('group_deleted', onGroupDeleted);
+    ws.on('chat_updated', onChatUpdated);
+
+    return () => {
+      ws.off('new_chat', onNewChat);
+      ws.off('message', onMessage);
+      ws.off('group_deleted', onGroupDeleted);
+      ws.off('chat_updated', onChatUpdated);
+    };
+  }, [ws]);
 
   const handleSearchUsers = async (query: string) => {
     if (!query.trim()) {

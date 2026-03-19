@@ -329,7 +329,7 @@ function ChatContent() {
       } w-full md:w-[420px] flex-shrink-0 min-h-0 overflow-hidden ${
         !selectedChat ? 'h-[calc(100dvh-4.5rem)] md:h-full' : 'h-full'
       }`}>
-        <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} />
+        <Sidebar onChatSelect={setSelectedChat} selectedChat={selectedChat} ws={ws} />
       </div>
       
       {/* Chat Window: Desktop always visible, Mobile: Show when chat selected */}
