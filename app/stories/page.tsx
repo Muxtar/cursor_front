@@ -73,27 +73,30 @@ export default function StoriesPage() {
 
   const currentUserId = (user as any)?.id || (user as any)?._id;
 
-  const getMediaUrl = (story: Story): string => {
-    if (story.type === 'product') {
-      return story.product?.media_urls?.[0] || story.media_url || '';
-    }
-    return story.media_url || '';
+  /** Build an absolute URL for a media file so <img>/<video> can load it. */
+  const resolveFileUrl = (raw: string | undefined | null): string => {
+    if (!raw) return '';
+    const url = raw.trim();
+    if (!url) return '';
+    // Already absolute
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+    const base = getFileBaseUrl(); // e.g. http://localhost:8080
+    // /uploads/filename  →  /api/v1/files/filename
+    if (url.startsWith('/uploads/')) return `${base}/api/v1/files/${url.replace(/^\/uploads\//, '')}`;
+    // /api/v1/files/filename  →  base + url
+    if (url.startsWith('/api/')) return `${base}${url}`;
+    // bare filename (e.g. "abc-123.png")  →  base + /api/v1/files/filename
+    if (!url.startsWith('/')) return `${base}/api/v1/files/${url}`;
+    return `${base}${url}`;
   };
 
-  const getFullUrl = (url: string): string => {
-    if (!url) return '';
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-      return url;
-    }
-    const base = getFileBaseUrl();
-    // /uploads/filename -> /api/v1/files/filename
-    if (url.startsWith('/uploads/')) {
-      return base + '/api/v1/files/' + url.replace(/^\/uploads\//, '');
-    }
-    if (url.startsWith('/api/v1/files/')) {
-      return base + url;
-    }
-    return base + url;
+  /** Pick the best image/video source from a story object. */
+  const getStoryMediaUrl = (story: Story): string => {
+    const raw =
+      story.media_url
+      || (story.type === 'product' ? story.product?.media_urls?.[0] : undefined)
+      || '';
+    return resolveFileUrl(raw);
   };
 
   const loadStories = useCallback(async () => {
@@ -275,7 +278,7 @@ export default function StoriesPage() {
                   {storyGroups.map((group) => {
                     const isOwn = group.user_id === currentUserId;
                     const first = group.stories[0];
-                    const thumbUrl = first?.user_avatar || getFullUrl(getMediaUrl(first)) || undefined;
+                    const thumbUrl = resolveFileUrl(first?.user_avatar) || getStoryMediaUrl(first);
 
                     return (
                       <button
@@ -290,8 +293,8 @@ export default function StoriesPage() {
                         }`}>
                           <div className={`w-[60px] h-[60px] rounded-full p-[2px] ${dark ? 'bg-gray-900' : 'bg-white'}`}>
                             <div className="w-full h-full rounded-full overflow-hidden">
-                              {thumbUrl && (thumbUrl.startsWith('http') || thumbUrl.startsWith('data:') || thumbUrl.startsWith('/')) ? (
-                                <img src={getFullUrl(thumbUrl)} alt={group.user_name} className="w-full h-full object-cover" />
+                              {thumbUrl ? (
+                                <img src={thumbUrl} alt={group.user_name} className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
                                   {group.user_name?.[0]?.toUpperCase() || 'U'}
@@ -327,9 +330,9 @@ export default function StoriesPage() {
                 </h2>
               </div>
 
-              <div className="space-y-4 px-4 max-w-lg mx-auto">
+              <div className="space-y-4 px-4 max-w-md mx-auto">
                 {allStories.map((story, idx) => {
-                  const imgUrl = getFullUrl(getMediaUrl(story));
+                  const imgUrl = getStoryMediaUrl(story);
                   const isOwn = story.user_id === currentUserId;
 
                   return (
@@ -344,7 +347,7 @@ export default function StoriesPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-pink-500/30">
                             {story.user_avatar ? (
-                              <img src={getFullUrl(story.user_avatar)} alt={story.user_name} className="w-full h-full object-cover" />
+                              <img src={resolveFileUrl(story.user_avatar)} alt={story.user_name} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xs">
                                 {story.user_name?.[0]?.toUpperCase() || 'U'}
@@ -375,7 +378,7 @@ export default function StoriesPage() {
                       {/* Post Image */}
                       <button
                         onClick={() => openStoryViewer([story], 0)}
-                        className="w-full aspect-[4/5] relative overflow-hidden"
+                        className="w-full aspect-[4/3] relative overflow-hidden"
                       >
                         {imgUrl ? (
                           story.media_type === 'video' ? (
@@ -506,7 +509,7 @@ export default function StoriesPage() {
                                 <div key={comment.id} className="flex gap-2.5">
                                   <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0">
                                     {comment.user_avatar ? (
-                                      <img src={getFullUrl(comment.user_avatar)} alt="" className="w-full h-full object-cover" />
+                                      <img src={resolveFileUrl(comment.user_avatar)} alt="" className="w-full h-full object-cover" />
                                     ) : (
                                       <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-[10px] font-bold">
                                         {comment.user_name?.[0]?.toUpperCase() || 'U'}

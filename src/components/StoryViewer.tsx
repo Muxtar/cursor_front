@@ -226,17 +226,19 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
     ? (currentStory.product?.media_urls?.[0] || '')
     : (currentStory.media_url || '');
 
-  // Resolve relative URLs to full URLs (same logic as ChatWindow)
-  const getFullUrl = (url: string): string => {
+  const resolveFileUrl = (raw: string | undefined | null): string => {
+    if (!raw) return '';
+    const url = raw.trim();
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
     const base = getFileBaseUrl();
-    if (url.startsWith('/uploads/')) return base + '/api/v1/files/' + url.replace(/^\/uploads\//, '');
-    if (url.startsWith('/api/v1/files/')) return base + url;
-    return base + url;
+    if (url.startsWith('/uploads/')) return `${base}/api/v1/files/${url.replace(/^\/uploads\//, '')}`;
+    if (url.startsWith('/api/')) return `${base}${url}`;
+    if (!url.startsWith('/')) return `${base}/api/v1/files/${url}`;
+    return `${base}${url}`;
   };
 
-  const contentImageUrl = getFullUrl(rawContentUrl);
+  const contentImageUrl = resolveFileUrl(rawContentUrl);
   const isOwnStory = currentStory.user_id === (user?.id || (user as any)?._id);
 
   return (
@@ -268,7 +270,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
             <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-white/60 flex-shrink-0">
               {currentStory.user_avatar ? (
                 <img
-                  src={getFullUrl(currentStory.user_avatar)}
+                  src={resolveFileUrl(currentStory.user_avatar)}
                   alt={currentStory.user_name}
                   className="w-full h-full object-cover"
                 />
@@ -485,7 +487,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
                 <div key={comment.id} className="flex gap-3">
                   <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
                     {comment.user_avatar ? (
-                      <img src={getFullUrl(comment.user_avatar)} alt={comment.user_name} className="w-full h-full object-cover" />
+                      <img src={resolveFileUrl(comment.user_avatar)} alt={comment.user_name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">
                         {comment.user_name?.[0]?.toUpperCase() || 'U'}
