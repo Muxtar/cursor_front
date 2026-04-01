@@ -60,6 +60,8 @@ interface Message {
     phone_number: string;
     user_id?: string;
   };
+  poll?: any;
+  is_pinned?: boolean;
   sender?: {
     username?: string;
     phone_number?: string;
@@ -3056,10 +3058,38 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   const handleNewMessage = (data: any) => {
     if (data.chat_id === chatId) {
+      // If the broadcast contains full message data, add it optimistically
+      if (data.message_id && data.sender_id && data.message_type) {
+        const wsMsg: Message = {
+          id: data.message_id,
+          sender_id: data.sender_id,
+          content: data.content || '',
+          message_type: data.message_type,
+          file_url: data.file_url || undefined,
+          file_name: data.file_name || undefined,
+          file_size: data.file_size || undefined,
+          thumbnail_url: data.thumbnail_url || undefined,
+          duration: data.duration || undefined,
+          is_anonymous: data.is_anonymous || false,
+          location: data.location || undefined,
+          contact: data.contact || undefined,
+          poll: data.poll || undefined,
+          reactions: data.reactions || [],
+          created_at: data.created_at || data.timestamp || new Date().toISOString(),
+          status: 'sent',
+        };
+        setMessages((prev) => {
+          // Don't add if already exists (dedup by id) or if it's a temp message
+          if (prev.some((m) => m.id === wsMsg.id)) return prev;
+          // Remove any temp optimistic messages for this sender
+          const cleaned = prev.filter((m) => !m.id.startsWith('temp-'));
+          return [...cleaned, wsMsg];
+        });
+        setTimeout(scrollToBottom, 100);
+      }
+      // Also reload from API to get complete data (reply_to, etc.)
       loadMessages().then(() => {
-        setTimeout(() => {
-          scrollToBottom();
-        }, 100);
+        setTimeout(scrollToBottom, 100);
       });
     }
   };
@@ -3111,27 +3141,54 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const handleFileUpload = async (file: File) => {
     try {
       setLoading(true);
-      const response = await fileApi.uploadFile(file);
-      
-      let messageType = 'file';
+
+      // Optimistic: show local preview immediately for images
+      const myId = String(user?.id || user?._id || '');
+      let localPreviewUrl = '';
       if (file.type.startsWith('image/')) {
-        messageType = 'image';
-      } else if (file.type.startsWith('audio/')) {
-        messageType = 'audio';
-      } else if (file.type.startsWith('video/')) {
-        messageType = 'video';
+        localPreviewUrl = URL.createObjectURL(file);
       }
-      
+
+      let messageType = 'file';
+      if (file.type.startsWith('image/')) messageType = 'image';
+      else if (file.type.startsWith('audio/')) messageType = 'audio';
+      else if (file.type.startsWith('video/')) messageType = 'video';
+
+      // Show optimistic message with local blob URL
+      if (localPreviewUrl) {
+        const optimisticMsg: Message = {
+          id: `temp-${Date.now()}`,
+          sender_id: myId,
+          content: file.name,
+          message_type: messageType,
+          file_url: localPreviewUrl,
+          file_name: file.name,
+          file_size: file.size,
+          is_anonymous: false,
+          created_at: new Date().toISOString(),
+          reactions: [],
+          status: 'sending',
+        };
+        setMessages((prev) => [...prev, optimisticMsg]);
+        setTimeout(scrollToBottom, 50);
+      }
+
+      const response = await fileApi.uploadFile(file);
+      const serverFileUrl = response.url || response.file_url;
+
       await chatApi.sendMessage(chatId, {
         content: file.name,
         message_type: messageType,
-        file_url: response.url || response.file_url,
+        file_url: serverFileUrl,
         file_name: file.name,
         file_size: file.size,
         is_anonymous: false,
         reply_to_id: replyingTo?.id,
       });
-      
+
+      // Revoke local blob URL
+      if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+
       setReplyingTo(null);
       await loadMessages();
       setTimeout(() => {
@@ -3959,12 +4016,19 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                               src={getMessageFileUrl(message.file_url)}
                               alt={message.content || 'Shared image'}
                               className="w-full max-h-80 object-cover cursor-pointer block"
-                              loading="lazy"
                               onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
                               onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                                const wrap = (e.target as HTMLImageElement).closest('.rounded-lg');
-                                const fallback = wrap?.querySelector('.img-fallback');
+                                const img = e.target as HTMLImageElement;
+                                const src = img.src;
+                                console.warn('⚠️ Image load failed:', { src, file_url: message.file_url });
+                                // Retry once with cache-busting
+                                if (!img.dataset.retried) {
+                                  img.dataset.retried = '1';
+                                  img.src = src + (src.includes('?') ? '&' : '?') + 'retry=1';
+                                  return;
+                                }
+                                img.style.display = 'none';
+                                const fallback = img.parentElement?.querySelector('.img-fallback');
                                 if (fallback) (fallback as HTMLElement).classList.remove('hidden');
                               }}
                             />
