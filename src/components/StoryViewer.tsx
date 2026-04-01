@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { storyApi, chatApi } from '@/lib/api';
+import { storyApi, chatApi, getFileBaseUrl } from '@/lib/api';
 
 interface StoryProduct {
   id: string;
@@ -226,16 +226,14 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
     ? (currentStory.product?.media_urls?.[0] || '')
     : (currentStory.media_url || '');
 
-  // Resolve relative URLs to full URLs
+  // Resolve relative URLs to full URLs (same logic as ChatWindow)
   const getFullUrl = (url: string): string => {
     if (!url) return '';
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
-    const apiBase = typeof window !== 'undefined'
-      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:8080'
-        : '')
-      : '';
-    return apiBase + url;
+    const base = getFileBaseUrl();
+    if (url.startsWith('/uploads/')) return base + '/api/v1/files/' + url.replace(/^\/uploads\//, '');
+    if (url.startsWith('/api/v1/files/')) return base + url;
+    return base + url;
   };
 
   const contentImageUrl = getFullUrl(rawContentUrl);

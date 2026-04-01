@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { storyApi } from '@/lib/api';
+import { storyApi, getFileBaseUrl } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -85,13 +85,15 @@ export default function StoriesPage() {
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
       return url;
     }
-    // Relative URL - prepend API base
-    const apiBase = typeof window !== 'undefined'
-      ? (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:8080'
-        : '')
-      : '';
-    return apiBase + url;
+    const base = getFileBaseUrl();
+    // /uploads/filename -> /api/v1/files/filename
+    if (url.startsWith('/uploads/')) {
+      return base + '/api/v1/files/' + url.replace(/^\/uploads\//, '');
+    }
+    if (url.startsWith('/api/v1/files/')) {
+      return base + url;
+    }
+    return base + url;
   };
 
   const loadStories = useCallback(async () => {
@@ -325,7 +327,7 @@ export default function StoriesPage() {
                 </h2>
               </div>
 
-              <div className="space-y-4 px-4">
+              <div className="space-y-4 px-4 max-w-lg mx-auto">
                 {allStories.map((story, idx) => {
                   const imgUrl = getFullUrl(getMediaUrl(story));
                   const isOwn = story.user_id === currentUserId;
@@ -373,7 +375,7 @@ export default function StoriesPage() {
                       {/* Post Image */}
                       <button
                         onClick={() => openStoryViewer([story], 0)}
-                        className="w-full aspect-square relative overflow-hidden"
+                        className="w-full aspect-[4/5] relative overflow-hidden"
                       >
                         {imgUrl ? (
                           story.media_type === 'video' ? (
