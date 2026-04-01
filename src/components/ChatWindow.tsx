@@ -13,8 +13,8 @@ const getMessageFileUrl = (fileUrl: string | undefined | null): string => {
   if (!fileUrl) return '';
   const url = String(fileUrl).trim();
   if (!url) return '';
-  // Already absolute
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+  // Already absolute (http, https, data, blob)
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   const base = getFileBaseUrl();
   // /api/v1/files/filename → base + url
   if (url.startsWith('/api/v1/files/') || url.startsWith('/api/')) return base + url;
