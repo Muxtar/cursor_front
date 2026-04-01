@@ -109,8 +109,10 @@ export default function LocationPage() {
       const usersList = Array.isArray(users) ? users : users?.users || [];
       setNearbyUsers(usersList);
     } catch (error: any) {
-      console.error('Failed to load nearby users:', error);
-      setError('Failed to load nearby users. ' + (error.message || ''));
+      // Konum yoksa backend boş liste döner, 500 hatası artık gelmemeli
+      // Yine de güvenlik için hatayı sessizce logla
+      console.warn('Could not load nearby users without location:', error.message);
+      setNearbyUsers([]);
     } finally {
       setLoading(false);
     }
