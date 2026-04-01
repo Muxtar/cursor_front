@@ -112,7 +112,8 @@ export default function StoriesPage() {
           ...s,
           user_name: group.user_info?.username || 'User',
           user_avatar: group.user_info?.avatar || undefined,
-          media_url: s.media_url || s.product?.media_urls?.[0] || '',
+          // Prefer explicit media_url, fall back to product thumbnail; keep empty string for no-media
+          media_url: s.media_url ?? s.product?.media_urls?.[0] ?? '',
           media_type: s.media_type || 'image',
         }));
         if (stories.length > 0) {
@@ -188,7 +189,13 @@ export default function StoriesPage() {
     setLoadingComments(true);
     try {
       const res: any = await storyApi.getStoryComments(storyId);
-      setComments(Array.isArray(res?.comments) ? res.comments : []);
+      const raw = Array.isArray(res?.comments) ? res.comments : [];
+      // Normalise: backend may return user_info or flat user_name
+      setComments(raw.map((c: any) => ({
+        ...c,
+        user_name: c.user_name || c.user_info?.username || 'User',
+        user_avatar: c.user_avatar ?? c.user_info?.avatar ?? undefined,
+      })));
     } catch {
       setComments([]);
     } finally {
@@ -201,8 +208,13 @@ export default function StoriesPage() {
     setSendingComment(true);
     try {
       const res: any = await storyApi.addStoryComment(commentStoryId, commentText.trim());
-      if (res?.comment) {
-        setComments((prev) => [...prev, res.comment]);
+      if (res) {
+        const c = res.comment || res;
+        setComments((prev) => [...prev, {
+          ...c,
+          user_name: c.user_name || c.user_info?.username || 'User',
+          user_avatar: c.user_avatar ?? c.user_info?.avatar ?? undefined,
+        }]);
       }
       setCommentText('');
       loadStories();

@@ -172,7 +172,12 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
       setLoadingComments(true);
       try {
         const res: any = await storyApi.getStoryComments(currentStory.id);
-        setComments(Array.isArray(res?.comments) ? res.comments : []);
+        const raw = Array.isArray(res?.comments) ? res.comments : [];
+        setComments(raw.map((c: any) => ({
+          ...c,
+          user_name: c.user_name || c.user_info?.username || 'User',
+          user_avatar: c.user_avatar ?? c.user_info?.avatar ?? undefined,
+        })));
       } catch {
         setComments([]);
       } finally {
@@ -191,9 +196,14 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
     setSendingComment(true);
     try {
       const res: any = await storyApi.addStoryComment(currentStory.id, commentText.trim());
-      if (res?.comment) {
-        setComments((prev) => [...prev, res.comment]);
-        setCommentCount((c) => c + 1);
+      if (res) {
+        const c = res.comment || res;
+        setComments((prev) => [...prev, {
+          ...c,
+          user_name: c.user_name || c.user_info?.username || 'User',
+          user_avatar: c.user_avatar ?? c.user_info?.avatar ?? undefined,
+        }]);
+        setCommentCount((cnt) => cnt + 1);
       }
       setCommentText('');
     } catch {

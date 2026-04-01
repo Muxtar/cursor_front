@@ -69,7 +69,7 @@ export default function CreateStoryPage() {
     setLoading(true);
     try {
       const uploadResponse: any = await fileApi.uploadFile(media);
-      const mediaUrl = uploadResponse.file_url || uploadResponse.url;
+      const mediaUrl = uploadResponse.url || uploadResponse.file_url;
       await storyApi.createStory({ type: 'media', media_url: mediaUrl, media_type: mediaType, text: text.trim() || undefined });
       router.push('/stories');
     } catch (error: any) {
