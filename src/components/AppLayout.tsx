@@ -28,6 +28,7 @@ const BACK_BUTTON_PATHS = [
   '/notifications',
   '/search',
   '/comments',
+  '/ai',
 ];
 
 const showBackOnMobile = (pathname: string) =>

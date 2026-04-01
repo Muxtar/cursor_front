@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+
 /**
  * Modern bottom navigation bar with pill active indicator and scale animations.
+ * Center "+" AI button is larger and visually elevated.
  * Used on mobile inside AppLayout (fixed bottom). On desktop it's shown in Sidebar.
  */
 export default function BottomNav() {
@@ -14,7 +16,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const isDark = actualTheme === 'dark';
 
-  const navItems = [
+  const leftItems = [
     {
       href: '/chat',
       label: t('chats'),
@@ -35,6 +37,9 @@ export default function BottomNav() {
         </svg>
       ),
     },
+  ];
+
+  const rightItems = [
     {
       href: '/location',
       label: t('location'),
@@ -58,9 +63,48 @@ export default function BottomNav() {
     },
   ];
 
+  const allSideItems = [...leftItems, ...rightItems];
+
+  const renderNavItem = (item: typeof leftItems[0]) => (
+    <Link
+      key={item.href}
+      href={item.href}
+      aria-current={item.active ? 'page' : undefined}
+      className={`
+        relative flex flex-col items-center justify-center gap-[3px]
+        px-2 py-1.5 rounded-2xl flex-1 max-w-[68px] min-h-[52px]
+        transition-all duration-200 ease-out
+        active:scale-[0.88] active:transition-none
+        select-none
+        ${item.active
+          ? isDark ? 'text-blue-400' : 'text-blue-600'
+          : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
+        }
+      `}
+    >
+      <span
+        className={`
+          absolute inset-x-1 top-[3px] h-9 rounded-xl
+          transition-all duration-200 ease-out
+          ${item.active
+            ? isDark ? 'opacity-100 bg-blue-500/15' : 'opacity-100 bg-blue-50'
+            : 'opacity-0'
+          }
+        `}
+        aria-hidden="true"
+      />
+      <span className={`relative z-10 transition-transform duration-200 ease-out ${item.active ? 'scale-110' : 'scale-100'}`}>
+        {item.icon(item.active)}
+      </span>
+      <span className={`relative z-10 text-[10px] leading-none font-medium truncate w-full text-center transition-all duration-200 ${item.active ? 'opacity-100' : 'opacity-60'}`}>
+        {item.label}
+      </span>
+    </Link>
+  );
+
   return (
     <nav
-      className={`flex items-center justify-around px-1 py-1.5 border-t ${
+      className={`flex items-center justify-around px-1 py-1.5 border-t relative ${
         isDark
           ? 'border-gray-700/60 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/80'
           : 'border-gray-200/60 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80'
@@ -68,63 +112,34 @@ export default function BottomNav() {
       role="navigation"
       aria-label="Bottom navigation"
     >
-      {navItems.map((item) => (
+      {/* Left items */}
+      {leftItems.map(renderNavItem)}
+
+      {/* Center AI "+" button — larger, elevated */}
+      <div className="flex items-center justify-center flex-1 max-w-[72px]">
         <Link
-          key={item.href}
-          href={item.href}
-          aria-current={item.active ? 'page' : undefined}
+          href="/ai"
           className={`
-            relative flex flex-col items-center justify-center gap-[3px]
-            px-2 py-1.5 rounded-2xl flex-1 max-w-[68px] min-h-[52px]
+            relative -mt-6 flex items-center justify-center
+            w-14 h-14 rounded-full
+            shadow-lg shadow-blue-500/30
             transition-all duration-200 ease-out
-            active:scale-[0.88] active:transition-none
-            select-none
-            ${item.active
-              ? isDark
-                ? 'text-blue-400'
-                : 'text-blue-600'
-              : isDark
-                ? 'text-gray-500 hover:text-gray-300'
-                : 'text-gray-400 hover:text-gray-600'
-            }
+            active:scale-90 active:transition-none
+            hover:shadow-xl hover:shadow-blue-500/40 hover:scale-105
+            bg-gradient-to-br from-blue-500 to-blue-600
+            text-white
           `}
+          aria-label="AI Assistant"
         >
-          {/* Background pill for active state */}
-          <span
-            className={`
-              absolute inset-x-1 top-[3px] h-9 rounded-xl
-              transition-all duration-200 ease-out
-              ${item.active
-                ? isDark
-                  ? 'opacity-100 bg-blue-500/15'
-                  : 'opacity-100 bg-blue-50'
-                : 'opacity-0'
-              }
-            `}
-            aria-hidden="true"
-          />
-
-          {/* Icon */}
-          <span
-            className={`relative z-10 transition-transform duration-200 ease-out ${
-              item.active ? 'scale-110' : 'scale-100'
-            }`}
-          >
-            {item.icon(item.active)}
-          </span>
-
-          {/* Label */}
-          <span
-            className={`
-              relative z-10 text-[10px] leading-none font-medium truncate w-full text-center
-              transition-all duration-200
-              ${item.active ? 'opacity-100' : 'opacity-60'}
-            `}
-          >
-            {item.label}
-          </span>
+          {/* "+" icon */}
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
         </Link>
-      ))}
+      </div>
+
+      {/* Right items */}
+      {rightItems.map(renderNavItem)}
     </nav>
   );
 }
