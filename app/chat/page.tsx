@@ -346,6 +346,7 @@ function ChatContent() {
             prefilledIncomingCall={prefilledIncomingCall}
           />
         ) : (
+          /* Desktop: "Select a chat" placeholder. Mobile: sidebar is already visible */
           <div className={`hidden md:flex flex-1 items-center justify-center ${actualTheme === 'dark' ? 'bg-gray-900' : 'bg-gray-100'}`}>
             <div className="text-center">
               <div className={`w-24 h-24 ${actualTheme === 'dark' ? 'bg-blue-600' : 'bg-blue-500'} rounded-full flex items-center justify-center mx-auto mb-4`}>

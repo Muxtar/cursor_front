@@ -1644,7 +1644,8 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                                 return;
                               }
                               if (onChatSelect) onChatSelect(chatId);
-                              router.push('/chat');
+                              // Only navigate if not already on /chat — avoids state reset
+                              if (pathname !== '/chat') router.push('/chat');
                             }}
                             className="flex-1 flex items-center space-x-3 text-left min-w-0"
                           >

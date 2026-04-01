@@ -340,8 +340,16 @@ export default function ProfilePage() {
     if (!userId) return;
     const isOwn = currentUser.id === userId || (currentUser as any)._id === userId;
     setIsOwnProfile(isOwn);
-    // Other users land on "products" tab by default
+    // Reset all state when switching profiles
     setActiveTab(isOwn ? 'about' : 'products');
+    setProfileUser(null);
+    setProducts([]);
+    setCompanies([]);
+    setComments([]);
+    setProposals([]);
+    setProfileStories([]);
+    setNewCommentText('');
+    setLoading(true);
     loadProfile();
     loadProducts();
     loadComments();

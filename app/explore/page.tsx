@@ -67,6 +67,8 @@ export default function ExplorePage() {
     setSelectedCategory(category);
     setPage(1);
     setProducts([]);
+    // Scroll to top when switching categories
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleLoadMore = () => {

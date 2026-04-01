@@ -19,9 +19,17 @@ export default function ProductDetailPage() {
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [liking, setLiking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && productId) {
+      // Reset state when switching products
+      setCurrentImageIndex(0);
+      setProduct(null);
+      setComments([]);
+      setIsLiked(false);
+      setLikeCount(0);
       loadProduct();
       loadComments();
     } else if (!user) {
@@ -36,8 +44,8 @@ export default function ProductDetailPage() {
       setProduct(data.product);
       setIsLiked(data.is_liked);
       setLikeCount(data.product.like_count);
-    } catch (error) {
-      console.error('Failed to load product:', error);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load product');
     } finally {
       setLoading(false);
     }
@@ -53,6 +61,8 @@ export default function ProductDetailPage() {
   };
 
   const handleLike = async () => {
+    if (liking) return;
+    setLiking(true);
     try {
       if (isLiked) {
         await likeApi.unlikeProduct(productId);
@@ -63,8 +73,10 @@ export default function ProductDetailPage() {
         setIsLiked(true);
         setLikeCount((prev) => prev + 1);
       }
-    } catch (error) {
-      console.error('Failed to toggle like:', error);
+    } catch (err) {
+      console.error('Failed to toggle like:', err);
+    } finally {
+      setLiking(false);
     }
   };
 

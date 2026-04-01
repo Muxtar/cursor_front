@@ -33,6 +33,15 @@ export default function CreateStoryPage() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [sharingProduct, setSharingProduct] = useState(false);
 
+  // Reset form when page mounts (handles back-navigation)
+  useEffect(() => {
+    setMedia(null);
+    setMediaPreview(null);
+    setText('');
+    setStoryTab('media');
+    setSelectedProduct(null);
+  }, []);
+
   useEffect(() => {
     if (storyTab === 'product' && user && userProducts.length === 0) {
       loadUserProducts();

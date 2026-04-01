@@ -601,8 +601,9 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         hasStream: !!remoteStream,
         audioTracks: audioTracks.length,
         tracksEnabled: audioTracks.map(t => t.enabled),
+        tracksState: audioTracks.map(t => t.readyState),
       });
-      
+
       // Ensure audio tracks are enabled
       audioTracks.forEach(track => {
         if (!track.enabled) {
@@ -610,46 +611,52 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           track.enabled = true;
         }
       });
-      
+
+      // Always re-assign srcObject (even if same stream) to trigger browser re-evaluation
       audioElement.srcObject = audioStream;
 
-      // Strategy: the element was already playing muted (autoPlay + muted=true in JSX,
-      // or from the pre-unlock call in acceptCall/startVoiceCall which ran during user gesture).
-      // All we need to do is unmute — no extra play() call required for muted→live transition.
-      // We also call play() as a safety net in case autoPlay hasn't started yet.
       const playAudio = async () => {
         try {
-          audioElement.muted = false; // always unmute first (was muted for autoplay policy)
-          if (audioElement.paused) {
-            await audioElement.play();
-            console.log('✅ Remote audio playing');
-          } else {
-            console.log('✅ Remote audio already playing (unmuted)');
-          }
+          // Step 1: Start playing muted (always allowed)
+          audioElement.muted = true;
+          audioElement.volume = 1.0;
+          await audioElement.play();
+
+          // Step 2: Unmute after play started — this works because we already
+          // did a user-gesture play() in acceptCall/handleVoiceCall
+          audioElement.muted = false;
+          console.log('✅ Remote audio playing and unmuted');
         } catch (err: any) {
-          if (err.name === 'AbortError') return; // stream changed quickly — harmless
-          if (err.name === 'NotAllowedError') {
-            // Still blocked: keep muted and let autoPlay handle it, then try unmuting
-            console.warn('⚠️ Autoplay blocked even with muted trick — keeping muted and retrying');
-            audioElement.muted = true;
+          if (err.name === 'AbortError') return;
+          console.warn('⚠️ Failed to play remote audio:', err);
+          // Last resort: retry unmuting after a short delay
+          setTimeout(() => {
             try {
-              await audioElement.play();
               audioElement.muted = false;
-              console.log('✅ Remote audio playing (muted→unmute fallback)');
-            } catch (innerErr) {
-              console.warn('⚠️ Muted fallback also failed:', innerErr);
-            }
-          } else {
-            console.warn('⚠️ Failed to play remote audio:', err);
-          }
+              audioElement.play().catch(() => {});
+              console.log('🔄 Retry unmute after delay');
+            } catch (_) {}
+          }, 500);
         }
       };
 
       playAudio();
+
+      // Also retry when track becomes live (for cases where track arrives before ICE completes)
+      audioTracks.forEach(track => {
+        const onUnmute = () => {
+          console.log('🔊 Audio track unmuted event — ensuring playback');
+          if (audioElement.paused) {
+            audioElement.play().catch(() => {});
+          }
+          audioElement.muted = false;
+        };
+        track.addEventListener('unmute', onUnmute, { once: true });
+      });
     } else if (audioElement && !remoteStream) {
       audioElement.srcObject = null;
     }
-  }, [remoteStream, activeCall]); // Added activeCall to trigger when video UI mounts
+  }, [remoteStream, activeCall]);
 
   // Random isim generator (anonymous mesajlar için)
   const generateRandomName = (seed: string): string => {
@@ -669,11 +676,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     const initializeChat = async () => {
       await loadContacts();
-      await loadChatInfo();
+      if (!cancelled) await loadChatInfo();
     };
     initializeChat();
+
+    // Reset messages immediately on chat switch to prevent stale data flash
+    setMessages([]);
     loadMessages();
     loadOnlineUsers();
     if (ws) {
@@ -695,6 +707,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     }, 10000);
 
     return () => {
+      cancelled = true;
       if (ws) {
         ws.leaveChat(chatId);
         ws.off('message', handleNewMessage);
@@ -2043,23 +2056,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     try {
       const callType = callTypeOverride || activeCall?.type || activeCall?.call_type || 'voice';
       
-      // Build ICE server list — multiple STUN servers + optional TURN
+      // Build ICE server list — multiple STUN + TURN servers
       const iceServers: RTCIceServer[] = [
-        // Google STUN (primary)
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        // Cloudflare STUN (backup)
+        // Google STUN (primary — fast, reliable)
+        { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+        // Cloudflare STUN
         { urls: 'stun:stun.cloudflare.com:3478' },
-        // Free Open Relay TURN servers (work across symmetric NATs)
-        // These are public relay servers provided by Open Relay Project
+        // Metered.ca free TURN (quota-limited but works)
         {
           urls: [
             'turn:a.relay.metered.ca:80',
+            'turn:a.relay.metered.ca:80?transport=tcp',
             'turn:a.relay.metered.ca:443',
             'turns:a.relay.metered.ca:443',
           ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject',
+          username: 'e8dd65b92f60c1bafe58a46e',
+          credential: '1OhmoNdO3MhLNKfk',
+        },
+        // Backup TURN: Twilio-compatible public relay (xirsys free tier)
+        {
+          urls: 'turn:global.turn.twilio.com:3478?transport=udp',
+          username: 'free',
+          credential: 'free',
         },
       ];
 
@@ -2242,13 +2260,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       };
 
-      // ICE connection timeout — if connection not established in 15s, end call
+      // ICE connection timeout — if connection not established in 30s, end call
       let iceConnected = false;
       const iceTimeoutId = setTimeout(() => {
         if (!iceConnected && pc === peerConnectionRef.current) {
           const state = pc.connectionState;
           if (state !== 'connected' && state !== 'closed') {
-            console.error('❌ ICE connection timed out after 15s — ending call');
+            console.error('❌ ICE connection timed out after 30s — ending call');
             const currentCall = activeCallRef.current;
             const callIdForTimeout = currentCall?.call_id || currentCall?.id;
             if (callIdForTimeout && ws) {
@@ -2260,7 +2278,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             }
           }
         }
-      }, 15000);
+      }, 30000);
 
       // Handle connection state changes
       pc.onconnectionstatechange = () => {
@@ -2281,22 +2299,32 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               }
             }, 1000);
             console.log('✅ WebRTC connected!');
-            // FALLBACK: If ontrack hasn't fired yet, build remoteStream from PC receivers.
-            // Use remoteStreamRef (not the stale `remoteStream` closure) to get current value.
-            setTimeout(() => {
-              if (!remoteStreamRef.current) {
-                const receivers = pc.getReceivers();
-                const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio' && r.track.readyState === 'live');
-                if (audioReceivers.length > 0) {
-                  console.log('🔧 Fallback: building remoteStream from receivers after connected');
-                  const fallbackStream = new MediaStream();
-                  audioReceivers.forEach(r => fallbackStream.addTrack(r.track));
-                  setRemoteStream(fallbackStream);
-                } else {
-                  console.warn('⚠️ Fallback: no live audio receivers found — remote side may not be sending audio');
-                }
+            // FALLBACK: If ontrack hasn't fired or remoteStream has no audio,
+            // build/augment from PC receivers.
+            const tryFallbackStream = () => {
+              const receivers = pc.getReceivers();
+              const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio');
+              const currentRemote = remoteStreamRef.current as MediaStream | null;
+              const hasAudio = currentRemote && currentRemote.getAudioTracks().length > 0;
+
+              if (!hasAudio && audioReceivers.length > 0) {
+                console.log('🔧 Fallback: building remoteStream from receivers after connected');
+                const fallbackStream = currentRemote || new MediaStream();
+                audioReceivers.forEach(r => {
+                  if (!fallbackStream.getTracks().includes(r.track)) {
+                    r.track.enabled = true;
+                    fallbackStream.addTrack(r.track);
+                  }
+                });
+                setRemoteStream(fallbackStream);
+              } else if (!hasAudio) {
+                console.warn('⚠️ Fallback: no audio receivers found — remote side may not be sending audio');
               }
-            }, 500);
+            };
+            // Try immediately and again after 1s (track may arrive slightly late)
+            tryFallbackStream();
+            setTimeout(tryFallbackStream, 1000);
+            setTimeout(tryFallbackStream, 3000);
             break;
           case 'connecting':
             setCallStatus('connecting');
@@ -2469,8 +2497,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         await initializePeerConnection(stream, 'voice');
       }
 
+      // Mark accepting as done BEFORE notifying caller — so when the offer arrives
+      // handleWebRTCOffer doesn't have to wait for us.
+      isAcceptingCallRef.current = false;
+
       // NOW notify the caller we're ready — this triggers call_answered → caller sends offer.
-      // At this point our peer connection is initialized and listening for the offer.
       console.log('✅ Media and peer connection ready, notifying caller...');
       await callApi.answerCall(callId);
       console.log('✅ answerCall API done — waiting for WebRTC offer from caller');
@@ -3617,11 +3648,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       )}
 
       {/* Remote audio element — always mounted (NOT conditional on activeCall).
-          Rendering it unconditionally ensures remoteAudioRef.current is never null,
-          so the autoplay-unlock calls in acceptCall / startVoiceCall actually reach it.
-          Starting with muted=true means autoPlay is always permitted by browser policy;
-          we unmute in JS as soon as we assign srcObject. */}
-      <audio ref={remoteAudioRef} autoPlay playsInline muted className="hidden" />
+          Rendering it unconditionally ensures remoteAudioRef.current is never null.
+          We do NOT set muted or autoPlay as HTML attributes — playback is fully controlled
+          programmatically in the useEffect that watches remoteStream. The autoplay-unlock
+          (muted play during user gesture) is handled in acceptCall/handleVoiceCall. */}
+      <audio ref={remoteAudioRef} playsInline className="hidden" />
 
       {/* Voice Call UI */}
       {activeCall && (activeCall.type === 'voice' || activeCall.call_type === 'voice') && !(activeCall.type === 'video' || activeCall.call_type === 'video' || (localStream && localStream.getVideoTracks().length > 0)) && (

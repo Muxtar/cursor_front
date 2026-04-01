@@ -48,11 +48,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-      // On mobile, start with settings sidebar hidden if coming from chat
-      if (window.innerWidth < 768) {
-        setShowSettingsSidebar(true);
-      }
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // On mobile, show sidebar (category list) first; on desktop both are visible
+      if (mobile) setShowSettingsSidebar(true);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
