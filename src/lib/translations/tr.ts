@@ -401,6 +401,7 @@ export const tr = {
   selectRadius: 'Arama yarıçapı seçin',
   km: 'km',
   locationPermissionDenied: 'Konum izni reddedildi. Kullanıcıları manuel olarak arayabilirsiniz.',
+  locationBlockedBrowser: 'Tarayıcı adres çubuğundaki kilit/konum simgesine tıklayıp konum iznini etkinleştirin, ardından sayfayı yenileyin.',
   mapView: 'Harita Görünümü',
   listView: 'Liste Görünümü',
   noLocationPermission: 'Haritada yakındaki kullanıcıları göstermek için konum izni gereklidir.',

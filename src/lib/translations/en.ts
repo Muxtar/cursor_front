@@ -401,6 +401,7 @@ export const en = {
   selectRadius: 'Select search radius',
   km: 'km',
   locationPermissionDenied: 'Location permission denied. You can still search for users manually.',
+  locationBlockedBrowser: 'Click the lock/location icon in your browser address bar to enable location access, then refresh the page.',
   mapView: 'Map View',
   listView: 'List View',
   noLocationPermission: 'Location permission is required to show nearby users on map.',

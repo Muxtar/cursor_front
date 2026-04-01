@@ -401,6 +401,7 @@ export const az = {
   selectRadius: 'Axtarış radiusu seçin',
   km: 'km',
   locationPermissionDenied: 'Məkan icazəsi rədd edildi. İstifadəçiləri əl ilə axtara bilərsiniz.',
+  locationBlockedBrowser: 'Brauzerin ünvan çubuğundakı kilid/məkan simgesinə klikləyib məkan icazəsini aktivləşdirin, sonra səhifəni yeniləyin.',
   mapView: 'Xəritə Görünüşü',
   listView: 'Siyahı Görünüşü',
   noLocationPermission: 'Xəritədə yaxınlıqdakı istifadəçiləri göstərmək üçün məkan icazəsi tələb olunur.',
