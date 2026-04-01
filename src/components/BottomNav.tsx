@@ -4,8 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/AuthContext';
-
 /**
  * Modern bottom navigation bar with pill active indicator and scale animations.
  * Used on mobile inside AppLayout (fixed bottom). On desktop it's shown in Sidebar.
@@ -14,8 +12,6 @@ export default function BottomNav() {
   const { actualTheme } = useTheme();
   const { t } = useLanguage();
   const pathname = usePathname();
-  const { user } = useAuth();
-  const profileHref = `/profile/${user?.id || (user as any)?._id}`;
   const isDark = actualTheme === 'dark';
 
   const navItems = [
@@ -40,16 +36,6 @@ export default function BottomNav() {
       ),
     },
     {
-      href: '/explore',
-      label: t('explore'),
-      active: pathname === '/explore',
-      icon: (active: boolean) => (
-        <svg className="w-[22px] h-[22px]" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      ),
-    },
-    {
       href: '/location',
       label: t('location'),
       active: pathname === '/location',
@@ -67,16 +53,6 @@ export default function BottomNav() {
       icon: (active: boolean) => (
         <svg className="w-[22px] h-[22px]" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-      ),
-    },
-    {
-      href: profileHref,
-      label: t('profile'),
-      active: pathname?.startsWith('/profile') ?? false,
-      icon: (active: boolean) => (
-        <svg className="w-[22px] h-[22px]" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       ),
     },

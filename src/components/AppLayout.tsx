@@ -21,7 +21,6 @@ interface AppLayoutProps {
  */
 const BACK_BUTTON_PATHS = [
   '/profile',
-  '/explore',
   '/location',
   '/wallet',
   '/story',
