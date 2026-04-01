@@ -570,5 +570,7 @@ export const tr = {
   storyNoStoriesOther: 'Bu kullanıcının aktif story\'si yok.',
   storyViewComments: 'Tüm yorumları gör',
   storySend: 'Paylaş',
+  storySearchUsers: 'Kullanıcı ara...',
+  storyNoUsersFound: 'Kullanıcı bulunamadı',
 };
 

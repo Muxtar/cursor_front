@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, storyApi, COMPANY_CATEGORY_LABELS } from '@/lib/api';
+import { userApi, productApi, proposalApi, profileCommentApi, fileApi, companyApi, storyApi, getFileBaseUrl, COMPANY_CATEGORY_LABELS } from '@/lib/api';
 import ProductCard from '@/components/ProductCard';
 import StoryViewer from '@/components/StoryViewer';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
@@ -349,27 +349,45 @@ export default function ProfilePage() {
     if (isOwn) loadProposals();
   }, [currentUser, userId]);
 
+  // resolveFileUrl helper (same logic as stories page / ChatWindow)
+  const resolveFileUrl = (raw: string | undefined | null): string => {
+    if (!raw) return '';
+    const url = raw.trim();
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
+    const base = getFileBaseUrl();
+    if (url.startsWith('/uploads/')) return `${base}/api/v1/files/${url.replace(/^\/uploads\//, '')}`;
+    if (url.startsWith('/api/')) return `${base}${url}`;
+    if (!url.startsWith('/')) return `${base}/api/v1/files/${url}`;
+    return `${base}${url}`;
+  };
+
+  const getStoryThumb = (s: any): string => {
+    return resolveFileUrl(s.media_url ?? s.product?.media_urls?.[0] ?? '');
+  };
+
   // Fetch stories when stories tab is activated
+  const loadProfileStories = async () => {
+    if (!userId) return;
+    setLoadingStories(true);
+    try {
+      const res: any = await storyApi.getUserStories(userId);
+      const raw: any[] = Array.isArray(res?.stories) ? res.stories : (Array.isArray(res) ? res : []);
+      const enriched = raw.map((s: any) => ({
+        ...s,
+        id: s.id || s._id?.toString() || '',
+        user_name: profileUser?.username || 'User',
+        user_avatar: profileUser?.avatar || undefined,
+        media_url: s.media_url ?? s.product?.media_urls?.[0] ?? '',
+        media_type: s.media_type || 'image',
+      }));
+      setProfileStories(enriched);
+    } catch { setProfileStories([]); }
+    finally { setLoadingStories(false); }
+  };
+
   useEffect(() => {
-    if (activeTab === 'stories' && userId) {
-      setLoadingStories(true);
-      storyApi.getUserStories(userId)
-        .then((res: any) => {
-          // Backend returns { stories: [...storyEnriched] }
-          const raw: any[] = Array.isArray(res?.stories) ? res.stories : (Array.isArray(res) ? res : []);
-          const enriched = raw.map((s: any) => ({
-            ...s,
-            user_name: profileUser?.username || 'User',
-            user_avatar: profileUser?.avatar || undefined,
-            // Fallback media_url for product stories
-            media_url: s.media_url || s.product?.media_urls?.[0] || '',
-            media_type: s.media_type || 'image',
-          }));
-          setProfileStories(enriched);
-        })
-        .catch(() => setProfileStories([]))
-        .finally(() => setLoadingStories(false));
-    }
+    if (activeTab === 'stories' && userId) loadProfileStories();
   }, [activeTab, userId, profileUser]);
 
   const loadProfile = async () => {
@@ -1160,7 +1178,7 @@ export default function ProfilePage() {
               {isOwnProfile && (
                 <button
                   onClick={() => router.push('/story/create')}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-medium rounded-xl transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-pink-500 to-orange-400 hover:from-pink-600 hover:to-orange-500 text-white font-medium rounded-xl transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1171,7 +1189,7 @@ export default function ProfilePage() {
 
               {loadingStories ? (
                 <div className="flex justify-center py-12">
-                  <span className="animate-spin w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full inline-block" />
+                  <span className="animate-spin w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full inline-block" />
                 </div>
               ) : profileStories.length === 0 ? (
                 <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-10 text-center`}>
@@ -1181,39 +1199,116 @@ export default function ProfilePage() {
                   </p>
                 </div>
               ) : (
-                <>
-                  <div className="grid grid-cols-3 gap-2">
-                    {profileStories.map((story: any, idx: number) => {
-                      const thumbUrl = story.media_url || story.product?.media_urls?.[0] || story.thumbnail_url;
-                      return (
-                        <div
-                          key={story.id || story._id || idx}
-                          onClick={() => { setStoryViewerIndex(idx); setShowStoryViewer(true); }}
-                          className="relative aspect-square rounded-xl overflow-hidden cursor-pointer group"
-                        >
-                          {thumbUrl ? (
-                            <img
-                              src={thumbUrl}
-                              alt="story"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            />
-                          ) : (
-                            <div className={`w-full h-full flex items-center justify-center text-2xl ${dark ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                              🛍
-                            </div>
-                          )}
-                          {/* Type indicator */}
+                <div className="space-y-4 max-w-md mx-auto">
+                  {profileStories.map((story: any, idx: number) => {
+                    const imgUrl = getStoryThumb(story);
+                    const storyId = story.id || story._id || '';
+
+                    return (
+                      <div
+                        key={storyId || idx}
+                        className={`rounded-2xl overflow-hidden ${dark ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200 shadow-sm'}`}
+                      >
+                        {/* Header */}
+                        <div className="flex items-center gap-3 px-4 py-3">
+                          <div className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-pink-500/30">
+                            {profileUser?.avatar ? (
+                              <img src={resolveFileUrl(profileUser.avatar)} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xs">
+                                {(profileUser?.username || 'U')[0]?.toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold truncate ${dark ? 'text-white' : 'text-gray-900'}`}>{profileUser?.username || 'User'}</p>
+                            <p className={`text-xs ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {story.created_at ? new Date(story.created_at).toLocaleDateString() : ''}
+                            </p>
+                          </div>
                           {story.type === 'product' && (
-                            <div className="absolute top-1 right-1 bg-black/60 rounded-full p-1">
-                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${dark ? 'bg-purple-500/20 text-purple-300' : 'bg-purple-100 text-purple-600'}`}>Product</span>
+                          )}
+                        </div>
+
+                        {/* Image */}
+                        <button
+                          onClick={() => { setStoryViewerIndex(idx); setShowStoryViewer(true); }}
+                          className="w-full aspect-[4/3] relative overflow-hidden"
+                        >
+                          {imgUrl ? (
+                            <img src={imgUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className={`w-full h-full flex items-center justify-center ${dark ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                              <svg className={`w-12 h-12 ${dark ? 'text-gray-600' : 'text-gray-300'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
                             </div>
                           )}
+                          {story.product && (
+                            <div className="absolute bottom-2 left-2 right-2 bg-black/50 backdrop-blur-sm rounded-lg px-2 py-1">
+                              <p className="text-white text-xs font-medium truncate">{story.product.name}</p>
+                            </div>
+                          )}
+                        </button>
+
+                        {/* Actions: like / dislike / comment */}
+                        <div className="px-4 py-2.5">
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if (story.is_liked) { await storyApi.unlikeStory(storyId); }
+                                  else { await storyApi.likeStory(storyId); }
+                                  loadProfileStories();
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 group"
+                            >
+                              <svg className={`w-5 h-5 transition ${story.is_liked ? 'text-red-500' : dark ? 'text-gray-300 group-hover:text-red-400' : 'text-gray-700 group-hover:text-red-400'}`}
+                                fill={story.is_liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                              </svg>
+                              <span className={`text-xs font-medium ${dark ? 'text-gray-300' : 'text-gray-600'}`}>{story.like_count || 0}</span>
+                            </button>
+
+                            <button
+                              onClick={async () => {
+                                try {
+                                  if (story.is_disliked) { await storyApi.undislikeStory(storyId); }
+                                  else { await storyApi.dislikeStory(storyId); }
+                                  loadProfileStories();
+                                } catch {}
+                              }}
+                              className="flex items-center gap-1.5 group"
+                            >
+                              <svg className={`w-5 h-5 transition ${story.is_disliked ? 'text-blue-500' : dark ? 'text-gray-300 group-hover:text-blue-400' : 'text-gray-700 group-hover:text-blue-400'}`}
+                                fill={story.is_disliked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+                              </svg>
+                              <span className={`text-xs font-medium ${dark ? 'text-gray-300' : 'text-gray-600'}`}>{story.dislike_count || 0}</span>
+                            </button>
+
+                            <button
+                              onClick={() => { setStoryViewerIndex(idx); setShowStoryViewer(true); }}
+                              className="flex items-center gap-1.5 group"
+                            >
+                              <svg className={`w-5 h-5 transition ${dark ? 'text-gray-300 group-hover:text-white' : 'text-gray-700 group-hover:text-gray-900'}`}
+                                fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              <span className={`text-xs font-medium ${dark ? 'text-gray-300' : 'text-gray-600'}`}>{story.comment_count || 0}</span>
+                            </button>
+                          </div>
+                          {story.text && (
+                            <p className={`mt-1.5 text-sm ${dark ? 'text-gray-200' : 'text-gray-800'}`}>
+                              <span className="font-semibold">{profileUser?.username}</span>{' '}{story.text}
+                            </p>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
 
                   {/* Story Viewer */}
                   {showStoryViewer && profileStories.length > 0 && (
@@ -1223,17 +1318,23 @@ export default function ProfilePage() {
                         user_id: s.user_id || '',
                         user_name: s.user_name || profileUser?.username || '',
                         user_avatar: s.user_avatar || profileUser?.avatar,
-                        media_url: s.media_url || s.product?.media_urls?.[0] || '',
+                        media_url: s.media_url ?? s.product?.media_urls?.[0] ?? '',
                         media_type: s.media_type || 'image',
                         text: s.text,
                         created_at: s.created_at,
                         expires_at: s.expires_at,
+                        like_count: s.like_count,
+                        dislike_count: s.dislike_count,
+                        comment_count: s.comment_count,
+                        is_liked: s.is_liked,
+                        is_disliked: s.is_disliked,
+                        product: s.product,
                       }))}
                       initialIndex={storyViewerIndex}
-                      onClose={() => setShowStoryViewer(false)}
+                      onClose={() => { setShowStoryViewer(false); loadProfileStories(); }}
                     />
                   )}
-                </>
+                </div>
               )}
             </div>
           )}

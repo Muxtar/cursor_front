@@ -570,6 +570,8 @@ export const az = {
   storyNoStoriesOther: 'Bu istifadəçinin aktiv storysi yoxdur.',
   storyViewComments: 'Bütün şərhləri gör',
   storySend: 'Göndər',
+  storySearchUsers: 'İstifadəçi axtar...',
+  storyNoUsersFound: 'İstifadəçi tapılmadı',
 };
 
 

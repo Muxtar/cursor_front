@@ -570,5 +570,7 @@ export const en = {
   storyNoStoriesOther: 'This user has no active stories.',
   storyViewComments: 'View all comments',
   storySend: 'Post',
+  storySearchUsers: 'Search users by name...',
+  storyNoUsersFound: 'No users found',
 };
 

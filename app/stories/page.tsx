@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { storyApi, getFileBaseUrl } from '@/lib/api';
+import { storyApi, userApi, getFileBaseUrl } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -71,7 +71,28 @@ export default function StoriesPage() {
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+
   const currentUserId = (user as any)?.id || (user as any)?._id;
+
+  // Debounced user search
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res: any = await userApi.searchByUsername(searchQuery.trim());
+        const users = Array.isArray(res) ? res : (res?.users ? res.users : (res?.id || res?._id ? [res] : []));
+        setSearchResults(users);
+      } catch { setSearchResults([]); }
+      finally { setSearching(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   /** Build an absolute URL for a media file so <img>/<video> can load it. */
   const resolveFileUrl = (raw: string | undefined | null): string => {
@@ -245,6 +266,78 @@ export default function StoriesPage() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
+          {/* ── SEARCH BAR ── */}
+          <div className={`px-4 pt-4 pb-2 ${dark ? 'border-gray-800' : 'border-gray-100'} border-b relative`}>
+            <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl ${dark ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <svg className={`w-4 h-4 flex-shrink-0 ${dark ? 'text-gray-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                placeholder={t('storySearchUsers') || 'Search users by name...'}
+                className={`flex-1 bg-transparent outline-none text-sm ${dark ? 'text-white placeholder:text-gray-500' : 'text-gray-900 placeholder:text-gray-400'}`}
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className={`${dark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Search results dropdown */}
+            {searchFocused && searchQuery.trim() && (
+              <div className={`absolute left-4 right-4 top-full mt-1 rounded-xl shadow-lg border z-30 max-h-64 overflow-y-auto ${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                {searching ? (
+                  <div className="flex justify-center py-4">
+                    <span className="animate-spin w-5 h-5 border-2 border-pink-500 border-t-transparent rounded-full inline-block" />
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <p className={`text-sm text-center py-4 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    {t('storyNoUsersFound') || 'No users found'}
+                  </p>
+                ) : (
+                  searchResults.map((u: any) => {
+                    const uid = u.id || u._id;
+                    return (
+                      <button
+                        key={uid}
+                        onMouseDown={() => {
+                          setSearchQuery('');
+                          setSearchResults([]);
+                          router.push(`/profile/${uid}`);
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition ${dark ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
+                      >
+                        <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                          {u.avatar ? (
+                            <img src={resolveFileUrl(u.avatar)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-xs">
+                              {(u.username || u.first_name || 'U')[0]?.toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-semibold truncate ${dark ? 'text-white' : 'text-gray-900'}`}>{u.username || u.first_name || 'User'}</p>
+                          {u.bio && <p className={`text-xs truncate ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{u.bio}</p>}
+                        </div>
+                        <svg className={`w-4 h-4 flex-shrink-0 ${dark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
           {/* ── NEW STORY SECTION (Top) ── */}
           <div className={`px-4 pt-4 pb-3 ${dark ? 'border-gray-800' : 'border-gray-100'} border-b`}>
             <div className="flex items-center gap-3 mb-3">

@@ -570,6 +570,8 @@ export const ru = {
   storyNoStoriesOther: 'У этого пользователя нет активных историй.',
   storyViewComments: 'Посмотреть все комментарии',
   storySend: 'Опубликовать',
+  storySearchUsers: 'Поиск пользователей...',
+  storyNoUsersFound: 'Пользователи не найдены',
 };
 
 
