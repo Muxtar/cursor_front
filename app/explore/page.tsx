@@ -10,27 +10,27 @@ import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-const CATEGORIES = [
-  { value: '', label: 'All' },
-  { value: 'vehicle', label: 'Vehicle' },
-  { value: 'house', label: 'House' },
-  { value: 'design', label: 'Design' },
-  { value: 'collection', label: 'Collection' },
-  { value: 'nft', label: 'NFT' },
-  { value: 'other', label: 'Other' },
-];
-
 export default function ExplorePage() {
   const { user } = useAuth();
   const { t } = useLanguage();
   const { actualTheme } = useTheme();
   const router = useRouter();
-  useLayoutTitle(t('explore') || 'Explore');
+  useLayoutTitle(t('exploreTitle'));
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+
+  const CATEGORIES = [
+    { value: '', label: t('exploreAll') },
+    { value: 'vehicle', label: t('exploreVehicle') },
+    { value: 'house', label: t('exploreHouse') },
+    { value: 'design', label: t('exploreDesign') },
+    { value: 'collection', label: t('exploreCollection') },
+    { value: 'nft', label: t('exploreNFT') },
+    { value: 'other', label: t('exploreOther') },
+  ];
 
   useEffect(() => {
     if (user) {
@@ -48,13 +48,13 @@ export default function ExplorePage() {
         limit: 20,
         category: selectedCategory || undefined,
       });
-      
+
       if (page === 1) {
         setProducts(response.products || []);
       } else {
         setProducts((prev) => [...prev, ...(response.products || [])]);
       }
-      
+
       setHasMore((response.products || []).length === 20);
     } catch (error) {
       console.error('Failed to load products:', error);
@@ -85,7 +85,7 @@ export default function ExplorePage() {
       <div className={`${actualTheme === 'dark' ? 'bg-gray-800' : 'bg-white'} border-b ${actualTheme === 'dark' ? 'border-gray-700' : 'border-gray-200'} sticky top-0 z-10`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
-            <h1 className={`text-2xl font-bold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Explore Products</h1>
+            <h1 className={`text-2xl font-bold ${actualTheme === 'dark' ? 'text-white' : 'text-gray-900'}`}>{t('exploreTitle')}</h1>
             <div className="flex items-center space-x-4">
               <Link
                 href="/chat"
@@ -103,7 +103,7 @@ export default function ExplorePage() {
                 onClick={() => router.push('/explore/create')}
                 className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 transition-colors"
               >
-                + Add Product
+                {t('exploreAddProduct')}
               </button>
             </div>
           </div>
@@ -137,12 +137,12 @@ export default function ExplorePage() {
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-20">
-            <p className={`text-lg ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>No products found</p>
+            <p className={`text-lg ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>{t('exploreNoProducts')}</p>
             <button
               onClick={() => router.push('/explore/create')}
               className="mt-4 bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600"
             >
-              Create First Product
+              {t('exploreCreateFirst')}
             </button>
           </div>
         ) : (
@@ -172,7 +172,7 @@ export default function ExplorePage() {
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 >
-                  {loading ? 'Loading...' : 'Load More'}
+                  {loading ? t('loading') : t('exploreLoadMore')}
                 </button>
               </div>
             )}
@@ -182,6 +182,3 @@ export default function ExplorePage() {
     </>
   );
 }
-
-
-

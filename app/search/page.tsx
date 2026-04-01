@@ -5,13 +5,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { phoneCommentApi, searchApi, userApi, chatApi } from '@/lib/api';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 type Tab = 'phone' | 'profession' | 'users';
 
 export default function SearchPage() {
   const { user } = useAuth();
   const router = useRouter();
-  useLayoutTitle('Axtarış');
+  const { t } = useLanguage();
+  useLayoutTitle(t('searchTitle'));
   const [tab, setTab] = useState<Tab>('phone');
   const [phoneQuery, setPhoneQuery] = useState('');
   const [professionQuery, setProfessionQuery] = useState('');
@@ -41,7 +43,7 @@ export default function SearchPage() {
       const res: any = await phoneCommentApi.getByPhone(phoneQuery.trim());
       setComments(res.comments || []);
     } catch (err: any) {
-      setError(err?.message || 'Axtarış uğursuz');
+      setError(err?.message || t('searchFailed'));
       setComments([]);
     } finally {
       setLoading(false);
@@ -69,7 +71,7 @@ export default function SearchPage() {
       });
       setNearbyResults(res.results || []);
     } catch (err: any) {
-      setError(err?.message || 'Axtarış uğursuz');
+      setError(err?.message || t('searchFailed'));
       setNearbyResults([]);
     } finally {
       setLoading(false);
@@ -92,7 +94,7 @@ export default function SearchPage() {
       const res: any = await phoneCommentApi.getByPhone(phoneQuery.trim());
       setComments(res.comments || []);
     } catch (err: any) {
-      setError(err?.message || 'Rəy əlavə olunmadı');
+      setError(err?.message || t('searchCommentFailed'));
     } finally {
       setLoading(false);
     }
@@ -107,7 +109,7 @@ export default function SearchPage() {
       const res: any = await userApi.searchUsers(userQuery.trim());
       setUserResults(Array.isArray(res) ? res : (res?.users || []));
     } catch (err: any) {
-      setError(err?.message || 'Axtarış uğursuz');
+      setError(err?.message || t('searchFailed'));
       setUserResults([]);
     } finally {
       setLoading(false);
@@ -130,7 +132,7 @@ export default function SearchPage() {
   return (
     <>
       <main className="p-4 md:p-6 max-w-2xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Axtarış</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">{t('searchTitle')}</h1>
 
         <div className="flex gap-2 mb-4 flex-wrap">
           <button
@@ -140,7 +142,7 @@ export default function SearchPage() {
               tab === 'phone' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
             }`}
           >
-            📞 Nömrəyə görə rəylər
+            {t('searchTabPhone')}
           </button>
           <button
             type="button"
@@ -149,7 +151,7 @@ export default function SearchPage() {
               tab === 'profession' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
             }`}
           >
-            📍 Peşə + yaxınlıq
+            {t('searchTabProfession')}
           </button>
           <button
             type="button"
@@ -158,7 +160,7 @@ export default function SearchPage() {
               tab === 'users' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700'
             }`}
           >
-            👤 İstifadəçi tap
+            {t('searchTabUsers')}
           </button>
         </div>
 
@@ -175,27 +177,27 @@ export default function SearchPage() {
                 type="tel"
                 value={phoneQuery}
                 onChange={(e) => setPhoneQuery(e.target.value)}
-                placeholder="+994501234567 (E.164)"
+                placeholder={t('searchPhonePlaceholder')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
               />
               <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-                Axtar
+                {t('searchBtn')}
               </button>
             </form>
 
             {phoneQuery.trim() && (
               <form onSubmit={handleAddComment} className="mb-4 p-4 bg-white border border-gray-200 rounded-lg">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bu nömrəyə rəy yaz</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t('searchWriteComment')}</label>
                 <textarea
                   value={newCommentText}
                   onChange={(e) => setNewCommentText(e.target.value)}
-                  placeholder="Mətn..."
+                  placeholder={t('searchTextPlaceholder')}
                   rows={2}
                   maxLength={2000}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 mb-2"
                 />
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm text-gray-600">Reytinq:</span>
+                  <span className="text-sm text-gray-600">{t('searchRating')}</span>
                   {[1, 2, 3, 4, 5].map((r) => (
                     <button
                       key={r}
@@ -208,13 +210,13 @@ export default function SearchPage() {
                   ))}
                 </div>
                 <button type="submit" disabled={loading} className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-50">
-                  Göndər
+                  {t('searchSubmit')}
                 </button>
               </form>
             )}
 
             <div className="space-y-3">
-              {comments.length === 0 && !loading && phoneQuery && <p className="text-gray-500">Bu nömrə üçün rəy tapılmadı.</p>}
+              {comments.length === 0 && !loading && phoneQuery && <p className="text-gray-500">{t('searchNoPhoneComments')}</p>}
               {comments.map((c: any) => (
                 <div key={c.id} className="p-4 bg-white border border-gray-200 rounded-lg">
                   <p className="text-gray-900">{c.text}</p>
@@ -236,11 +238,11 @@ export default function SearchPage() {
                 type="text"
                 value={professionQuery}
                 onChange={(e) => setProfessionQuery(e.target.value)}
-                placeholder="Peşə (məs: Bərbər)"
+                placeholder={t('searchProfessionPlaceholder')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
               />
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600">Radius (km):</label>
+                <label className="text-sm text-gray-600">{t('searchPageRadius')}</label>
                 <select
                   value={radiusKm}
                   onChange={(e) => setRadiusKm(Number(e.target.value))}
@@ -253,18 +255,18 @@ export default function SearchPage() {
                 </select>
               </div>
               <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
-                Yaxınlıqda axtar
+                {t('searchNearby')}
               </button>
             </form>
 
             <div className="space-y-3">
-              {nearbyResults.length === 0 && !loading && professionQuery && <p className="text-gray-500">Nəticə tapılmadı.</p>}
+              {nearbyResults.length === 0 && !loading && professionQuery && <p className="text-gray-500">{t('searchNoResults')}</p>}
               {nearbyResults.map((r: any) => (
                 <div key={r.user_id} className="p-4 bg-white border border-gray-200 rounded-lg">
                   <div className="font-medium text-gray-900">{r.display_name}</div>
                   <div className="text-sm text-gray-600">{r.profession}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {r.distance_km?.toFixed(1)} km · Rəylər: {r.comment_count} · Orta reytinq: {r.average_rating?.toFixed(1) || '-'}
+                    {r.distance_km?.toFixed(1)} km · {t('searchPageComments')} {r.comment_count} · {t('searchAvgRating')} {r.average_rating?.toFixed(1) || '-'}
                   </div>
                   {r.social_verified?.length > 0 && (
                     <div className="flex gap-1 mt-1">
@@ -286,20 +288,20 @@ export default function SearchPage() {
                 type="text"
                 value={userQuery}
                 onChange={(e) => setUserQuery(e.target.value)}
-                placeholder="İstifadəçi adı ilə axtar..."
+                placeholder={t('searchPageUserPlaceholder')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900"
                 autoFocus
               />
               <button type="submit" disabled={loading || !userQuery.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">
                 {loading ? (
                   <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : 'Axtar'}
+                ) : t('searchBtn')}
               </button>
             </form>
 
             <div className="space-y-3">
               {userResults.length === 0 && !loading && userQuery && (
-                <p className="text-gray-500 text-center py-4">İstifadəçi tapılmadı.</p>
+                <p className="text-gray-500 text-center py-4">{t('searchUserNotFound')}</p>
               )}
               {userResults.map((u: any) => {
                 const uid = String(u.id || u._id);
@@ -326,7 +328,7 @@ export default function SearchPage() {
                         onClick={() => router.push(`/profile/${uid}`)}
                         className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-700 transition"
                       >
-                        Profil
+                        {t('searchProfile')}
                       </button>
                       <button
                         onClick={() => handleStartChat(uid)}
@@ -336,7 +338,7 @@ export default function SearchPage() {
                         {startingChatId === uid ? (
                           <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : '💬'}
-                        Mesaj
+                        {t('searchMessage')}
                       </button>
                     </div>
                   </div>

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { notificationsApi, profileCommentApi } from '@/lib/api';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Link from 'next/link';
 
 // ─── Notification type icon helper ───────────────────────────────────────────
@@ -72,30 +73,31 @@ function getIconStyle(type: string, isDark: boolean): string {
   return map[type] ?? (isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500');
 }
 
-// ─── Relative time formatter ───────────────────────────────────────────────────
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1)  return 'İndicə';
-  if (mins < 60) return `${mins} dəq`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)  return `${hrs} saat`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7)  return `${days} gün`;
-  return new Date(dateStr).toLocaleDateString();
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 export default function NotificationsPage() {
   const { user } = useAuth();
   const router = useRouter();
-  useLayoutTitle('Bildirişlər');
+  const { t } = useLanguage();
+  useLayoutTitle(t('notifTitle'));
   const [list, setList] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [profileComments, setProfileComments] = useState<any[]>([]);
   const [showComments, setShowComments] = useState(false);
+
+  // ─── Relative time formatter (uses t for i18n) ─────────────────────────────
+  function relativeTime(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1)  return t('notifJustNow');
+    if (mins < 60) return `${mins} ${t('notifMinAgo')}`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `${hrs} ${t('notifHrAgo')}`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7)  return `${days} ${t('notifDayAgo')}`;
+    return new Date(dateStr).toLocaleDateString();
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -104,7 +106,7 @@ export default function NotificationsPage() {
         setList((res as any).notifications || []);
         setUnreadCount((countRes as any).unread_count ?? 0);
       })
-      .catch((err) => setError(err?.message || 'Yüklənmədi'))
+      .catch((err) => setError(err?.message || t('notifLoadFailed')))
       .finally(() => setLoading(false));
   }, [user]);
 
@@ -131,7 +133,7 @@ export default function NotificationsPage() {
       setList((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || new Date().toISOString() })));
       setUnreadCount(0);
     } catch (e) {
-      setError((e as Error)?.message || 'Xəta');
+      setError((e as Error)?.message || t('notifError'));
     }
   };
 
@@ -154,7 +156,7 @@ export default function NotificationsPage() {
         {/* ─── Header ─── */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Bildirişlər</h1>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t('notifTitle')}</h1>
             {unreadCount > 0 && (
               <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 text-xs font-semibold rounded-full bg-blue-500 text-white">
                 {unreadCount > 99 ? '99+' : unreadCount}
@@ -168,7 +170,7 @@ export default function NotificationsPage() {
               onClick={loadProfileComments}
               className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
             >
-              Şərhlər
+              {t('notifComments')}
             </button>
             {unreadCount > 0 && (
               <button
@@ -176,7 +178,7 @@ export default function NotificationsPage() {
                 onClick={handleMarkAllRead}
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               >
-                Hamısını oxu
+                {t('notifMarkAllRead')}
               </button>
             )}
           </div>
@@ -197,7 +199,7 @@ export default function NotificationsPage() {
           <div className="mb-5 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden animate-slide-up shadow-sm">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-                Haqqımda şərhlər
+                {t('notifAboutMe')}
               </h2>
               <button
                 onClick={() => setShowComments(false)}
@@ -211,7 +213,7 @@ export default function NotificationsPage() {
             <div className="p-3 space-y-2 max-h-60 overflow-y-auto">
               {profileComments.length === 0 ? (
                 <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                  Haqqınızda şərh yoxdur.
+                  {t('notifNoComments')}
                 </p>
               ) : (
                 profileComments.map((comment: any) => (
@@ -261,10 +263,10 @@ export default function NotificationsPage() {
               </svg>
             </div>
             <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Bildiriş yoxdur
+              {t('notifEmpty')}
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Yeni bildirişlər burada görünəcək
+              {t('notifEmptyDesc')}
             </p>
           </div>
         )}
@@ -329,7 +331,7 @@ export default function NotificationsPage() {
                         className="inline-block mt-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium hover:underline"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        Bütün şərhlərə bax →
+                        {t('notifSeeAllComments')}
                       </Link>
                     )}
                   </div>
@@ -340,7 +342,7 @@ export default function NotificationsPage() {
                       {relativeTime(n.created_at)}
                     </span>
                     {isUnread && (
-                      <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" aria-label="Oxunmamış" />
+                      <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" aria-label={t('notifUnread')} />
                     )}
                   </div>
                 </div>
