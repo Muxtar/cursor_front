@@ -44,14 +44,9 @@ export default function AuthenticatedLayout({
     return <>{children}</>;
   }
 
-  // ── /chat: has its own complete layout — skip AppLayout ─────────────────
-  if (pathname === '/chat') {
-    return <>{children}</>;
-  }
-
-  // ── All other authenticated pages: persistent AppLayout ──────────────────
+  // ── All authenticated pages (including /chat): persistent AppLayout ──────
   return (
-    <AppLayout title={title}>
+    <AppLayout title={pathname === '/chat' ? '' : title}>
       {children}
     </AppLayout>
   );

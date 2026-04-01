@@ -1,17 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
 import Sidebar from '@/components/Sidebar';
 import BottomNav from '@/components/BottomNav';
+import { WebSocketClient } from '@/lib/websocket';
+
+// ── Shared chat state context ────────────────────────────────────────────────
+interface ChatState {
+  selectedChat: string | null;
+  setSelectedChat: (id: string | null) => void;
+  ws: WebSocketClient | null;
+}
+
+const ChatStateContext = createContext<ChatState>({
+  selectedChat: null,
+  setSelectedChat: () => {},
+  ws: null,
+});
+
+export function useChatState() {
+  return useContext(ChatStateContext);
+}
 
 interface AppLayoutProps {
   children: React.ReactNode;
-  /**
-   * Mobile header title. Typically set via useLayoutTitle() from
-   * AppLayoutContext — this prop lets AuthenticatedLayout pass it through.
-   */
   title?: string;
 }
 
@@ -45,11 +60,39 @@ const showBackOnMobile = (pathname: string) =>
  */
 export default function AppLayout({ children, title = '' }: AppLayoutProps) {
   const { actualTheme } = useTheme();
+  const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [ws, setWs] = useState<WebSocketClient | null>(null);
+  const wsRef = useRef<WebSocketClient | null>(null);
   const isDark = actualTheme === 'dark';
   const showBack = showBackOnMobile(pathname ?? '');
+  const isOnChatPage = pathname === '/chat';
+
+  // ── Persistent WebSocket connection ─────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
+    const client = new WebSocketClient(undefined, token);
+    client.connect().then(() => {
+      wsRef.current = client;
+      setWs(client);
+    }).catch((err) => {
+      console.error('WebSocket connection failed:', err);
+    });
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.disconnect();
+        wsRef.current = null;
+      }
+      setWs(null);
+    };
+  }, [user]);
 
   // Close mobile sidebar when route changes
   useEffect(() => {
@@ -71,19 +114,30 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
   return (
     <div className={`flex h-dvh max-h-dvh overflow-hidden ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
 
-      {/* ─── Sidebar (persistent across navigations) ─── */}
+      {/* ─── Sidebar (persistent across ALL navigations including /chat) ─── */}
       <div
         className={`
           md:relative md:flex-shrink-0
-          fixed inset-y-0 left-0 z-40 w-full md:w-[420px] md:max-w-[420px] md:h-full
-          transform transition-transform duration-300 ease-out
-          h-[calc(100dvh-4.5rem)] md:h-full
-          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          w-full md:w-[420px] md:max-w-[420px] md:h-full
+          ${isOnChatPage
+            ? (selectedChat
+              ? 'hidden md:block'            /* Mobile: hidden when chatting; Desktop: always visible */
+              : 'relative h-full')            /* Mobile: full screen chat list */
+            : `fixed inset-y-0 left-0 z-40 h-[calc(100dvh-4.5rem)] md:h-full
+               transform transition-transform duration-300 ease-out
+               ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`
+          }
         `}
       >
         <Sidebar
-          mobileOpen={mobileMenuOpen}
-          onClose={() => setMobileMenuOpen(false)}
+          mobileOpen={isOnChatPage ? !selectedChat : mobileMenuOpen}
+          onClose={() => { setMobileMenuOpen(false); }}
+          onChatSelect={(id) => {
+            setSelectedChat(id);
+            if (pathname !== '/chat') router.push('/chat');
+          }}
+          selectedChat={selectedChat}
+          ws={ws}
         />
       </div>
 
@@ -101,10 +155,11 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
       {/* ─── Main content area ─── */}
       <div className="flex flex-1 flex-col min-w-0 min-h-0 overflow-hidden">
 
-        {/* Mobile glassmorphism header */}
+        {/* Mobile glassmorphism header — hidden on /chat (it has its own) */}
         <header
           className={`
-            flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border-b md:hidden
+            flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border-b
+            ${isOnChatPage ? 'hidden' : 'md:hidden'}
             ${isDark
               ? 'bg-gray-900/90 border-gray-700/50 backdrop-blur-md'
               : 'bg-white/90 border-gray-200/50 backdrop-blur-md'
@@ -172,19 +227,24 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
           )}
         </header>
 
-        {/* Page content — always has bottom padding for BottomNav */}
-        <main className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain pb-20 md:pb-0">
-          {children}
+        {/* Page content */}
+        <main className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain ${isOnChatPage ? '' : 'pb-20 md:pb-0'}`}>
+          <ChatStateContext.Provider value={{ selectedChat, setSelectedChat, ws }}>
+            {children}
+          </ChatStateContext.Provider>
         </main>
       </div>
 
-      {/* ─── Mobile bottom navigation (fixed, always visible) ─── */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-[35] md:hidden"
-        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
-      >
-        <BottomNav />
-      </div>
+      {/* ─── Mobile bottom navigation ─── */}
+      {/* Hide BottomNav when inside a chat conversation on mobile */}
+      {!(isOnChatPage && selectedChat) && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[35] md:hidden"
+          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+        >
+          <BottomNav />
+        </div>
+      )}
     </div>
   );
 }
