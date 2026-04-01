@@ -69,10 +69,6 @@ body {
   }
 }
 
-main {
-  animation: pageEnter 0.2s ease-out;
-}
-
 /* ─── Reusable animation keyframes ─── */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -165,6 +161,50 @@ button:active,
   transition: transform 0.08s ease;
 }
 
+/* ─── Skeleton shimmer ─── */
+.skeleton {
+  background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.06) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+}
+
+/* ─── List item performance ─── */
+.list-item {
+  contain: layout style paint;
+}
+
+/* ─── GPU-accelerated page enter ─── */
+main {
+  will-change: opacity, transform;
+  animation: pageEnter 0.2s ease-out;
+}
+
+/* ─── Mobile scrollbar (thinner) ─── */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+}
+
+/* ─── Touch targets minimum ─── */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Exempt inline/icon buttons that explicitly set smaller sizes */
+.btn-sm, .btn-icon {
+  min-height: unset;
+  min-width: unset;
+}
+
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -173,4 +213,5 @@ button:active,
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+  html { scroll-behavior: auto; }
 }

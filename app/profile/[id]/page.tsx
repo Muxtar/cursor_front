@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -473,7 +474,7 @@ export default function ProfilePage() {
       await companyApi.deleteCompany(companyId);
       setCompanies(prev => prev.filter(c => c.id !== companyId));
     } catch (err: any) {
-      alert(t('profileCompanyErrorDelete') + (err?.message || ''));
+      toast.error(t('profileCompanyErrorDelete') + (err?.message || ''));
     } finally {
       setDeletingCompanyId(null);
     }
@@ -521,7 +522,7 @@ export default function ProfilePage() {
       setNewSocialUrl('');
       setShowSocialForm(false);
     } catch (err: any) {
-      alert('Could not save: ' + (err?.message || ''));
+      toast.error('Could not save: ' + (err?.message || ''));
     } finally {
       setSavingSocial(false);
     }
@@ -534,7 +535,7 @@ export default function ProfilePage() {
       await userApi.updateMe({ social_accounts: updated });
       setSocialAccounts(updated);
     } catch (err: any) {
-      alert('Could not remove: ' + (err?.message || ''));
+      toast.error('Could not remove: ' + (err?.message || ''));
     } finally {
       setDeletingSocialIdx(null);
     }
@@ -551,7 +552,7 @@ export default function ProfilePage() {
       setNewCommentText('');
       loadComments();
     } catch (error: any) {
-      alert('Failed to add comment: ' + (error?.message || 'Unknown error'));
+      toast.error('Failed to add comment: ' + (error?.message || 'Unknown error'));
     } finally { setSendingComment(false); }
   };
 
@@ -560,7 +561,7 @@ export default function ProfilePage() {
       const res: any = await profileCommentApi.reply(commentId);
       router.push(res?.chat_id ? `/chat?open=${res.chat_id}` : '/chat');
     } catch (error: any) {
-      alert('Failed to start conversation: ' + (error?.message || 'Unknown error'));
+      toast.error('Failed to start conversation: ' + (error?.message || 'Unknown error'));
     }
   };
 
@@ -603,7 +604,7 @@ export default function ProfilePage() {
   };
 
   const handleSendProposal = async () => {
-    if (!proposalContent.trim()) { alert('Please write your proposal'); return; }
+    if (!proposalContent.trim()) { toast.error('Please write your proposal'); return; }
     setSendingProposal(true);
     try {
       await proposalApi.createProposal({
@@ -612,12 +613,12 @@ export default function ProfilePage() {
         content: proposalContent.trim(),
         chat_anonymous: proposalChatAnonymous,
       });
-      alert('Proposal sent! If they accept, a chat will open.');
+      toast.error('Proposal sent! If they accept, a chat will open.');
       setShowProposalModal(false);
       setProposalTitle(''); setProposalContent(''); setProposalChatAnonymous(false);
       loadProposals();
     } catch (error: any) {
-      alert('Failed to send proposal: ' + error.message);
+      toast.error('Failed to send proposal: ' + error.message);
     } finally { setSendingProposal(false); }
   };
 
@@ -627,21 +628,21 @@ export default function ProfilePage() {
       const res: any = await proposalApi.acceptProposal(proposalId);
       if (res?.chat_id) router.push(`/chat?open=${res.chat_id}`); else loadProposals();
     } catch (error: any) {
-      alert('Failed to accept: ' + (error?.message || 'Unknown error'));
+      toast.error('Failed to accept: ' + (error?.message || 'Unknown error'));
     } finally { setAcceptingId(null); }
   };
 
   const handleRejectProposal = async (proposalId: string) => {
     try { await proposalApi.rejectProposal(proposalId); loadProposals(); }
-    catch (error: any) { alert('Failed to reject: ' + (error?.message || 'Unknown error')); }
+    catch (error: any) { toast.error('Failed to reject: ' + (error?.message || 'Unknown error')); }
   };
 
   const handleDeleteProposal = async (proposalId: string) => {
     const id = typeof proposalId === 'string' ? proposalId : String((proposalId as any)?.$oid ?? proposalId);
-    if (!id || id.length < 20) { alert('Invalid proposal ID'); return; }
+    if (!id || id.length < 20) { toast.error('Invalid proposal ID'); return; }
     setDeletingProposalId(id);
     try { await proposalApi.deleteProposal(id); loadProposals(); }
-    catch (error: any) { alert('Failed to delete: ' + (error?.message || 'Unknown error')); }
+    catch (error: any) { toast.error('Failed to delete: ' + (error?.message || 'Unknown error')); }
     finally { setDeletingProposalId(null); }
   };
 
@@ -660,7 +661,7 @@ export default function ProfilePage() {
         loadProfile();
       }
     } catch (err: any) {
-      alert('Failed to update photo: ' + (err?.message || 'Unknown error'));
+      toast.error('Failed to update photo: ' + (err?.message || 'Unknown error'));
     } finally { setUploadingPhoto(false); e.target.value = ''; }
   };
 

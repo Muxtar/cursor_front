@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -48,7 +49,7 @@ export default function CreateProductContent() {
       setMediaFiles((prev) => [...prev, ...files]);
     } catch (error) {
       console.error('Failed to upload files:', error);
-      alert('Failed to upload files. Please try again.');
+      toast.error('Failed to upload files. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -62,7 +63,7 @@ export default function CreateProductContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.description || mediaUrls.length === 0) {
-      alert('Please fill in all required fields and add at least one image');
+      toast.error('Please fill in all required fields and add at least one image');
       return;
     }
 
@@ -82,7 +83,7 @@ export default function CreateProductContent() {
       router.push(`/explore/${response.product.id}`);
     } catch (error: any) {
       console.error('Failed to create product:', error);
-      alert(error.message || 'Failed to create product. Please try again.');
+      toast.error(error.message || 'Failed to create product. Please try again.');
     } finally {
       setLoading(false);
     }

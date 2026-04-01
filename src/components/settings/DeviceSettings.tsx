@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -37,9 +38,9 @@ export default function DeviceSettings({ settings, onUpdate }: DeviceSettingsPro
     try {
       await settingsApi.updateSettings({ devices: formData });
       onUpdate();
-      alert('Device settings updated');
+      toast.success('Device settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     }
   };
 
@@ -48,9 +49,9 @@ export default function DeviceSettings({ settings, onUpdate }: DeviceSettingsPro
       try {
         await settingsApi.terminateSession(sessionId);
         loadSessions();
-        alert('Session terminated');
+        toast.success('Session terminated');
       } catch (error: any) {
-        alert('Error: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     }
   };

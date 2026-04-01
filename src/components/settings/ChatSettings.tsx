@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -38,9 +39,9 @@ export default function ChatSettings({ settings, onUpdate }: ChatSettingsProps) 
     try {
       await settingsApi.updateChatSettings(formData);
       onUpdate();
-      alert('Chat settings updated');
+      toast.success('Chat settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }

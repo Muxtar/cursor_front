@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -312,7 +313,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       typeof proposalId === 'string' ? proposalId : (proposalId as any)?.id ?? (proposalId as any)?._id ?? proposalId
     ) || getProposalId({ id: proposalId, _id: proposalId });
     if (!id || id.length < 12) {
-      alert(t('deleteProposalError'));
+      toast.error(t('deleteProposalError'));
       return;
     }
     if (!confirm(t('deleteProposalConfirm'))) return;
@@ -324,7 +325,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     } catch (e: any) {
       console.error('Delete proposal failed:', e);
       const msg = e?.message || t('deleteProposalError');
-      alert(msg);
+      toast.error(msg);
     }
   };
 
@@ -656,7 +657,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         router.push('/chat');
       }
     } catch (e: any) {
-      alert('Failed to create group: ' + (e?.message || ''));
+      toast.error('Failed to create group: ' + (e?.message || ''));
     } finally {
       setCreatingGroup(false);
     }
@@ -678,19 +679,19 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       router.push('/chat');
     } catch (error: any) {
       console.error('Failed to create chat:', error);
-      alert(t('sendFailed') + ': ' + (error?.message || ''));
+      toast.error(t('sendFailed') + ': ' + (error?.message || ''));
     }
   };
 
   const handleAddContact = async (userId: string) => {
     try {
       await contactApi.addContact({ user_id: userId });
-      alert(t('contactAdded'));
+      toast.success(t('contactAdded'));
       setShowAddContactModal(false);
       setSearchQuery('');
       loadContacts();
     } catch (error: any) {
-      alert(t('addContactFailed') + ': ' + error.message);
+      toast.error(t('addContactFailed') + ': ' + error.message);
     }
   };
 
@@ -702,14 +703,14 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         phone_number: newContactPhone.trim(),
         display_name: newContactName.trim() || newContactPhone.trim(),
       });
-      alert(t('contactAdded'));
+      toast.success(t('contactAdded'));
       setShowAddContactModal(false);
       setAddContactByNumber(false);
       setNewContactPhone('');
       setNewContactName('');
       loadContacts();
     } catch (error: any) {
-      alert(t('addContactFailed') + ': ' + (error?.message || ''));
+      toast.error(t('addContactFailed') + ': ' + (error?.message || ''));
     }
   };
 
@@ -808,18 +809,18 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       loadChats();
       router.push('/chat');
     } catch (error: any) {
-      alert(t('sendFailed') + ': ' + (error?.message || ''));
+      toast.error(t('sendFailed') + ': ' + (error?.message || ''));
     }
   };
 
   const handleRemoveContact = async (contactId: string) => {
     try {
       await contactApi.deleteContact(contactId);
-      alert(t('contactRemoved'));
+      toast.success(t('contactRemoved'));
       setShowRemoveContactModal(false);
       loadContacts();
     } catch (error: any) {
-      alert(t('removeContactFailed') + ': ' + (error?.message || ''));
+      toast.error(t('removeContactFailed') + ': ' + (error?.message || ''));
     }
   };
 
@@ -829,12 +830,12 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     try {
       setSendingComment(true);
       await profileCommentApi.create(commentTargetUserId, commentText.trim());
-      alert(t('leaveCommentSuccess'));
+      toast.success(t('leaveCommentSuccess'));
       setShowCommentModal(false);
       setCommentText('');
       setCommentTargetUserId(null);
     } catch (error: any) {
-      alert(t('leaveCommentError') + ': ' + (error?.message || ''));
+      toast.error(t('leaveCommentError') + ': ' + (error?.message || ''));
     } finally {
       setSendingComment(false);
     }
@@ -848,13 +849,13 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
     try {
       setSendingLeaveComment(true);
       await profileCommentApi.createWithTarget(leaveCommentTargetType, val, txt);
-      alert(leaveCommentTargetType === 'phone' ? t('leaveCommentSuccess') : t('leaveCommentSuccessSearchOnly'));
+      toast.error(leaveCommentTargetType === 'phone' ? t('leaveCommentSuccess') : t('leaveCommentSuccessSearchOnly'));
       setShowLeaveCommentModal(false);
       setLeaveCommentTargetValue('');
       setLeaveCommentText('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      alert(t('leaveCommentError') + ': ' + msg);
+      toast.error(t('leaveCommentError') + ': ' + msg);
     } finally {
       setSendingLeaveComment(false);
     }
@@ -875,12 +876,12 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         content: content,
         chat_anonymous: chatAnonymous,
       });
-      alert('Proposal sent successfully');
+      toast.success('Proposal sent successfully');
       setShowProposalFromContactModal(false);
       setProposalTargetUserId(null);
       loadProposalsCount();
     } catch (error: any) {
-      alert('Failed to send proposal: ' + (error?.message || ''));
+      toast.error('Failed to send proposal: ' + (error?.message || ''));
     }
   };
 
@@ -900,7 +901,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       }
     } catch (error: any) {
       console.error('Failed to delete chat:', error);
-      alert(t('sendFailed') + ': ' + (error?.message || ''));
+      toast.error(t('sendFailed') + ': ' + (error?.message || ''));
     }
   };
 
@@ -936,9 +937,9 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
       setProposalSearchQuery('');
       setProposalSearchResults([]);
       loadProposalsCount();
-      alert(t('requestSent'));
+      toast.success(t('requestSent'));
     } catch (err: any) {
-      alert(t('sendFailed') + ': ' + (err?.message || ''));
+      toast.error(t('sendFailed') + ': ' + (err?.message || ''));
     } finally {
       setSendingProposal(false);
     }
@@ -959,7 +960,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
         await updateUser({ avatar: avatarUrl });
       }
     } catch (err: any) {
-      alert(t('photoUpdateFailed') + ': ' + (err?.message || ''));
+      toast.error(t('photoUpdateFailed') + ': ' + (err?.message || ''));
     } finally {
       setUploadingPhoto(false);
       setShowChangePhotoModal(false);
@@ -1809,7 +1810,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                       // Mark as unread - unread count'u artır (frontend only)
                       setContextChat(null);
                       setContextMenuPos(null);
-                      alert('Marked as unread');
+                      toast.success('Marked as unread');
                     }}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
                   >

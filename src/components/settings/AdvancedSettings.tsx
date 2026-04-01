@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -29,9 +30,9 @@ export default function AdvancedSettings({ settings, onUpdate }: AdvancedSetting
     try {
       await settingsApi.updateAdvancedSettings(formData);
       onUpdate();
-      alert(t('advancedSettingsUpdated'));
+      toast.success(t('advancedSettingsUpdated'));
     } catch (error: any) {
-      alert(t('error') + ': ' + error.message);
+      toast.error(t('error') + ': ' + error.message);
     } finally {
       setLoading(false);
     }

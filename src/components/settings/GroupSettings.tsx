@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -30,9 +31,9 @@ export default function GroupSettings({ settings, onUpdate }: GroupSettingsProps
     try {
       await settingsApi.updateGroupSettings(formData);
       onUpdate();
-      alert(t('groupSettingsUpdated'));
+      toast.success(t('groupSettingsUpdated'));
     } catch (error: any) {
-      alert(t('error') + ': ' + error.message);
+      toast.error(t('error') + ': ' + error.message);
     } finally {
       setLoading(false);
     }

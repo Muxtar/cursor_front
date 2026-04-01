@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -82,7 +83,7 @@ export default function CreateStoryPage() {
       await storyApi.createStory({ type: 'media', media_url: mediaUrl, media_type: mediaType, text: text.trim() || undefined });
       router.push('/stories');
     } catch (error: any) {
-      alert('Error creating story: ' + (error?.message || ''));
+      toast.error('Error creating story: ' + (error?.message || ''));
     } finally {
       setLoading(false);
     }
@@ -96,7 +97,7 @@ export default function CreateStoryPage() {
       await storyApi.createStory({ type: 'product', product_id: productId });
       router.push('/stories');
     } catch (error: any) {
-      alert('Error sharing product: ' + (error?.message || ''));
+      toast.error('Error sharing product: ' + (error?.message || ''));
     } finally {
       setSharingProduct(false);
     }

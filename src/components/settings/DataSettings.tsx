@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -52,9 +53,9 @@ export default function DataSettings({ settings, onUpdate }: DataSettingsProps) 
     try {
       await settingsApi.updateDataSettings(formData);
       onUpdate();
-      alert('Data settings updated');
+      toast.success('Data settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -64,10 +65,10 @@ export default function DataSettings({ settings, onUpdate }: DataSettingsProps) 
     if (confirm('Are you sure you want to clear the cache?')) {
       try {
         await settingsApi.clearCache();
-        alert('Cache cleared');
+        toast.success('Cache cleared');
         loadDataUsage();
       } catch (error: any) {
-        alert('Error: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     }
   };

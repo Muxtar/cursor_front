@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -58,9 +59,9 @@ export default function PrivacySettings({ settings, onUpdate }: PrivacySettingsP
     try {
       await settingsApi.updatePrivacySettings(formData);
       onUpdate();
-      alert('Privacy settings updated');
+      toast.success('Privacy settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -71,9 +72,9 @@ export default function PrivacySettings({ settings, onUpdate }: PrivacySettingsP
       try {
         await settingsApi.terminateSession(sessionId);
         loadSessions();
-        alert('Session terminated');
+        toast.success('Session terminated');
       } catch (error: any) {
-        alert('Error: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     }
   };
@@ -82,9 +83,9 @@ export default function PrivacySettings({ settings, onUpdate }: PrivacySettingsP
     try {
       await settingsApi.unblockUser(userId);
       loadBlockedUsers();
-      alert('User unblocked');
+      toast.success('User unblocked');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     }
   };
 

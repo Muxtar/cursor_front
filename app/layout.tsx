@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { AppLayoutProvider } from "@/contexts/AppLayoutContext";
 import AuthenticatedLayout from "@/components/AuthenticatedLayout";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,6 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        <Toaster position="top-center" richColors closeButton duration={3000} />
         <ThemeProvider>
           <LanguageProvider>
             <AuthProvider>

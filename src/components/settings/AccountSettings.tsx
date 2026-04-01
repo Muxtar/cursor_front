@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi, fileApi } from '@/lib/api';
@@ -32,9 +33,9 @@ export default function AccountSettings({ settings, onUpdate }: AccountSettingsP
       await settingsApi.updateAccountSettings(formData);
       await updateUser({ username: formData.username, bio: formData.bio });
       onUpdate();
-      alert('Settings updated');
+      toast.success('Settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -48,9 +49,9 @@ export default function AccountSettings({ settings, onUpdate }: AccountSettingsP
       const response = await fileApi.uploadFile(file);
       await settingsApi.updateAccountSettings({ profile_photo: response.file_url || response.url });
       onUpdate();
-      alert('Profile photo updated');
+      toast.success('Profile photo updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     }
   };
 
@@ -58,9 +59,9 @@ export default function AccountSettings({ settings, onUpdate }: AccountSettingsP
     if (confirm('Are you sure you want to suspend your account?')) {
       try {
         await settingsApi.suspendAccount();
-        alert('Account suspended');
+        toast.success('Account suspended');
       } catch (error: any) {
-        alert('Error: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     }
   };
@@ -69,9 +70,9 @@ export default function AccountSettings({ settings, onUpdate }: AccountSettingsP
     if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
       try {
         await settingsApi.deleteAccount();
-        alert('Account deleted');
+        toast.success('Account deleted');
       } catch (error: any) {
-        alert('Error: ' + error.message);
+        toast.error('Error: ' + error.message);
       }
     }
   };

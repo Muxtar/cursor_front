@@ -94,9 +94,12 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
     };
   }, [user]);
 
-  // Close mobile sidebar when route changes
+  // Close mobile sidebar + scroll to top when route changes
   useEffect(() => {
     setMobileMenuOpen(false);
+    // Scroll main content to top on page navigation
+    const main = document.querySelector('main');
+    if (main) main.scrollTop = 0;
   }, [pathname]);
 
   // Lock body scroll when sidebar overlay is open on mobile

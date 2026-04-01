@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -30,9 +31,9 @@ export default function AppearanceSettings({ settings, onUpdate }: AppearanceSet
     try {
       await settingsApi.updateAppearanceSettings(formData);
       onUpdate();
-      alert(t('appearanceSettingsUpdated'));
+      toast.success(t('appearanceSettingsUpdated'));
     } catch (error: any) {
-      alert(t('error') + ': ' + error.message);
+      toast.error(t('error') + ': ' + error.message);
     } finally {
       setLoading(false);
     }

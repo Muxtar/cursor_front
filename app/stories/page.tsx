@@ -258,11 +258,34 @@ export default function StoriesPage() {
   return (
     <div className="flex flex-col h-full">
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <span className="animate-spin w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full inline-block" />
-            <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('loading')}</p>
+        <div className="flex-1 overflow-y-auto px-4 pt-4 space-y-4">
+          {/* Skeleton: story circles */}
+          <div className="flex gap-3 overflow-hidden">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5 flex-shrink-0">
+                <div className="w-[60px] h-[60px] rounded-full skeleton" />
+                <div className="w-12 h-2 skeleton" />
+              </div>
+            ))}
           </div>
+          {/* Skeleton: story cards */}
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className={`rounded-2xl overflow-hidden ${dark ? 'bg-gray-800' : 'bg-white'}`}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <div className="w-9 h-9 rounded-full skeleton" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="w-24 h-3 skeleton" />
+                  <div className="w-16 h-2 skeleton" />
+                </div>
+              </div>
+              <div className="w-full aspect-[4/3] skeleton" />
+              <div className="px-4 py-3 flex gap-4">
+                <div className="w-12 h-4 skeleton" />
+                <div className="w-12 h-4 skeleton" />
+                <div className="w-12 h-4 skeleton" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">

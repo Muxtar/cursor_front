@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -32,9 +33,9 @@ export default function NotificationSettings({ settings, onUpdate }: Notificatio
     try {
       await settingsApi.updateNotificationSettings(formData);
       onUpdate();
-      alert('Notification settings updated');
+      toast.success('Notification settings updated');
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setLoading(false);
     }

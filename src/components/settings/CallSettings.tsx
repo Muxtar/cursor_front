@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState } from 'react';
 import { settingsApi } from '@/lib/api';
@@ -29,9 +30,9 @@ export default function CallSettings({ settings, onUpdate }: CallSettingsProps) 
     try {
       await settingsApi.updateCallSettings(formData);
       onUpdate();
-      alert(t('callSettingsUpdated'));
+      toast.success(t('callSettingsUpdated'));
     } catch (error: any) {
-      alert(t('error') + ': ' + error.message);
+      toast.error(t('error') + ': ' + error.message);
     } finally {
       setLoading(false);
     }

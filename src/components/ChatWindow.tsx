@@ -1,4 +1,5 @@
 'use client';
+import { toast } from 'sonner';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -1787,7 +1788,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           errorMessage += 'Please check your microphone permissions and try again.';
         }
         
-        alert(errorMessage);
+        toast.error(errorMessage);
         setActiveCall(null);
         activeCallRef.current = null;
         setLocalStream(null);
@@ -1795,7 +1796,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
     } catch (error) {
       console.error('Failed to initiate voice call:', error);
-      alert('Failed to initiate voice call');
+      toast.error('Failed to initiate voice call');
       setActiveCall(null);
       activeCallRef.current = null;
     }
@@ -1837,7 +1838,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // See handleCallAnswered() for offer sending logic
     } catch (error) {
       console.error('Failed to initiate video call:', error);
-      alert('Failed to initiate video call');
+      toast.error('Failed to initiate video call');
       setActiveCall(null);
       activeCallRef.current = null;
     }
@@ -2024,7 +2025,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             if (activeCall) {
               setActiveCall({ ...activeCall, type: 'voice' });
             }
-            alert('Video camera not available. Continuing with audio only.');
+            toast.error('Video camera not available. Continuing with audio only.');
             isStartingVideoCallRef.current = false;
             return audioStream; // Success with audio-only
           }
@@ -2033,7 +2034,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         }
       }
       
-      alert(errorMessage);
+      toast.error(errorMessage);
       
       // Only reset call state if we truly can't continue
       setActiveCall(null);
@@ -2518,7 +2519,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     const callType = callData.call_type || callData.type || 'voice';
     const callId = callData.call_id || callData.id;
     if (!callId) {
-      alert('Invalid call (missing call id)');
+      toast.error('Invalid call (missing call id)');
       return;
     }
 
@@ -2629,7 +2630,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       console.log('✅ answerCall API done — waiting for WebRTC offer from caller');
     } catch (error) {
       console.error('Failed to answer call:', error);
-      alert('Failed to answer call');
+      toast.error('Failed to answer call');
       setActiveCall(null);
       activeCallRef.current = null;
       setIncomingCall(null);
@@ -2920,7 +2921,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       await startVideoCall();
     } catch (error) {
       console.error('Failed to answer video call:', error);
-      alert('Failed to answer video call');
+      toast.error('Failed to answer video call');
     }
   };
 
@@ -2965,7 +2966,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           }, 100);
         } catch (error) {
           console.error('Failed to send voice message:', error);
-          alert('Failed to send voice message');
+          toast.error('Failed to send voice message');
         } finally {
           setLoading(false);
         }
@@ -2996,7 +2997,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
     } catch (error) {
       console.error('Failed to start recording:', error);
-      alert('Microphone access denied');
+      toast.error('Microphone access denied');
     }
   };
 
@@ -3309,7 +3310,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }, 100);
     } catch (error) {
       console.error('Failed to upload file:', error);
-      alert(t('sendFailed'));
+      toast.error(t('sendFailed'));
     } finally {
       setLoading(false);
     }
@@ -3385,7 +3386,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setSelectedMessage(null);
     } catch (error) {
       console.error('Failed to delete message:', error);
-      alert(t('sendFailed'));
+      toast.error(t('sendFailed'));
     }
   };
 
@@ -3397,7 +3398,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setSelectedMessage(null);
     } catch (error) {
       console.error('Failed to edit message:', error);
-      alert(t('sendFailed'));
+      toast.error(t('sendFailed'));
     }
   };
 
@@ -3413,7 +3414,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
   const handleForwardMessage = async (messageId: string) => {
     // This would open a modal to select chats
-    alert(t('forward') + ' - ' + t('selectChat'));
+    toast.error(t('forward') + ' - ' + t('selectChat'));
   };
 
   const handleShareContact = async (contactId: string) => {
@@ -3425,7 +3426,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         : contacts?.contacts?.find((c: any) => (c.contact?.id || c.id || c._id) === contactId);
       
       if (!contact) {
-        alert(t('noContactsYet'));
+        toast.error(t('noContactsYet'));
         return;
       }
 
@@ -3445,16 +3446,16 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       setTimeout(() => {
         scrollToBottom();
       }, 100);
-      alert(t('contactShared'));
+      toast.success(t('contactShared'));
     } catch (error) {
       console.error('Failed to share contact:', error);
-      alert(t('failedToShareContact'));
+      toast.error(t('failedToShareContact'));
     }
   };
 
   const handleShareLocation = async () => {
     if (!navigator.geolocation) {
-      alert(t('geolocationNotSupported'));
+      toast.error(t('geolocationNotSupported'));
       return;
     }
 
@@ -3482,11 +3483,11 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           setTimeout(() => {
             scrollToBottom();
           }, 100);
-          alert(t('locationShared'));
+          toast.success(t('locationShared'));
         },
         (error) => {
           console.error('Error getting location:', error);
-          alert(t('locationAccessDenied'));
+          toast.error(t('locationAccessDenied'));
         },
         {
           enableHighAccuracy: true,
@@ -3496,7 +3497,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       );
     } catch (error) {
       console.error('Failed to share location:', error);
-      alert(t('failedToShareLocation'));
+      toast.error(t('failedToShareLocation'));
     }
   };
 
