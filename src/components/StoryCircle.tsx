@@ -1,5 +1,7 @@
 'use client';
 
+import { useLanguage } from '@/contexts/LanguageContext';
+
 interface Story {
   id: string;
   user_id: string;
@@ -32,6 +34,7 @@ interface StoryCircleProps {
 }
 
 export default function StoryCircle({ stories, isOwn = false, onClick }: StoryCircleProps) {
+  const { t } = useLanguage();
   // Thumbnail: user avatar > product image > null
   const first = stories[0];
   const thumbnailUrl = first?.user_avatar
@@ -99,7 +102,7 @@ export default function StoryCircle({ stories, isOwn = false, onClick }: StoryCi
 
       {/* Label */}
       <p className="text-[11px] text-gray-600 dark:text-gray-300 max-w-[70px] truncate leading-none">
-        {isOwn ? 'Storyunuz' : (first?.user_name || 'User')}
+        {isOwn ? t('storyYours') : (first?.user_name || 'User')}
       </p>
     </button>
   );

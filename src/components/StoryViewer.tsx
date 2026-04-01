@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { storyApi, chatApi } from '@/lib/api';
 
 interface StoryProduct {
@@ -49,6 +50,7 @@ interface StoryViewerProps {
 export default function StoryViewer({ stories, initialIndex = 0, onClose }: StoryViewerProps) {
   const { user } = useAuth();
   const router = useRouter();
+  const { t } = useLanguage();
   const [currentStoryIndex, setCurrentStoryIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -375,7 +377,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
-                {startingChat ? 'Yüklənir...' : 'Satıcı ilə Danış'}
+                {startingChat ? t('loading') : t('storyMessageSeller')}
               </button>
             )}
           </div>
@@ -450,7 +452,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
           </div>
           {/* Header */}
           <div className="flex items-center justify-between px-4 pb-3 border-b border-white/10">
-            <h3 className="text-white font-semibold">Şərhlər</h3>
+            <h3 className="text-white font-semibold">{t('storyComments')}</h3>
             <button onClick={handleCloseComments} className="text-white/60 hover:text-white">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -465,7 +467,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
                 <span className="animate-spin w-6 h-6 border-2 border-white/30 border-t-white rounded-full inline-block" />
               </div>
             ) : comments.length === 0 ? (
-              <p className="text-white/40 text-sm text-center py-6">Hələ şərh yoxdur. İlk şərhi sən yaz!</p>
+              <p className="text-white/40 text-sm text-center py-6">{t('storyNoComments')}</p>
             ) : (
               comments.map((comment) => (
                 <div key={comment.id} className="flex gap-3">
@@ -499,7 +501,7 @@ export default function StoryViewer({ stories, initialIndex = 0, onClose }: Stor
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSendComment(); }}
-              placeholder="Şərh yaz..."
+              placeholder={t('storyWriteComment')}
               className="flex-1 bg-white/10 text-white placeholder-white/40 rounded-full px-4 py-2 text-sm outline-none border border-white/10 focus:border-white/30"
             />
             <button

@@ -5,13 +5,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { fileApi, storyApi, productApi } from '@/lib/api';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useLayoutTitle } from '@/contexts/AppLayoutContext';
 
 export default function CreateStoryPage() {
   const { user } = useAuth();
   const { actualTheme } = useTheme();
+  const { t } = useLanguage();
   const router = useRouter();
-  useLayoutTitle('Create Story');
+  useLayoutTitle(t('storyCreateTitle'));
   const dark = actualTheme === 'dark';
 
   // ── Tab state ──────────────────────────────────────────────────────────────
@@ -69,7 +71,7 @@ export default function CreateStoryPage() {
       const uploadResponse: any = await fileApi.uploadFile(media);
       const mediaUrl = uploadResponse.file_url || uploadResponse.url;
       await storyApi.createStory({ type: 'media', media_url: mediaUrl, media_type: mediaType, text: text.trim() || undefined });
-      router.push('/chat');
+      router.push('/stories');
     } catch (error: any) {
       alert('Error creating story: ' + (error?.message || ''));
     } finally {
@@ -83,7 +85,7 @@ export default function CreateStoryPage() {
     try {
       const productId = String(selectedProduct.id || selectedProduct._id);
       await storyApi.createStory({ type: 'product', product_id: productId });
-      router.push('/chat');
+      router.push('/stories');
     } catch (error: any) {
       alert('Error sharing product: ' + (error?.message || ''));
     } finally {
@@ -103,7 +105,7 @@ export default function CreateStoryPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h1 className={`text-2xl font-bold ${dark ? 'text-white' : 'text-gray-800'}`}>
-              Create Story
+              {t('storyCreateTitle')}
             </h1>
             <button
               onClick={() => router.back()}
@@ -125,7 +127,7 @@ export default function CreateStoryPage() {
                   : dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
               }`}
             >
-              📷 Photo / Video
+              {t('storyPhotoVideo')}
             </button>
             <button
               onClick={() => setStoryTab('product')}
@@ -135,7 +137,7 @@ export default function CreateStoryPage() {
                   : dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800'
               }`}
             >
-              🛍 Share Product
+              {t('storyShareProduct')}
             </button>
           </div>
 
@@ -162,7 +164,7 @@ export default function CreateStoryPage() {
                     <svg className={`w-16 h-16 mx-auto mb-4 ${dark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <p className={`${dark ? 'text-gray-400' : 'text-gray-500'}`}>Click to select photo or video</p>
+                    <p className={`${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('storySelectMedia')}</p>
                   </div>
                 </div>
               )}
@@ -172,7 +174,7 @@ export default function CreateStoryPage() {
               {/* Text Input */}
               <div className="mb-6">
                 <label className={`block text-sm font-medium mb-2 ${dark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Add Text (Optional)
+                  {t('storyAddText')}
                 </label>
                 <textarea
                   value={text}
@@ -182,7 +184,7 @@ export default function CreateStoryPage() {
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none ${
                     dark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
                   }`}
-                  placeholder="Add text to your story..."
+                  placeholder={t('storyTextPlaceholder')}
                 />
                 <p className={`text-xs mt-1 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{text.length}/200</p>
               </div>
@@ -196,7 +198,7 @@ export default function CreateStoryPage() {
                       dark ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
                     }`}
                   >
-                    Clear
+                    {t('storyClear')}
                   </button>
                 )}
                 <button
@@ -206,7 +208,7 @@ export default function CreateStoryPage() {
                     loading || !media ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
                   } text-white`}
                 >
-                  {loading ? 'Creating...' : 'Create Story'}
+                  {loading ? t('storyCreating') : t('storyCreate')}
                 </button>
               </div>
             </>
@@ -216,7 +218,7 @@ export default function CreateStoryPage() {
           {storyTab === 'product' && (
             <>
               <p className={`text-sm mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Pick one of your products to share as a 24-hour story.
+                {t('storyPickProduct')}
               </p>
 
               {loadingProducts ? (
@@ -225,12 +227,12 @@ export default function CreateStoryPage() {
                 </div>
               ) : userProducts.length === 0 ? (
                 <div className={`text-center py-12 rounded-xl ${dark ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <p className={`mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>You have no products yet.</p>
+                  <p className={`mb-4 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{t('storyNoProducts')}</p>
                   <button
                     onClick={() => router.push('/explore/create')}
                     className="px-5 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition text-sm font-medium"
                   >
-                    Add a Product
+                    {t('storyAddProduct')}
                   </button>
                 </div>
               ) : (
@@ -285,7 +287,7 @@ export default function CreateStoryPage() {
                       !selectedProduct || sharingProduct ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'
                     } text-white`}
                   >
-                    {sharingProduct ? 'Sharing...' : selectedProduct ? `Share "${selectedProduct.name}"` : 'Select a product first'}
+                    {sharingProduct ? t('storySharing') : selectedProduct ? `${t('storyShareProduct')} "${selectedProduct.name}"` : t('storySelectFirst')}
                   </button>
                 </>
               )}

@@ -1165,7 +1165,7 @@ export default function ProfilePage() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Yeni Story Paylaş
+                  {t('storyAddNew')}
                 </button>
               )}
 
@@ -1177,7 +1177,7 @@ export default function ProfilePage() {
                 <div className={`${dark ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-sm p-10 text-center`}>
                   <div className="text-4xl mb-3">📖</div>
                   <p className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {isOwnProfile ? 'Hələ story paylaşmamısınız. Yuxarıdakı düyməyə basın!' : 'Bu istifadəçinin aktiv storysi yoxdur.'}
+                    {isOwnProfile ? t('storyNoStoriesOwn') : t('storyNoStoriesOther')}
                   </p>
                 </div>
               ) : (
