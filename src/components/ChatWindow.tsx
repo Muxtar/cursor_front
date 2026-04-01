@@ -2071,22 +2071,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
         // Cloudflare STUN
         { urls: 'stun:stun.cloudflare.com:3478' },
-        // Metered.ca free TURN (quota-limited but works)
+        // Open Relay Project — free public TURN (static auth)
         {
-          urls: [
-            'turn:a.relay.metered.ca:80',
-            'turn:a.relay.metered.ca:80?transport=tcp',
-            'turn:a.relay.metered.ca:443',
-            'turns:a.relay.metered.ca:443',
-          ],
-          username: 'e8dd65b92f60c1bafe58a46e',
-          credential: '1OhmoNdO3MhLNKfk',
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
         },
-        // Backup TURN: Twilio-compatible public relay (xirsys free tier)
         {
-          urls: 'turn:global.turn.twilio.com:3478?transport=udp',
-          username: 'free',
-          credential: 'free',
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        {
+          urls: 'turns:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+        // Static auth variant (alternative hostname)
+        {
+          urls: 'turn:staticauth.openrelay.metered.ca:443',
+          credential: 'openrelayprojectsecret',
+          username: 'openrelayproject',
+        },
+        {
+          urls: 'turns:staticauth.openrelay.metered.ca:443',
+          credential: 'openrelayprojectsecret',
+          username: 'openrelayproject',
         },
       ];
 
@@ -2290,7 +2305,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }, 30000);
 
       // Handle connection state changes
-      pc.onconnectionstatechange = () => {
+      pc.onconnectionstatechange = async () => {
         const state = pc.connectionState;
         console.log('🔌 Peer connection state:', state);
 
@@ -2308,6 +2323,24 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               }
             }, 1000);
             console.log('✅ WebRTC connected!');
+            // Log the selected ICE candidate pair for debugging
+            try {
+              const stats = await pc.getStats();
+              stats.forEach((report: any) => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                  console.log('📊 Active ICE candidate pair:', {
+                    localType: report.localCandidateType || 'unknown',
+                    remoteType: report.remoteCandidateType || 'unknown',
+                    protocol: report.protocol || report.transportId,
+                    bytesSent: report.bytesSent,
+                    bytesReceived: report.bytesReceived,
+                  });
+                }
+                if (report.type === 'local-candidate' && report.candidateType === 'relay') {
+                  console.log('📊 Using TURN relay:', { address: report.address, port: report.port });
+                }
+              });
+            } catch (statsErr) { /* ignore stats errors */ }
             // FALLBACK: If ontrack hasn't fired or remoteStream has no audio,
             // build/augment from PC receivers.
             const tryFallbackStream = () => {
@@ -2348,7 +2381,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
             }, 2000);
             break;
           case 'failed':
-            console.error('❌ WebRTC connection failed');
+            console.error('❌ WebRTC connection failed — this usually means TURN servers are unreachable or both parties are behind strict NATs');
             clearTimeout(iceTimeoutId);
             setCallStatus('failed');
             // Try ICE restart once
@@ -2357,6 +2390,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
               setTimeout(() => {
                 if (pc.connectionState === 'failed') {
                   pc.restartIce();
+                  // If still failed after restart, log comprehensive debug info
+                  setTimeout(async () => {
+                    if (pc.connectionState === 'failed') {
+                      console.error('❌ ICE restart also failed. Debug info:');
+                      try {
+                        const stats = await pc.getStats();
+                        let hasTurn = false;
+                        stats.forEach((r: any) => {
+                          if (r.type === 'local-candidate') {
+                            console.log(`  Candidate: ${r.candidateType} ${r.protocol} ${r.address}:${r.port}`);
+                            if (r.candidateType === 'relay') hasTurn = true;
+                          }
+                        });
+                        if (!hasTurn) console.error('  ⚠️ NO relay (TURN) candidates — TURN server may be unreachable');
+                      } catch (_) {}
+                    }
+                  }, 3000);
                 }
               }, 1000);
             }
