@@ -568,6 +568,8 @@ export const ru = {
   storySelectFirst: 'Сначала выберите товар',
   storyNoStoriesOwn: 'Вы ещё не публиковали историй. Нажмите кнопку выше!',
   storyNoStoriesOther: 'У этого пользователя нет активных историй.',
+  storyViewComments: 'Посмотреть все комментарии',
+  storySend: 'Опубликовать',
 };
 
 

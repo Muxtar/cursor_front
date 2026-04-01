@@ -568,5 +568,7 @@ export const en = {
   storySelectFirst: 'Select a product first',
   storyNoStoriesOwn: 'You haven\'t shared any stories yet. Tap the button above!',
   storyNoStoriesOther: 'This user has no active stories.',
+  storyViewComments: 'View all comments',
+  storySend: 'Post',
 };
 

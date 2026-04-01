@@ -568,5 +568,7 @@ export const tr = {
   storySelectFirst: 'Önce bir ürün seçin',
   storyNoStoriesOwn: 'Henüz story paylaşmadınız. Yukarıdaki butona basın!',
   storyNoStoriesOther: 'Bu kullanıcının aktif story\'si yok.',
+  storyViewComments: 'Tüm yorumları gör',
+  storySend: 'Paylaş',
 };
 

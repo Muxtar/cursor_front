@@ -568,6 +568,8 @@ export const az = {
   storySelectFirst: 'Əvvəlcə məhsul seçin',
   storyNoStoriesOwn: 'Hələ story paylaşmamısınız. Yuxarıdakı düyməyə basın!',
   storyNoStoriesOther: 'Bu istifadəçinin aktiv storysi yoxdur.',
+  storyViewComments: 'Bütün şərhləri gör',
+  storySend: 'Göndər',
 };
 
 
