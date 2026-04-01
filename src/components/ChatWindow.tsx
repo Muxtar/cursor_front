@@ -1073,6 +1073,13 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         console.log('✅ Audio senders ready:', audioSenders.length, 'sender(s)');
       }
 
+      // Ensure bidirectional transceivers (sendrecv) so ontrack fires on remote
+      pc.getTransceivers().forEach(t => {
+        if (t.direction === 'sendonly') {
+          try { t.direction = 'sendrecv'; } catch (_) {}
+        }
+      });
+
       // PERFECT NEGOTIATION: Mark that we're making an offer (impolite)
       makingOfferRef.current = true;
       isPoliteRef.current = false;
@@ -1384,7 +1391,15 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      console.log('📤 Creating answer...');
+      // Ensure all transceivers are sendrecv before creating answer
+      pc.getTransceivers().forEach(t => {
+        if (t.direction === 'recvonly' && localStreamRef.current?.getAudioTracks().length) {
+          try { t.direction = 'sendrecv'; } catch (_) {}
+        }
+      });
+      console.log('📤 Creating answer... transceivers:', pc.getTransceivers().map(t => ({
+        mid: t.mid, direction: t.direction, senderTrack: t.sender?.track?.kind, receiverTrack: t.receiver?.track?.kind,
+      })));
       try {
         const answer = await pc.createAnswer();
         settingLocalDescriptionRef.current = true;
@@ -2131,10 +2146,31 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       isPoliteRef.current = false;
       makingOfferRef.current = false;
 
-      // Yerel ses/video track'lerini ekle (karşı tarafa gidecek)
+      // Add local audio/video tracks AND ensure transceivers are bidirectional (sendrecv).
+      // Using addTransceiver guarantees ontrack fires on the remote side.
       localStream.getTracks().forEach(track => {
         pc.addTrack(track, localStream);
       });
+
+      // CRITICAL: Ensure we have a recvonly audio transceiver if the remote side
+      // doesn't add one automatically. This guarantees we can RECEIVE audio even if
+      // the initial addTrack only created a sendonly transceiver.
+      const audioTransceivers = pc.getTransceivers().filter(t => t.receiver?.track?.kind === 'audio');
+      if (audioTransceivers.length === 0) {
+        console.log('📡 Adding recvonly audio transceiver to ensure ontrack fires');
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+      }
+      // Make sure all transceivers are sendrecv (bidirectional)
+      pc.getTransceivers().forEach(t => {
+        if (t.direction === 'sendonly') {
+          try { t.direction = 'sendrecv'; } catch (_) {}
+        } else if (t.direction === 'recvonly' && localStream.getAudioTracks().length > 0) {
+          try { t.direction = 'sendrecv'; } catch (_) {}
+        }
+      });
+      console.log('📡 Transceivers after setup:', pc.getTransceivers().map(t => ({
+        mid: t.mid, direction: t.direction, senderTrack: t.sender?.track?.kind, receiverTrack: t.receiver?.track?.kind,
+      })));
 
       // Renegotiation handler: triggered by ICE restarts or track changes.
       // Initial offer is sent manually after call_answered - skip the first trigger.
@@ -2342,32 +2378,58 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 }
               });
             } catch (statsErr) { /* ignore stats errors */ }
-            // FALLBACK: If ontrack hasn't fired or remoteStream has no audio,
-            // build/augment from PC receivers.
+            // FALLBACK: Build remoteStream from receivers and transceivers.
+            // ontrack may not fire if the SDP was negotiated before tracks arrived,
+            // or after an ICE restart. This fallback catches all cases.
             const tryFallbackStream = () => {
+              if (pc.connectionState !== 'connected') return;
               const receivers = pc.getReceivers();
-              const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio');
+              const transceivers = pc.getTransceivers();
               const currentRemote = remoteStreamRef.current as MediaStream | null;
               const hasAudio = currentRemote && currentRemote.getAudioTracks().length > 0;
 
+              console.log('🔧 Fallback check:', {
+                receivers: receivers.map(r => ({ kind: r.track?.kind, readyState: r.track?.readyState, enabled: r.track?.enabled })),
+                transceivers: transceivers.map(t => ({ mid: t.mid, direction: t.direction, receiverKind: t.receiver?.track?.kind })),
+                hasAudio,
+              });
+
+              // Try receivers first
+              const audioReceivers = receivers.filter(r => r.track && r.track.kind === 'audio');
               if (!hasAudio && audioReceivers.length > 0) {
-                console.log('🔧 Fallback: building remoteStream from receivers after connected');
-                const fallbackStream = currentRemote || new MediaStream();
+                console.log('🔧 Fallback: building remoteStream from receivers');
+                const fallbackStream = new MediaStream();
                 audioReceivers.forEach(r => {
-                  if (!fallbackStream.getTracks().includes(r.track)) {
-                    r.track.enabled = true;
-                    fallbackStream.addTrack(r.track);
-                  }
+                  r.track.enabled = true;
+                  fallbackStream.addTrack(r.track);
                 });
                 setRemoteStream(fallbackStream);
-              } else if (!hasAudio) {
-                console.warn('⚠️ Fallback: no audio receivers found — remote side may not be sending audio');
+                return;
+              }
+
+              // Try transceiver receivers
+              if (!hasAudio) {
+                const audioFromTransceivers = transceivers
+                  .filter(t => t.receiver?.track?.kind === 'audio' && t.receiver.track.readyState !== 'ended')
+                  .map(t => t.receiver.track);
+                if (audioFromTransceivers.length > 0) {
+                  console.log('🔧 Fallback: building remoteStream from transceivers');
+                  const fallbackStream = new MediaStream();
+                  audioFromTransceivers.forEach(track => {
+                    track.enabled = true;
+                    fallbackStream.addTrack(track);
+                  });
+                  setRemoteStream(fallbackStream);
+                  return;
+                }
+                console.warn('⚠️ Fallback: no audio tracks in receivers or transceivers');
               }
             };
-            // Try immediately and again after 1s (track may arrive slightly late)
             tryFallbackStream();
-            setTimeout(tryFallbackStream, 1000);
+            setTimeout(tryFallbackStream, 500);
+            setTimeout(tryFallbackStream, 1500);
             setTimeout(tryFallbackStream, 3000);
+            setTimeout(tryFallbackStream, 5000);
             break;
           case 'connecting':
             setCallStatus('connecting');
