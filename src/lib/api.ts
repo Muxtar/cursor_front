@@ -23,11 +23,14 @@ const getApiUrl = (): string => {
 
 let API_URL: string | null = null;
 const getApiUrlRuntime = (): string => {
+  // Only cache on client side — SSR may return wrong URL (Railway default)
+  // that then gets stuck for client-side calls on localhost
+  if (typeof window === 'undefined') {
+    return getApiUrl(); // SSR: always re-compute, never cache
+  }
   if (!API_URL) {
     API_URL = getApiUrl();
-    if (typeof window !== 'undefined') {
-      console.log('🔗 API URL:', API_URL);
-    }
+    console.log('🔗 API URL:', API_URL);
   }
   return API_URL;
 };

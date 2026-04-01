@@ -9,13 +9,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
 // Full URL for message file/image (uses same base as API so localhost works)
-const getMessageFileUrl = (fileUrl: string | undefined): string => {
+const getMessageFileUrl = (fileUrl: string | undefined | null): string => {
   if (!fileUrl) return '';
+  const url = String(fileUrl).trim();
+  if (!url) return '';
+  // Already absolute
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) return url;
   const base = getFileBaseUrl();
-  if (fileUrl.startsWith('http')) return fileUrl;
-  if (fileUrl.startsWith('/api/v1/files/')) return base + fileUrl;
-  if (fileUrl.startsWith('/uploads/')) return base + '/api/v1/files/' + fileUrl.replace(/^\/uploads\//, '');
-  return base + fileUrl;
+  // /api/v1/files/filename → base + url
+  if (url.startsWith('/api/v1/files/') || url.startsWith('/api/')) return base + url;
+  // /uploads/filename → base + /api/v1/files/filename
+  if (url.startsWith('/uploads/')) return `${base}/api/v1/files/${url.replace(/^\/uploads\//, '')}`;
+  // bare filename (e.g. "1234-abc.jpg") → base + /api/v1/files/filename
+  if (!url.startsWith('/')) return `${base}/api/v1/files/${url}`;
+  return base + url;
 };
 
 const formatFileSize = (bytes: number): string => {
@@ -2828,7 +2835,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
           await chatApi.sendMessage(chatId, {
             content: 'Voice message',
             message_type: 'voice_message',
-            file_url: response.file_url || response.url,
+            file_url: response.url || response.file_url,
             file_name: audioFile.name,
             file_size: audioFile.size,
             duration: recordingTime,
@@ -3118,7 +3125,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       await chatApi.sendMessage(chatId, {
         content: file.name,
         message_type: messageType,
-        file_url: response.file_url || response.url,
+        file_url: response.url || response.file_url,
         file_name: file.name,
         file_size: file.size,
         is_anonymous: false,
@@ -3944,42 +3951,52 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     )}
 
                     {/* Message Content - WhatsApp style: media first, then optional caption */}
-                    {message.message_type === 'image' && message.file_url && (
+                    {message.message_type === 'image' && (
                       <div className="mb-1">
                         <div className="rounded-lg overflow-hidden max-w-[280px] sm:max-w-[320px]">
-                          <img
-                            src={getMessageFileUrl(message.file_url)}
-                            alt={message.content || 'Shared image'}
-                            className="w-full max-h-80 object-cover cursor-pointer block"
-                            loading="lazy"
-                            onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                              const wrap = (e.target as HTMLImageElement).closest('.rounded-lg');
-                              const fallback = wrap?.querySelector('.img-fallback');
-                              if (fallback) (fallback as HTMLElement).classList.remove('hidden');
-                            }}
-                          />
-                          <div className="img-fallback hidden py-8 px-4 bg-gray-300 dark:bg-gray-600 rounded-b-lg text-center text-sm">
-                            {t('image')}
+                          {getMessageFileUrl(message.file_url) ? (
+                            <img
+                              src={getMessageFileUrl(message.file_url)}
+                              alt={message.content || 'Shared image'}
+                              className="w-full max-h-80 object-cover cursor-pointer block"
+                              loading="lazy"
+                              onClick={() => window.open(getMessageFileUrl(message.file_url), '_blank')}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                const wrap = (e.target as HTMLImageElement).closest('.rounded-lg');
+                                const fallback = wrap?.querySelector('.img-fallback');
+                                if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`img-fallback ${getMessageFileUrl(message.file_url) ? 'hidden' : ''} py-8 px-4 bg-gray-300 dark:bg-gray-600 rounded-lg text-center text-sm`}>
+                            📷 {t('image')}
                           </div>
                         </div>
+                        {message.content && message.content !== message.file_name && (
+                          <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
+                        )}
+                      </div>
+                    )}
+                    {message.message_type === 'video' && (
+                      <div className="mb-1">
+                        {getMessageFileUrl(message.file_url) ? (
+                          <video controls src={getMessageFileUrl(message.file_url)} className="max-w-full max-h-80 rounded-lg w-full" />
+                        ) : (
+                          <div className="py-6 px-4 bg-gray-300 dark:bg-gray-600 rounded-lg text-center text-sm">🎬 Video</div>
+                        )}
                         {message.content && (
                           <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
                         )}
                       </div>
                     )}
-                    {message.message_type === 'video' && message.file_url && (
+                    {(message.message_type === 'audio' || message.message_type === 'voice_message') && (
                       <div className="mb-1">
-                        <video controls src={getMessageFileUrl(message.file_url)} className="max-w-full max-h-80 rounded-lg w-full" />
-                        {message.content && (
-                          <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
+                        {getMessageFileUrl(message.file_url) ? (
+                          <audio controls src={getMessageFileUrl(message.file_url)} className="w-full max-w-[280px]" />
+                        ) : (
+                          <div className="py-4 px-4 bg-gray-300 dark:bg-gray-600 rounded-lg text-center text-sm">🎵 Audio</div>
                         )}
-                      </div>
-                    )}
-                    {(message.message_type === 'audio' || message.message_type === 'voice_message') && message.file_url && (
-                      <div className="mb-1">
-                        <audio controls src={getMessageFileUrl(message.file_url)} className="w-full max-w-[280px]" />
                         {message.content && (
                           <p className="text-sm whitespace-pre-wrap break-words mt-1">{message.content}</p>
                         )}
@@ -4024,7 +4041,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                         </div>
                       </div>
                     )}
-                    {message.message_type === 'file' && message.file_url && (
+                    {message.message_type === 'file' && getMessageFileUrl(message.file_url) && (
                       <a
                         href={getMessageFileUrl(message.file_url)}
                         download={message.file_name || undefined}
