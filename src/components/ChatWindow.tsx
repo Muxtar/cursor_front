@@ -730,23 +730,24 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         ws.off('webrtc_ice', handleWebRTCICE);
       }
       clearInterval(interval);
-      // INSTRUMENTATION: Log why cleanup fired
-      const cleanupReason = (() => {
-        if (!chatId) return 'chatId_null';
-        if (!ws) return 'ws_null';
-        return 'effect_cleanup';
-      })();
-      console.log('🧹 useEffect cleanup firing', {
-        reason: cleanupReason,
-        chatId: chatId,
-        ws_instance: ws ? `exists_${ws.constructor.name}` : 'null',
-        ws_instance_id: ws ? (ws as any).id || 'no_id' : 'null',
-        hasActiveCall: !!activeCall,
-        activeCall_id: activeCall?.call_id || activeCall?.id || null,
-      });
-      stopVideoCall(cleanupReason, { chatId_changed: chatId, ws_instance: ws ? 'exists' : 'null' });
+      // Only stop active call if CHAT ID actually changed (not just ws reconnect)
+      // stopVideoCall is too destructive to call on every ws change
+      // It will be called explicitly by handleEndCall, handleCallEnded, or component unmount
     };
   }, [chatId, ws]);
+
+  // Clean up active call ONLY when chatId changes (user switched to different chat)
+  const prevChatIdRef = useRef(chatId);
+  useEffect(() => {
+    if (prevChatIdRef.current !== chatId) {
+      // Chat actually changed — clean up any active call from old chat
+      if (activeCallRef.current) {
+        console.log('🧹 ChatId changed, cleaning up call from old chat');
+        stopVideoCall('chatId_changed', { oldChatId: prevChatIdRef.current, newChatId: chatId });
+      }
+      prevChatIdRef.current = chatId;
+    }
+  }, [chatId]);
 
   // If parent provides an incoming call (received while this chat wasn't mounted),
   // apply it once when it matches this chat.
