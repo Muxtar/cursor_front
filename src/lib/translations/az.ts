@@ -622,6 +622,8 @@ export const az = {
   notifDayAgo: 'gün əvvəl',
   notifLoadFailed: 'Yüklənmədi',
   notifError: 'Xəta',
+  contact: 'Kontakt',
+  contactNotInApp: 'Qeydiyyatdan keçməyib',
 };
 
 

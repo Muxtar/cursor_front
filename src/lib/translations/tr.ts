@@ -622,5 +622,7 @@ export const tr = {
   notifDayAgo: 'g önce',
   notifLoadFailed: 'Yüklenemedi',
   notifError: 'Hata',
+  contact: 'Kişi',
+  contactNotInApp: 'Kayıtlı değil',
 };
 

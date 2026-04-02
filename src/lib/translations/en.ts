@@ -628,5 +628,7 @@ export const en = {
   notifDayAgo: 'd ago',
   notifLoadFailed: 'Failed to load',
   notifError: 'Error',
+  contact: 'Contact',
+  contactNotInApp: 'Not registered',
 };
 

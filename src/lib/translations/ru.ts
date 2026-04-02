@@ -622,6 +622,8 @@ export const ru = {
   notifDayAgo: 'дн назад',
   notifLoadFailed: 'Не удалось загрузить',
   notifError: 'Ошибка',
+  contact: 'Контакт',
+  contactNotInApp: 'Не зарегистрирован',
 };
 
 

@@ -1875,13 +1875,13 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                 </div>
               ) : (
                 contacts.map((contact: any) => {
-                  const contactUserId = contact.user?.id ?? contact.user?._id ?? contact.contact?.contact_id;
-                  const displayName = contact.user?.username || contact.user?.display_name || contact.user?.phone_number || 'Contact';
-                  const displaySub = contact.user?.phone_number || '';
+                  const contactUserId = contact.user?.id ?? contact.user?._id ?? contact.user_id ?? null;
+                  const displayName = contact.user?.username || contact.display_name || contact.user?.phone_number || contact.phone_number || t('contact') || 'Contact';
+                  const displaySub = contact.user?.phone_number || contact.phone_number || '';
                   const isOnline = contactUserId ? onlineUsers.has(String(contactUserId)) : false;
                   return (
                   <div
-                    key={contact.contact?.id || contact.id || contact._id}
+                    key={contact.contact_id || contact.id || contact._id}
                     className={`w-full p-3 md:p-4 flex items-center justify-between transition-colors active:bg-gray-200 dark:active:bg-gray-600 ${
                       actualTheme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
@@ -1919,7 +1919,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                           )}
                         </div>
                         <p className={`text-xs truncate ${actualTheme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {displaySub || (contactUserId ? '' : 'Not in app')}
+                          {displaySub || (contactUserId ? '' : t('contactNotInApp') || 'Not registered')}
                         </p>
                       </div>
                     </div>
@@ -1962,7 +1962,7 @@ export default function Sidebar({ onChatSelect, selectedChat, mobileOpen, onClos
                         </>
                       )}
                       <button
-                        onClick={() => handleRemoveContact(contact.contact?.id || contact.id || contact._id)}
+                        onClick={() => handleRemoveContact(contact.contact_id || contact.id || contact._id || contact.user_id)}
                         className={`p-2 ${actualTheme === 'dark' ? 'text-red-400 hover:bg-gray-600' : 'text-red-600 hover:bg-red-50'} rounded transition`}
                         title="Remove Contact"
                       >
