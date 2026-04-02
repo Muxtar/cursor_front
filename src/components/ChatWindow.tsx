@@ -1402,58 +1402,52 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // CRITICAL: Ensure callee SENDS audio in the answer.
-      // After setRemoteDescription(offer), the browser creates transceivers matching the offer.
-      // We must ensure each transceiver has our local track attached to its sender,
-      // and direction is 'sendrecv' (not 'recvonly').
+      // CRITICAL: Callee must add local tracks to PC AFTER setRemoteDescription(offer).
+      // The browser creates transceivers from the offer's m-lines. We add our local
+      // tracks to those transceivers' senders so the answer SDP includes our audio.
       const currentStream = localStreamRef.current;
-      const transceivers = pc.getTransceivers();
-      console.log('📡 Transceivers after setRemoteDescription:', transceivers.map(t => ({
-        mid: t.mid, direction: t.direction,
+      console.log('📡 Transceivers after setRemoteDescription:', pc.getTransceivers().map(t => ({
+        mid: t.mid, direction: t.direction, currentDirection: t.currentDirection,
         senderTrack: t.sender?.track?.kind || 'none',
-        senderReadyState: t.sender?.track?.readyState || 'none',
-        receiverTrack: t.receiver?.track?.kind || 'none',
+        senderState: t.sender?.track?.readyState || 'none',
       })));
 
       if (currentStream) {
-        for (const transceiver of transceivers) {
-          const kind = transceiver.receiver?.track?.kind;
-          if (!kind) continue;
-
-          // Find matching local track
-          const localTrack = currentStream.getTracks().find(t => t.kind === kind && t.readyState === 'live');
-          if (!localTrack) continue;
-
-          // If sender has no track or a dead track, replace it
-          const senderTrack = transceiver.sender?.track;
-          if (!senderTrack || senderTrack.readyState === 'ended') {
-            try {
-              await transceiver.sender.replaceTrack(localTrack);
-              console.log(`📡 Replaced ${kind} sender track via replaceTrack`);
-            } catch (e) {
-              // replaceTrack failed — try addTrack as fallback
-              try {
-                pc.addTrack(localTrack, currentStream);
-                console.log(`📡 Added ${kind} track via addTrack fallback`);
-              } catch (_) {}
-            }
+        // Method 1: Use addTrack — this is the most reliable way to add tracks
+        // addTrack will reuse the existing transceiver created by setRemoteDescription
+        const existingSenderTracks = new Set(
+          pc.getSenders().map(s => s.track?.id).filter(Boolean)
+        );
+        for (const track of currentStream.getTracks()) {
+          if (!existingSenderTracks.has(track.id)) {
+            pc.addTrack(track, currentStream);
+            console.log(`📡 Added ${track.kind} track to PC (callee, before answer)`);
           }
+        }
 
-          // Force direction to sendrecv
-          if (transceiver.direction !== 'sendrecv') {
-            try {
-              transceiver.direction = 'sendrecv';
-              console.log(`📡 Set transceiver ${kind} direction to sendrecv`);
-            } catch (e) {
-              console.warn(`⚠️ Could not set direction to sendrecv for ${kind}:`, (e as Error).message);
+        // Force all audio transceivers to sendrecv
+        for (const t of pc.getTransceivers()) {
+          if (t.direction !== 'sendrecv') {
+            try { t.direction = 'sendrecv'; } catch (_) {}
+          }
+          // If sender still has no track, use replaceTrack
+          if (!t.sender.track || t.sender.track.readyState === 'ended') {
+            const matchTrack = currentStream.getTracks().find(
+              tr => tr.kind === (t.receiver?.track?.kind || 'audio') && tr.readyState === 'live'
+            );
+            if (matchTrack) {
+              try {
+                await t.sender.replaceTrack(matchTrack);
+                console.log(`📡 replaceTrack: attached ${matchTrack.kind} to sender`);
+              } catch (_) {}
             }
           }
         }
       }
-      console.log('📤 Creating answer... transceivers:', transceivers.map(t => ({
-        mid: t.mid, direction: t.direction,
+      console.log('📤 Creating answer... transceivers:', pc.getTransceivers().map(t => ({
+        mid: t.mid, direction: t.direction, currentDirection: t.currentDirection,
         senderTrack: t.sender?.track?.kind || 'none',
-        senderReadyState: t.sender?.track?.readyState || 'none',
+        senderState: t.sender?.track?.readyState || 'none',
       })));
       try {
         let answer = await pc.createAnswer();
@@ -2150,7 +2144,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
   };
 
   // Initialize WebRTC peer connection
-  const initializePeerConnection = async (localStream: MediaStream, callTypeOverride?: string) => {
+  const initializePeerConnection = async (localStream: MediaStream, callTypeOverride?: string, skipAddTracks?: boolean) => {
     try {
       const callType = callTypeOverride || activeCall?.type || activeCall?.call_type || 'voice';
       
@@ -2219,41 +2213,28 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       isPoliteRef.current = false;
       makingOfferRef.current = false;
 
-      // Add local audio/video tracks AND ensure transceivers are bidirectional (sendrecv).
-      // Using addTransceiver guarantees ontrack fires on the remote side.
-      localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-      });
-
-      // Ensure bidirectional audio: every audio transceiver must be sendrecv with a live sender track.
-      const currentTransceivers = pc.getTransceivers();
-      let hasAudioSendrecv = false;
-      for (const t of currentTransceivers) {
-        if (t.sender?.track?.kind === 'audio' || t.receiver?.track?.kind === 'audio') {
-          // Ensure sender has a live track
-          if (!t.sender.track || t.sender.track.readyState === 'ended') {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-              try { await t.sender.replaceTrack(audioTrack); } catch (_) {}
-            }
-          }
-          // Force sendrecv
+      // CALLER: Add tracks now (they go into the offer SDP).
+      // CALLEE (skipAddTracks=true): Do NOT add tracks yet — add them AFTER
+      // setRemoteDescription(offer), right before createAnswer(). This ensures
+      // the browser correctly matches our track to the offer's m-line.
+      if (!skipAddTracks) {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+        });
+        // Ensure sendrecv direction
+        pc.getTransceivers().forEach(t => {
           if (t.direction !== 'sendrecv') {
             try { t.direction = 'sendrecv'; } catch (_) {}
           }
-          hasAudioSendrecv = t.direction === 'sendrecv' && !!t.sender.track;
-        }
+        });
+        console.log('📡 Transceivers after setup (caller):', pc.getTransceivers().map(t => ({
+          mid: t.mid, direction: t.direction,
+          senderTrack: t.sender?.track?.kind || 'none',
+          senderState: t.sender?.track?.readyState || 'none',
+        })));
+      } else {
+        console.log('📡 Callee: skipping addTrack — will add tracks before createAnswer');
       }
-      // If no audio transceiver at all, add one
-      if (!hasAudioSendrecv && localStream.getAudioTracks().length > 0) {
-        console.log('📡 Adding sendrecv audio transceiver');
-        pc.addTransceiver(localStream.getAudioTracks()[0], { direction: 'sendrecv', streams: [localStream] });
-      }
-      console.log('📡 Transceivers after setup:', pc.getTransceivers().map(t => ({
-        mid: t.mid, direction: t.direction,
-        senderTrack: t.sender?.track?.kind || 'none',
-        senderState: t.sender?.track?.readyState || 'none',
-      })));
 
       // Renegotiation handler: triggered by ICE restarts or track changes.
       // Initial offer is sent manually after call_answered - skip the first trigger.
@@ -2490,6 +2471,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                     console.log('📊 Outbound audio RTP:', {
                       packetsSent: r.packetsSent,
                       bytesSent: r.bytesSent,
+                      // Extended diagnostics
+                      senders: pc.getSenders().map(s => ({
+                        kind: s.track?.kind,
+                        readyState: s.track?.readyState,
+                        enabled: s.track?.enabled,
+                        muted: s.track?.muted,
+                        id: s.track?.id?.slice(0, 8),
+                      })),
+                      transceivers: pc.getTransceivers().map(t => ({
+                        mid: t.mid,
+                        direction: t.direction,
+                        currentDirection: t.currentDirection,
+                        senderTrack: t.sender?.track?.kind,
+                        senderState: t.sender?.track?.readyState,
+                      })),
+                      localStreamAlive: !!(localStreamRef.current && localStreamRef.current.getAudioTracks().some((t: MediaStreamTrack) => t.readyState === 'live')),
                     });
                   }
                 });
@@ -2728,7 +2725,10 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         audioTracks: acceptedStream.getAudioTracks().length,
         videoTracks: acceptedStream.getVideoTracks().length,
       });
-      await initializePeerConnection(acceptedStream, callType);
+      // skipAddTracks=true: callee doesn't add tracks to PC yet.
+      // Tracks will be added in handleWebRTCOffer AFTER setRemoteDescription,
+      // right before createAnswer — this ensures correct transceiver matching.
+      await initializePeerConnection(acceptedStream, callType, true);
 
       // Verify PC is ready
       if (!peerConnectionRef.current) {
