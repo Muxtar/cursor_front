@@ -1054,7 +1054,7 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       // SANITY CHECK: Verify we actually have audio tracks.
       // Without audio tracks in the offer SDP, ontrack never fires on the remote side
       // and audio never flows — even if WebRTC shows "connected".
-      const audioSenders = pc.getSenders().filter(s => s.track?.kind === 'audio' && s.track.readyState === 'live');
+      const audioSenders = pc.getSenders().filter(s => s.track?.kind === 'audio' && s.track.readyState !== 'ended');
       if (audioSenders.length === 0) {
         console.error('❌ CRITICAL: No live audio sender before creating offer! Trying to re-add tracks...', {
           senders: pc.getSenders().map(s => ({ kind: s.track?.kind, readyState: s.track?.readyState })),
@@ -1392,9 +1392,20 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // Ensure all transceivers are sendrecv before creating answer
+      // CRITICAL: Ensure local tracks are attached to transceivers and direction is sendrecv.
+      // Without this, the answer SDP may have audio as 'recvonly' and the caller never receives audio.
+      const currentStream = localStreamRef.current;
+      if (currentStream) {
+        const existingSenderKinds = new Set(pc.getSenders().filter(s => s.track).map(s => s.track!.kind));
+        currentStream.getTracks().forEach(track => {
+          if (!existingSenderKinds.has(track.kind)) {
+            console.log(`📡 Adding missing ${track.kind} track to PC before answer`);
+            pc.addTrack(track, currentStream);
+          }
+        });
+      }
       pc.getTransceivers().forEach(t => {
-        if (t.direction === 'recvonly' && localStreamRef.current?.getAudioTracks().length) {
+        if (t.direction !== 'sendrecv') {
           try { t.direction = 'sendrecv'; } catch (_) {}
         }
       });
@@ -2568,63 +2579,66 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       }
       iceCandidateQueueRef.current = [];
 
-      // CRITICAL FIX: Setup media + peer connection BEFORE calling answerCall API.
-      // This ensures the callee is fully ready (PC initialized, tracks added) before
-      // the backend notifies the caller. Without this, the caller can send a WebRTC
-      // offer before the callee has a peer connection to receive it.
+      // CRITICAL: Setup media + peer connection BEFORE calling answerCall API.
+      // The callee MUST have a working PeerConnection with local tracks added
+      // before the caller is notified — otherwise the caller's offer arrives
+      // before we can process it, and ontrack never fires (= no audio).
+
+      let acceptedStream: MediaStream | null = null;
+
       if (callType === 'video') {
-        if (!isStartingVideoCallRef.current && (!localStream || localStream.getVideoTracks().length === 0)) {
-          const stream = await startVideoCall();
-          if (stream) {
-            setLocalStream(stream);
-            localStreamRef.current = stream;
-          }
-        } else if (localStream && localStream.getVideoTracks().length > 0) {
-          localStreamRef.current = localStream;
-          await initializePeerConnection(localStream, 'video');
+        // Get video+audio stream
+        const stream = await startVideoCall();
+        if (stream) {
+          acceptedStream = stream;
         } else {
-          const stream = await startVideoCall();
-          if (stream) {
-            setLocalStream(stream);
-            localStreamRef.current = stream;
-          }
+          // Fallback: audio only
+          acceptedStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
       } else {
-        // Voice call: get microphone first
-        let stream: MediaStream | null = null;
+        // Voice call: get microphone
         const audioStrategies = [
           { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } },
           { audio: { echoCancellation: true, noiseSuppression: true } },
           { audio: true },
         ];
-
         for (const constraints of audioStrategies) {
           try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            acceptedStream = await navigator.mediaDevices.getUserMedia(constraints);
             break;
           } catch (error: any) {
             console.warn('Audio strategy failed:', error.name);
-            if (constraints === audioStrategies[audioStrategies.length - 1]) {
-              throw error;
-            }
+            if (constraints === audioStrategies[audioStrategies.length - 1]) throw error;
           }
         }
-
-        if (!stream || stream.getAudioTracks().length === 0) {
-          throw new Error('No audio track available');
-        }
-
-        setLocalStream(stream);
-        localStreamRef.current = stream;
-        await new Promise(resolve => setTimeout(resolve, 50));
-        await initializePeerConnection(stream, 'voice');
       }
 
-      // Mark accepting as done BEFORE notifying caller — so when the offer arrives
-      // handleWebRTCOffer doesn't have to wait for us.
-      isAcceptingCallRef.current = false;
+      if (!acceptedStream || acceptedStream.getTracks().length === 0) {
+        throw new Error('No media tracks available');
+      }
 
-      // NOW notify the caller we're ready — this triggers call_answered → caller sends offer.
+      // Store stream
+      setLocalStream(acceptedStream);
+      localStreamRef.current = acceptedStream;
+
+      // Initialize PeerConnection with the stream — adds tracks + sets up handlers
+      console.log('📡 Initializing PeerConnection for callee...', {
+        audioTracks: acceptedStream.getAudioTracks().length,
+        videoTracks: acceptedStream.getVideoTracks().length,
+      });
+      await initializePeerConnection(acceptedStream, callType);
+
+      // Verify PC is ready
+      if (!peerConnectionRef.current) {
+        throw new Error('PeerConnection initialization failed');
+      }
+      const pcSenders = (peerConnectionRef.current as RTCPeerConnection).getSenders();
+      console.log('✅ PeerConnection ready, senders:', pcSenders.map(
+        s => ({ kind: s.track?.kind, readyState: s.track?.readyState })
+      ));
+
+      // NOW mark accepting as done and notify caller
+      isAcceptingCallRef.current = false;
       console.log('✅ Media and peer connection ready, notifying caller...');
       await callApi.answerCall(callId);
       console.log('✅ answerCall API done — waiting for WebRTC offer from caller');
