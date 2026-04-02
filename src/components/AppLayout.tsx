@@ -176,7 +176,7 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
               type="button"
               onClick={() => router.back()}
               className={`
-                p-2 rounded-xl transition-all duration-150 active:scale-90
+                btn-icon p-2 rounded-xl transition-all duration-150 active:scale-90
                 ${isDark ? 'hover:bg-gray-800/80 text-gray-100' : 'hover:bg-gray-100 text-gray-700'}
               `}
               aria-label="Back"
@@ -192,7 +192,7 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
             className={`
-              p-2 rounded-xl transition-all duration-150 active:scale-90
+              btn-icon p-2 rounded-xl transition-all duration-150 active:scale-90
               ${isDark ? 'hover:bg-gray-800/80 text-gray-100' : 'hover:bg-gray-100 text-gray-700'}
             `}
             aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}

@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { likeApi } from '@/lib/api';
-import Image from 'next/image';
 
 interface ProductCardProps {
   product: {

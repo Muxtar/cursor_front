@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { productApi, commentApi, likeApi, chatApi } from '@/lib/api';
 import CommentSection from '@/components/CommentSection';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const productId = params.id as string;
 
   const [product, setProduct] = useState<any>(null);
@@ -104,12 +106,12 @@ export default function ProductDetailPage() {
   if (!product) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-gray-500 text-lg mb-4">Product not found</p>
+        <p className="text-gray-500 text-lg mb-4">{t('exploreNoProducts')}</p>
         <Link
           href="/explore"
           className="text-blue-500 hover:text-blue-700"
         >
-          Back to Explore
+          {t('exploreTitle')}
         </Link>
       </div>
     );
@@ -128,20 +130,20 @@ export default function ProductDetailPage() {
               onClick={() => router.back()}
               className="text-gray-600 hover:text-gray-800"
             >
-              ← Back
+              ← {t('searchProfile') || 'Back'}
             </button>
             <div className="flex items-center space-x-4">
               <Link
                 href="/explore"
                 className="text-sm text-blue-500 hover:text-blue-700"
               >
-                Explore
+                {t('exploreTitle')}
               </Link>
               <Link
                 href="/chat"
                 className="text-sm text-gray-600 hover:text-gray-800"
               >
-                Chat
+                {t('chats')}
               </Link>
             </div>
           </div>
