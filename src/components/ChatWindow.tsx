@@ -1456,11 +1456,22 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         senderReadyState: t.sender?.track?.readyState || 'none',
       })));
       try {
-        const answer = await pc.createAnswer();
+        let answer = await pc.createAnswer();
+
+        // CRITICAL FIX: If the browser generated a 'recvonly' answer (callee not sending audio),
+        // force it to 'sendrecv' by modifying the SDP directly. This is the nuclear option
+        // but guarantees bidirectional audio flow.
+        if (answer.sdp && answer.sdp.includes('a=recvonly')) {
+          console.log('⚠️ Answer SDP has recvonly — forcing to sendrecv');
+          const fixedSdp = answer.sdp.replace(/a=recvonly/g, 'a=sendrecv');
+          answer = new RTCSessionDescription({ type: 'answer', sdp: fixedSdp });
+        }
+
         settingLocalDescriptionRef.current = true;
         await pc.setLocalDescription(answer);
         settingLocalDescriptionRef.current = false;
-        console.log(`✅ Local description set (answer) state=${pc.signalingState} (call_id=${evt.call_id})`);
+        console.log(`✅ Local description set (answer) state=${pc.signalingState} (call_id=${evt.call_id})`,
+          'direction in SDP:', answer.sdp?.includes('sendrecv') ? 'sendrecv ✅' : 'NOT sendrecv ⚠️');
 
         if (ws && evt.call_id) {
           ws.send({
