@@ -1402,25 +1402,58 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         return;
       }
 
-      // CRITICAL: Ensure local tracks are attached to transceivers and direction is sendrecv.
-      // Without this, the answer SDP may have audio as 'recvonly' and the caller never receives audio.
+      // CRITICAL: Ensure callee SENDS audio in the answer.
+      // After setRemoteDescription(offer), the browser creates transceivers matching the offer.
+      // We must ensure each transceiver has our local track attached to its sender,
+      // and direction is 'sendrecv' (not 'recvonly').
       const currentStream = localStreamRef.current;
+      const transceivers = pc.getTransceivers();
+      console.log('📡 Transceivers after setRemoteDescription:', transceivers.map(t => ({
+        mid: t.mid, direction: t.direction,
+        senderTrack: t.sender?.track?.kind || 'none',
+        senderReadyState: t.sender?.track?.readyState || 'none',
+        receiverTrack: t.receiver?.track?.kind || 'none',
+      })));
+
       if (currentStream) {
-        const existingSenderKinds = new Set(pc.getSenders().filter(s => s.track).map(s => s.track!.kind));
-        currentStream.getTracks().forEach(track => {
-          if (!existingSenderKinds.has(track.kind)) {
-            console.log(`📡 Adding missing ${track.kind} track to PC before answer`);
-            pc.addTrack(track, currentStream);
+        for (const transceiver of transceivers) {
+          const kind = transceiver.receiver?.track?.kind;
+          if (!kind) continue;
+
+          // Find matching local track
+          const localTrack = currentStream.getTracks().find(t => t.kind === kind && t.readyState === 'live');
+          if (!localTrack) continue;
+
+          // If sender has no track or a dead track, replace it
+          const senderTrack = transceiver.sender?.track;
+          if (!senderTrack || senderTrack.readyState === 'ended') {
+            try {
+              await transceiver.sender.replaceTrack(localTrack);
+              console.log(`📡 Replaced ${kind} sender track via replaceTrack`);
+            } catch (e) {
+              // replaceTrack failed — try addTrack as fallback
+              try {
+                pc.addTrack(localTrack, currentStream);
+                console.log(`📡 Added ${kind} track via addTrack fallback`);
+              } catch (_) {}
+            }
           }
-        });
-      }
-      pc.getTransceivers().forEach(t => {
-        if (t.direction !== 'sendrecv') {
-          try { t.direction = 'sendrecv'; } catch (_) {}
+
+          // Force direction to sendrecv
+          if (transceiver.direction !== 'sendrecv') {
+            try {
+              transceiver.direction = 'sendrecv';
+              console.log(`📡 Set transceiver ${kind} direction to sendrecv`);
+            } catch (e) {
+              console.warn(`⚠️ Could not set direction to sendrecv for ${kind}:`, (e as Error).message);
+            }
+          }
         }
-      });
-      console.log('📤 Creating answer... transceivers:', pc.getTransceivers().map(t => ({
-        mid: t.mid, direction: t.direction, senderTrack: t.sender?.track?.kind, receiverTrack: t.receiver?.track?.kind,
+      }
+      console.log('📤 Creating answer... transceivers:', transceivers.map(t => ({
+        mid: t.mid, direction: t.direction,
+        senderTrack: t.sender?.track?.kind || 'none',
+        senderReadyState: t.sender?.track?.readyState || 'none',
       })));
       try {
         const answer = await pc.createAnswer();
@@ -2181,24 +2214,34 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
         pc.addTrack(track, localStream);
       });
 
-      // CRITICAL: Ensure we have a recvonly audio transceiver if the remote side
-      // doesn't add one automatically. This guarantees we can RECEIVE audio even if
-      // the initial addTrack only created a sendonly transceiver.
-      const audioTransceivers = pc.getTransceivers().filter(t => t.receiver?.track?.kind === 'audio');
-      if (audioTransceivers.length === 0) {
-        console.log('📡 Adding recvonly audio transceiver to ensure ontrack fires');
-        pc.addTransceiver('audio', { direction: 'recvonly' });
-      }
-      // Make sure all transceivers are sendrecv (bidirectional)
-      pc.getTransceivers().forEach(t => {
-        if (t.direction === 'sendonly') {
-          try { t.direction = 'sendrecv'; } catch (_) {}
-        } else if (t.direction === 'recvonly' && localStream.getAudioTracks().length > 0) {
-          try { t.direction = 'sendrecv'; } catch (_) {}
+      // Ensure bidirectional audio: every audio transceiver must be sendrecv with a live sender track.
+      const currentTransceivers = pc.getTransceivers();
+      let hasAudioSendrecv = false;
+      for (const t of currentTransceivers) {
+        if (t.sender?.track?.kind === 'audio' || t.receiver?.track?.kind === 'audio') {
+          // Ensure sender has a live track
+          if (!t.sender.track || t.sender.track.readyState === 'ended') {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+              try { await t.sender.replaceTrack(audioTrack); } catch (_) {}
+            }
+          }
+          // Force sendrecv
+          if (t.direction !== 'sendrecv') {
+            try { t.direction = 'sendrecv'; } catch (_) {}
+          }
+          hasAudioSendrecv = t.direction === 'sendrecv' && !!t.sender.track;
         }
-      });
+      }
+      // If no audio transceiver at all, add one
+      if (!hasAudioSendrecv && localStream.getAudioTracks().length > 0) {
+        console.log('📡 Adding sendrecv audio transceiver');
+        pc.addTransceiver(localStream.getAudioTracks()[0], { direction: 'sendrecv', streams: [localStream] });
+      }
       console.log('📡 Transceivers after setup:', pc.getTransceivers().map(t => ({
-        mid: t.mid, direction: t.direction, senderTrack: t.sender?.track?.kind, receiverTrack: t.receiver?.track?.kind,
+        mid: t.mid, direction: t.direction,
+        senderTrack: t.sender?.track?.kind || 'none',
+        senderState: t.sender?.track?.readyState || 'none',
       })));
 
       // Renegotiation handler: triggered by ICE restarts or track changes.
