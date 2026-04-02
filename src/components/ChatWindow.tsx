@@ -2588,46 +2588,37 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
     isAcceptingCallRef.current = true;
 
+    // Set UI state IMMEDIATELY — user sees "call active" right away.
+    // This prevents double-clicking Accept while getUserMedia prompt is showing.
+    const answeredCallData = {
+      ...(callData || {}),
+      type: callType,
+      call_type: callType,
+      caller_id: callData?.caller_id || callData?.callerId,
+    };
+    setActiveCall(answeredCallData);
+    activeCallRef.current = answeredCallData;
+    setIncomingCall(null);
+
     // 🔓 Autoplay unlock (user gesture = clicking Accept).
-    // Play a silent buffer through AudioContext to guarantee audio output is unlocked.
-    try {
-      const ACtx = window.AudioContext || (window as any).webkitAudioContext;
-      const unlockCtx = new ACtx();
-      const buf = unlockCtx.createBuffer(1, 1, 22050);
-      const src = unlockCtx.createBufferSource();
-      src.buffer = buf;
-      src.connect(unlockCtx.destination);
-      src.start(0);
-      if (unlockCtx.state === 'suspended') await unlockCtx.resume();
-      setTimeout(() => unlockCtx.close().catch(() => {}), 100);
-    } catch (_) {}
-    // Also unlock the audio element itself
-    if (remoteAudioRef.current) {
-      try { await remoteAudioRef.current.play().catch(() => {}); } catch (_) {}
-    }
-    // Resume any suspended AudioContext
     try {
       const ACtx = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtx) {
-        const ctx = new ACtx();
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-        else ctx.close().catch(() => {});
+        const unlockCtx = new ACtx();
+        const buf = unlockCtx.createBuffer(1, 1, 22050);
+        const s = unlockCtx.createBufferSource();
+        s.buffer = buf;
+        s.connect(unlockCtx.destination);
+        s.start(0);
+        if (unlockCtx.state === 'suspended') unlockCtx.resume().catch(() => {});
+        setTimeout(() => unlockCtx.close().catch(() => {}), 100);
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {}
+    if (remoteAudioRef.current) {
+      try { remoteAudioRef.current.play().catch(() => {}); } catch (_) {}
+    }
 
     try {
-      // Preserve caller_id from callData to ensure we can identify caller vs callee
-      const answeredCallData = {
-        ...(callData || {}),
-        type: callType,
-        call_type: callType,
-        caller_id: callData?.caller_id || callData?.callerId,
-      };
-
-      // Set UI state immediately (user sees "call active" right away)
-      setActiveCall(answeredCallData);
-      activeCallRef.current = answeredCallData;
-      setIncomingCall(null);
 
       // Clear any existing peer connection
       if (peerConnectionRef.current) {
