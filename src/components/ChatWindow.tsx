@@ -627,26 +627,36 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
 
       const playAudio = async () => {
         try {
-          // Step 1: Start playing muted (always allowed)
-          audioElement.muted = true;
+          // Strategy: play unmuted directly (we have user gesture from accept/call button)
+          audioElement.muted = false;
           audioElement.volume = 1.0;
           await audioElement.play();
-
-          // Step 2: Unmute after play started — this works because we already
-          // did a user-gesture play() in acceptCall/handleVoiceCall
-          audioElement.muted = false;
-          console.log('✅ Remote audio playing and unmuted');
+          console.log('✅ Remote audio playing', {
+            muted: audioElement.muted,
+            volume: audioElement.volume,
+            paused: audioElement.paused,
+            currentTime: audioElement.currentTime,
+            readyState: audioElement.readyState,
+            srcObject: !!audioElement.srcObject,
+          });
         } catch (err: any) {
           if (err.name === 'AbortError') return;
-          console.warn('⚠️ Failed to play remote audio:', err);
-          // Last resort: retry unmuting after a short delay
-          setTimeout(() => {
-            try {
+          console.warn('⚠️ Direct unmuted play failed, trying muted→unmute:', err.name);
+          try {
+            // Fallback: muted play then unmute
+            audioElement.muted = true;
+            await audioElement.play();
+            audioElement.muted = false;
+            console.log('✅ Remote audio playing (muted→unmute fallback)', { muted: audioElement.muted });
+          } catch (err2: any) {
+            console.warn('⚠️ Muted fallback also failed:', err2.name);
+            // Last resort: keep trying
+            setTimeout(() => {
               audioElement.muted = false;
+              audioElement.volume = 1.0;
               audioElement.play().catch(() => {});
-              console.log('🔄 Retry unmute after delay');
-            } catch (_) {}
-          }, 500);
+            }, 1000);
+          }
         }
       };
 
@@ -1717,14 +1727,21 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
       activeCallRef.current = callData; // Update ref immediately
       
       // 🔓 Autoplay unlock (user gesture = clicking the voice call button).
-      // The audio element is ALWAYS mounted so this ref is always valid here.
+      // Create a silent audio context and play a tiny buffer to unlock audio output.
+      try {
+        const ACtx = window.AudioContext || (window as any).webkitAudioContext;
+        const unlockCtx = new ACtx();
+        const buf = unlockCtx.createBuffer(1, 1, 22050);
+        const src = unlockCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(unlockCtx.destination);
+        src.start(0);
+        if (unlockCtx.state === 'suspended') await unlockCtx.resume();
+        setTimeout(() => unlockCtx.close().catch(() => {}), 100);
+      } catch (_) {}
+      // Also unlock the audio element itself
       if (remoteAudioRef.current) {
-        try {
-          remoteAudioRef.current.muted = true;
-          remoteAudioRef.current.play().catch(() => {
-            // Expected: no srcObject yet — just unlocking the element.
-          });
-        } catch (_) { /* ignore */ }
+        try { await remoteAudioRef.current.play().catch(() => {}); } catch (_) {}
       }
       try {
         const ACtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -2390,6 +2407,41 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
                 }
               });
             } catch (statsErr) { /* ignore stats errors */ }
+
+            // Delayed media flow check — verify bytes are increasing (audio is actually flowing)
+            setTimeout(async () => {
+              if (pc.connectionState !== 'connected') return;
+              try {
+                const s = await pc.getStats();
+                s.forEach((r: any) => {
+                  if (r.type === 'candidate-pair' && r.state === 'succeeded') {
+                    console.log('📊 Media flow check (3s after connected):', {
+                      bytesSent: r.bytesSent,
+                      bytesReceived: r.bytesReceived,
+                      packetsReceived: r.packetsReceived,
+                      packetsSent: r.packetsSent,
+                    });
+                    if (r.bytesReceived < 2000) {
+                      console.warn('⚠️ Very few bytes received — audio may not be flowing. Possible TURN/firewall issue.');
+                    }
+                  }
+                  if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+                    console.log('📊 Inbound audio RTP:', {
+                      packetsReceived: r.packetsReceived,
+                      bytesReceived: r.bytesReceived,
+                      packetsLost: r.packetsLost,
+                    });
+                  }
+                  if (r.type === 'outbound-rtp' && r.kind === 'audio') {
+                    console.log('📊 Outbound audio RTP:', {
+                      packetsSent: r.packetsSent,
+                      bytesSent: r.bytesSent,
+                    });
+                  }
+                });
+              } catch (_) {}
+            }, 3000);
+
             // FALLBACK: Build remoteStream from receivers and transceivers.
             // ontrack may not fire if the SDP was negotiated before tracks arrived,
             // or after an ICE restart. This fallback catches all cases.
@@ -2537,18 +2589,23 @@ export default function ChatWindow({ chatId, ws, onBack, prefilledIncomingCall }
     isAcceptingCallRef.current = true;
 
     // 🔓 Autoplay unlock (user gesture = clicking Accept).
-    // The audio element is ALWAYS mounted (not conditional), so this ref is always valid.
-    // Playing muted with no srcObject is always allowed and marks the element as
-    // "user-initiated" so a later unmuted play() (when remoteStream arrives) succeeds.
+    // Play a silent buffer through AudioContext to guarantee audio output is unlocked.
+    try {
+      const ACtx = window.AudioContext || (window as any).webkitAudioContext;
+      const unlockCtx = new ACtx();
+      const buf = unlockCtx.createBuffer(1, 1, 22050);
+      const src = unlockCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(unlockCtx.destination);
+      src.start(0);
+      if (unlockCtx.state === 'suspended') await unlockCtx.resume();
+      setTimeout(() => unlockCtx.close().catch(() => {}), 100);
+    } catch (_) {}
+    // Also unlock the audio element itself
     if (remoteAudioRef.current) {
-      try {
-        remoteAudioRef.current.muted = true;
-        remoteAudioRef.current.play().catch(() => {
-          // Expected: no srcObject yet — just unlocking the element for future play.
-        });
-      } catch (_) { /* ignore */ }
+      try { await remoteAudioRef.current.play().catch(() => {}); } catch (_) {}
     }
-    // Also resume AudioContext if it was suspended (needed for ringtone + some browsers)
+    // Resume any suspended AudioContext
     try {
       const ACtx = window.AudioContext || (window as any).webkitAudioContext;
       if (ACtx) {
