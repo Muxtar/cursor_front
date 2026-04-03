@@ -161,14 +161,15 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
         {/* Mobile glassmorphism header — hidden on /chat (it has its own) */}
         <header
           className={`
-            flex-shrink-0 flex items-center gap-1.5 px-3 py-2 border-b
+            flex-shrink-0 flex items-center gap-2 px-4 py-2.5
             ${isOnChatPage ? 'hidden' : 'md:hidden'}
             ${isDark
-              ? 'bg-gray-900/90 border-gray-700/50 backdrop-blur-md'
-              : 'bg-white/90 border-gray-200/50 backdrop-blur-md'
+              ? 'bg-gray-900/80 border-b border-gray-800/50'
+              : 'bg-white/80 border-b border-gray-100'
             }
+            backdrop-blur-2xl
           `}
-          style={{ WebkitBackdropFilter: 'blur(12px)' }}
+          style={{ WebkitBackdropFilter: 'blur(24px) saturate(180%)' }}
         >
           {/* Back chevron */}
           {showBack && (
@@ -238,12 +239,11 @@ export default function AppLayout({ children, title = '' }: AppLayoutProps) {
         </main>
       </div>
 
-      {/* ─── Mobile bottom navigation ─── */}
-      {/* Hide BottomNav when inside a chat conversation on mobile */}
+      {/* ─── Mobile bottom navigation (floating pill) ─── */}
       {!(isOnChatPage && selectedChat) && (
         <div
           className="fixed bottom-0 left-0 right-0 z-[35] md:hidden"
-          style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+          style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom))' }}
         >
           <BottomNav />
         </div>
